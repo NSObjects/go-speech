@@ -289,6 +289,34 @@ func TestStreamDecoderEarlyCloseAndCancellation(t *testing.T) {
 	}
 }
 
+func TestStreamDecoderParentCancellation(t *testing.T) {
+	binaryName := checkFFmpeg(t)
+	parent, cancel := context.WithCancel(context.Background())
+	format := audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1}
+	s, err := OpenStreamDecoder(parent, StreamConfig{
+		Input: format, Output: format, Binary: binaryName,
+	})
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	defer s.Close()
+	done := make(chan error, 1)
+	go func() {
+		_, readErr := s.Read(context.Background(), make([]byte, 32))
+		done <- readErr
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("parent cancellation must unblock Read: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("parent cancellation failed to release the decoder")
+	}
+}
+
 func TestStreamDecoderMalformedInputReportsExit(t *testing.T) {
 	binaryName := checkFFmpeg(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
