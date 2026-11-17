@@ -67,11 +67,11 @@ turn. Duplicate confirmed sentences from repeated full responses are not
 emitted twice. When the last packet has no utterance metadata, the adapter
 also preserves any trailing unconfirmed text as a final segment.
 
-`EndWindowSize` optionally configures Volcengine\'s own `end_window_size` silence
+`EndWindowSize` optionally configures Volcengine's own `end_window_size` silence
 threshold for returning `definite` sentences (milliseconds on the wire, minimum
 200ms; omit to use the service default of approximately 800ms). For example,
 `700*time.Millisecond` adjusts provider-side segmentation without changing the
-application\'s VAD or when it ends a conversation turn. It is not a local
+application's VAD or when it ends a conversation turn. It is not a local
 endpoint detector and does not automatically call `CloseSend`.
 
 The SDK does not decide how to stop VAD or when to call LLM/TTS; that remains
