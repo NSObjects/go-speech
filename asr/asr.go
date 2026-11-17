@@ -58,6 +58,13 @@ type Event struct {
 // discarding pending recognition results. Close is idempotent and releases
 // resources; canceling the OpenStream context terminates the session.
 //
+// Contract: after a successful task completion, Recv repeatedly returns io.EOF.
+// After a terminal provider/protocol/transport failure, Recv repeatedly returns
+// the original failure until the session is discarded. Calling Send on a closed
+// stream returns ErrStreamClosed; calling Send after CloseSend returns
+// ErrInputClosed. Context cancellation preserves context.Canceled /
+// context.DeadlineExceeded rather than becoming a retryable provider failure.
+//
 // A stream supports one concurrent sender and one concurrent receiver.
 // Concurrent Send calls or concurrent Recv calls are not guaranteed safe.
 type Stream interface {

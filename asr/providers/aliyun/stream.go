@@ -15,9 +15,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Alias shared ASR sentinels for backward compatibility with existing clients.
 var (
-	ErrClosed     = errors.New("aliyun: stream closed")
-	ErrSendClosed = errors.New("aliyun: audio input finished")
+	ErrClosed     = asr.ErrStreamClosed
+	ErrSendClosed = asr.ErrInputClosed
 )
 
 // Stream is a task-specific WebSocket session. It permits one concurrent sender
@@ -30,8 +31,9 @@ type Stream struct {
 	once       sync.Once
 	writeMu    sync.Mutex
 	readMu     sync.Mutex
-	sendClosed bool // writeMu
-	finished   bool // readMu
+	sendClosed  bool  // writeMu
+	finished    bool  // readMu
+	terminalErr error // readMu: first terminal failure remains observable
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -103,7 +105,9 @@ func (s *Stream) Send(ctx context.Context, chunk []byte) error {
 		return ErrSendClosed
 	}
 	if err := s.write(ctx, websocket.BinaryMessage, chunk); err != nil {
-		return wrapNetwork(ctx, "send", err)
+		result := s.transportError(ctx, "send", err)
+		_ = s.Close() // A failed WebSocket write cannot safely be retried on this session.
+		return result
 	}
 	return nil
 }
@@ -121,7 +125,9 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	}
 	cmd := taskMessage{Header: commandHeader{Action: "finish-task", TaskID: s.taskID, Streaming: "duplex"}, Payload: taskPayload{Input: map[string]any{}}}
 	if err := s.writeJSON(ctx, cmd); err != nil {
-		return wrapNetwork(ctx, "finish-task", err)
+		result := s.transportError(ctx, "finish-task", err)
+		_ = s.Close()
+		return result
 	}
 	s.sendClosed = true
 	return nil
@@ -134,6 +140,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	defer s.readMu.Unlock()
 	if s.finished {
 		return asr.Event{}, io.EOF
+	}
+	if s.terminalErr != nil {
+		return asr.Event{}, s.terminalErr
 	}
 	if s.closed() {
 		return asr.Event{}, s.closeError(ctx)
@@ -149,28 +158,26 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		if d, ok := ctx.Deadline(); ok {
 			if err := s.conn.SetReadDeadline(d); err != nil {
-				_ = s.Close()
-				return asr.Event{}, wrapNetwork(ctx, "recv", err)
+				result := s.transportError(ctx, "recv", err)
+				return asr.Event{}, s.fail(result)
 			}
 		} else {
 			if err := s.conn.SetReadDeadline(time.Time{}); err != nil {
-				_ = s.Close()
-				return asr.Event{}, wrapNetwork(ctx, "recv", err)
+				result := s.transportError(ctx, "recv", err)
+				return asr.Event{}, s.fail(result)
 			}
 		}
 		_, data, err := s.conn.ReadMessage()
 		if err != nil {
-			_ = s.Close()
-			return asr.Event{}, wrapNetwork(ctx, "recv", err)
+			result := s.transportError(ctx, "recv", err)
+			return asr.Event{}, s.fail(result)
 		}
 		ev, err := decodeEvent(data)
 		if err != nil {
-			_ = s.Close()
-			return asr.Event{}, protocolError("recv", err)
+			return asr.Event{}, s.fail(protocolError("recv", err))
 		}
 		if ev.Header.TaskID != s.taskID {
-			_ = s.Close()
-			return asr.Event{}, protocolError("recv", errors.New("task_id mismatch"))
+			return asr.Event{}, s.fail(protocolError("recv", errors.New("task_id mismatch")))
 		}
 		switch ev.Header.Event {
 		case "result-generated":
@@ -195,13 +202,39 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			_ = s.Close()
 			return asr.Event{}, io.EOF
 		case "task-failed":
-			_ = s.Close()
-			return asr.Event{}, taskFailure(ev.Header)
+			return asr.Event{}, s.fail(taskFailure(ev.Header))
 		case "task-started": // Duplicate notification, safe to ignore.
 		default: // Forward-compatible optional notifications.
 		}
 	}
 }
+// fail remembers the first terminal receive failure. Caller holds readMu.
+// A subsequent Recv reports the original remote/protocol/transport error,
+// instead of replacing it with an unhelpful "stream closed" error.
+func (s *Stream) fail(err error) error {
+	if s.terminalErr == nil {
+		s.terminalErr = err
+	}
+	_ = s.Close()
+	return s.terminalErr
+}
+
+// transportError preserves cancellation and deliberate stream closure.
+// Neither of those conditions is an automatically retryable network failure.
+// Capture the error before closing the connection: Close itself changes state.
+func (s *Stream) transportError(ctx context.Context, op string, err error) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	if e := s.parent.Err(); e != nil {
+		return e
+	}
+	if s.closed() || errors.Is(err, ErrClosed) {
+		return ErrClosed
+	}
+	return wrapNetwork(ctx, op, err)
+}
+
 func (s *Stream) closeError(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -262,7 +295,7 @@ func decodeEvent(data []byte) (responseEvent, error) {
 	return ev, nil
 }
 func protocolError(op string, err error) error {
-	return &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: op, Err: err}
+	return &speecherr.Error{Code: speecherr.CodeProtocol, Provider: "aliyun", Operation: op, Err: err}
 }
 func taskFailure(h responseHeader) error {
 	code := speecherr.CodeInternal
@@ -277,7 +310,12 @@ func taskFailure(h responseHeader) error {
 	case strings.Contains(desc, "unavailable"):
 		code = speecherr.CodeUnavailable
 	}
-	return &speecherr.Error{Code: code, Provider: "aliyun", Operation: "task", Err: fmt.Errorf("remote error %q: %s", h.ErrorCode, h.ErrorMessage), Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeTimeout || code == speecherr.CodeRateLimited}
+	return &speecherr.Error{
+		Code: code, Provider: "aliyun", Operation: "task",
+		RemoteCode: h.ErrorCode,
+		Err: fmt.Errorf("remote error %q: %s", h.ErrorCode, h.ErrorMessage),
+		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeTimeout || code == speecherr.CodeRateLimited,
+	}
 }
 func (s *Stream) awaitStarted(ctx context.Context) error {
 	_, data, err := s.conn.ReadMessage()
