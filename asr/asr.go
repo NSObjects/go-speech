@@ -1,0 +1,68 @@
+// Package asr defines vendor-independent automatic speech recognition contracts.
+// It does not manage VAD, device playback, or conversational turn-taking.
+package asr
+
+import (
+	"context"
+
+	"github.com/NSObjects/go-speech/audio"
+)
+
+// Config specifies common recognition parameters. Provider-specific options
+// belong to the concrete provider's constructor or configuration.
+type Config struct {
+	Format   audio.Format
+	Language string // Optional BCP 47 language tag; empty lets the provider decide.
+	Hints    []string
+}
+
+// Result contains the final text from a non-streaming recognition request.
+type Result struct {
+	Text     string
+	Language string
+}
+
+// Recognizer provides one-shot recognition of an entire audio buffer.
+type Recognizer interface {
+	Recognize(ctx context.Context, input audio.Buffer, cfg Config) (Result, error)
+}
+
+// StreamRecognizer opens streaming ASR sessions.
+type StreamRecognizer interface {
+	OpenStream(ctx context.Context, cfg Config) (Stream, error)
+}
+
+// EventType identifies a speech recognition event.
+type EventType string
+
+const (
+	// EventPartial is a hypothesis that may change as more audio arrives.
+	EventPartial EventType = "partial"
+	// EventFinal is a confirmed transcript segment, not necessarily the end of a turn.
+	EventFinal EventType = "final"
+	// EventSpeechStart and EventSpeechEnd are optional provider endpoint events.
+	EventSpeechStart EventType = "speech_start"
+	EventSpeechEnd   EventType = "speech_end"
+)
+
+// Event is emitted from Stream. Providers may omit language and endpoint events.
+type Event struct {
+	Type     EventType
+	Text     string
+	Language string
+}
+
+// Stream is a bidirectional recognition session. A caller may Send and Recv
+// concurrently. Recv returns io.EOF after the event stream ends; errors are
+// returned by Recv, not as Event values. CloseSend signals end-of-input without
+// discarding pending recognition results. Close is idempotent and releases
+// resources; canceling the OpenStream context terminates the session.
+//
+// A stream supports one concurrent sender and one concurrent receiver.
+// Concurrent Send calls or concurrent Recv calls are not guaranteed safe.
+type Stream interface {
+	Send(ctx context.Context, pcmOrEncodedAudio []byte) error
+	CloseSend(ctx context.Context) error
+	Recv(ctx context.Context) (Event, error)
+	Close() error
+}
