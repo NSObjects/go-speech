@@ -32,8 +32,11 @@ mono PCM16LE (or 8kHz for Paraformer 8k), and the SDK sends real-time audio
 chunks over authenticated WebSocket. The test waits for task completion,
 requires a nonempty final transcript, and validates session lifecycle.
 
-Fun-ASR additionally tests the end-to-end Ogg Opus decoding path:
-**Ogg Opus → persistent FFmpeg decoder → PCM16LE → ASR Stream → Final text**.
+Fun-ASR additionally tests both compressed-audio paths:
+**Ogg Opus → persistent FFmpeg decoder → PCM16LE → ASR Stream → Final text**
+and **Ogg-generated raw Opus packets → native libopus PacketDecoder →
+PCM16LE → ASR Stream → Final text**. The latter uses a test-only Ogg
+packet extractor to verify the packet-level decoder with realistic speech.
 
 The fixtures contain synthetic speech, *not* real children's voices. They
 verify connectivity and correctness, not accuracy, voice-device acoustic
@@ -55,6 +58,7 @@ go test -tags=integration -run '^TestAliyunLiveASR$' -v ./asr/providers/aliyun
 To run the decoded Opus pipeline locally, also set
 `ASR_TEST_OPUS_FILE` to an Ogg Opus file and install FFmpeg.
 
-CI automatically runs the online model matrix on code changes. You can rerun
-individual failing jobs in GitHub Actions; no manual first-time trigger is
-necessary.
+CI automatically runs the online model matrix on every push and trusted PR.
+Runs are not canceled or replaced by a shared concurrency group. You can
+rerun individual failing jobs in GitHub Actions; no manual first-time trigger
+is necessary.
