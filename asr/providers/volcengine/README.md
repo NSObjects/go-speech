@@ -75,12 +75,56 @@ go test -race ./asr/providers/volcengine
 go vet ./...
 ```
 
-To run the **real online** integration test, configure
-`VOLCENGINE_API_KEY`, optionally `VOLCENGINE_RESOURCE_ID`, and run the
-repository's `Volcengine ASR Integration` workflow. The workflow runs on
-pushes automatically when the API key secret has been configured; it skips
-the live request when no credentials are available. Real cloud recognition
-requires the matching resource enabled in the Volcengine console.
+## New-console authentication only
 
-The real endpoint is **not verified until a live job succeeds**. Local
-mock-server tests do not prove the upstream API has accepted a request.
+The official Seed-ASR 2.0 optimized streaming endpoint uses:
+
+```http
+X-Api-Key: <API key issued in the new Doubao Speech console>
+X-Api-Resource-Id: volc.seedasr.sauc.duration
+```
+
+The SDK intentionally **does not support old-console AppID / Access Token
+authentication**. The new API key is not an AppID, an App Token for another
+voice service, an Ark model API key, or an Alibaba credential.
+
+Configure these GitHub Actions settings for the `NSObjects/go-speech`
+repository:
+
+- **Repository secret** `VOLCENGINE_API_KEY`: the actual API Key (called
+  APP Key in some official API docs) from the **new Doubao Voice console →
+  API Management** page.
+- **Repository variable** `VOLCENGINE_RESOURCE_ID`: optional; defaults to
+  `volc.seedasr.sauc.duration` for **Seed-ASR 2.0 hourly/duration** billing.
+  Use `volc.seedasr.sauc.concurrent` only if that concurrency service
+  has been enabled for the same project.
+- **Repository variable** `VOLCENGINE_WS_ENDPOINT`: optional; leave unset
+  to use the official `bigmodel_async` URL.
+
+The automatic paid integration workflow fails explicitly if the API key is
+missing, and tests real cloud recognition when configured. A green Go CI
+alone does not prove upstream authentication is working.
+
+### If a live run returns HTTP 401
+
+The WebSocket handshake was rejected **before any audio was sent**.
+Confirm that:
+
+1. The key comes from the **new Doubao Voice console's API management**,
+   rather than from an old AppID/AppToken or another product's console.
+2. The API key is enabled and belongs to the **same selected project** as
+   the ASR model entitlement.
+3. Under **Activation Management**, Seed-ASR streaming 2.0 is activated
+   in that project, with the same duration or concurrency resource mode.
+4. You replaced the **Repository secret**, not a similarly named variable,
+   and the secret has no accidental leading/trailing whitespace.
+
+The SDK records HTTP status and the service's `X-Tt-Logid` to help trace
+handshake failures without exposing credentials or response bodies. If the
+key and resources are correct, share the log ID with Volcengine support.
+
+- [Official streaming ASR API](https://docs.volcengine.com/docs/doubao-voice/bidirectional-streaming-automatic-speech-recognition-websocket?lang=zh)
+- [New console guidance](https://docs.volcengine.com/docs/doubao-voice/console-guidance?lang=zh)
+
+**Real cloud verification is pending until the live integration job succeeds.**
+Local mock-WebSocket tests do not verify the upstream account's entitlement.
