@@ -43,7 +43,8 @@ type StreamDecoder struct {
 	stdout     io.ReadCloser
 	cancel     context.CancelFunc
 	parent     context.Context
-	stopParent func() bool
+	stopParent func() bool // guarded by parentMu
+	parentMu   sync.Mutex
 	stderr     limitedStderr
 	format     audio.Format
 
@@ -117,7 +118,9 @@ func OpenStreamDecoder(ctx context.Context, cfg StreamConfig) (*StreamDecoder, e
 		cancel()
 		return nil, fmt.Errorf("ffmpeg: start streaming decoder: %w", err)
 	}
+	decoder.parentMu.Lock()
 	decoder.stopParent = context.AfterFunc(ctx, func() { _ = decoder.Close() })
+	decoder.parentMu.Unlock()
 	return decoder, nil
 }
 
@@ -263,8 +266,11 @@ func (d *StreamDecoder) Close() error {
 	}
 	d.closeOnce.Do(func() {
 		d.closed.Store(true)
-		if d.stopParent != nil {
-			d.stopParent()
+		d.parentMu.Lock()
+		stopParent := d.stopParent
+		d.parentMu.Unlock()
+		if stopParent != nil {
+			stopParent()
 		}
 		d.cancel()
 		_ = d.stdin.Close()
