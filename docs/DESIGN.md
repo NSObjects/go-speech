@@ -35,14 +35,6 @@ VAD, endpointing policy, device/MQTT/WebSocket transport, playback state, audio
 buffer arbitration, Agent Runtime, memory, codec transcoding, and speech turn
 management belong to the application or other dedicated modules.
 
-## Next milestone
-
-ASR: the first multi-model Alibaba Cloud WebSocket adapter now supports Qwen-Audio 3.1
-Streaming / Message, Fun-ASR-Realtime and Paraformer v2 (including 8 kHz).
-Next: validate with real credentials and recorded speech, add cancellation and failure
-contract tests, compare another provider, and implement TTS independently.
-Connection reuse is deliberately deferred. Each ASR stream owns one WebSocket.
-
 ## Errors and streaming session lifecycle
 
 Provider adapters wrap remote failures in `speecherr.Error` with a stable
