@@ -207,6 +207,7 @@ func unsupportedError(msg string) error {
 
 func connectError(err error, resp *http.Response) error {
 	code := speecherr.CodeUnavailable
+	remoteCode := ""
 	if resp != nil {
 		switch resp.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
@@ -216,9 +217,16 @@ func connectError(err error, resp *http.Response) error {
 		case http.StatusBadRequest:
 			code = speecherr.CodeInvalidArgument
 		}
+		// Report only non-secret protocol metadata. Never print request
+		// headers, API keys, response body or untrusted error-message text.
+		remoteCode = resp.Header.Get("X-Api-Status-Code")
+		logID := resp.Header.Get("X-Tt-Logid")
+		err = fmt.Errorf("%w: HTTP %d, X-Api-Status-Code=%q, X-Tt-Logid=%q",
+			err, resp.StatusCode, remoteCode, logID)
 	}
 	return &speecherr.Error{
-		Code: code, Provider: "volcengine", Operation: "connect", Err: err,
+		Code: code, Provider: "volcengine", Operation: "connect",
+		RemoteCode: remoteCode, Err: err,
 		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited,
 	}
 }
