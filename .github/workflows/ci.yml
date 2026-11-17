@@ -47,3 +47,68 @@ jobs:
         env:
           CGO_ENABLED: "1"
         run: go vet -tags="libopus opencoreamr" ./...
+
+  cleanup-merged-branches:
+    name: Clean merged feature branches
+    # Deletion runs only for a push to the default branch, and only after
+    # both build/test jobs have succeeded. Never run on forked pull requests.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, native-codecs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Delete branches already merged by PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const defaultBranch = 'main';
+            const branches = await github.paginate(github.rest.repos.listBranches, {
+              owner, repo, per_page: 100,
+            });
+            const mergedPRs = await github.paginate(github.rest.pulls.list, {
+              owner, repo, base: defaultBranch, state: 'closed', per_page: 100,
+            });
+            const mergedHeads = new Map();
+            for (const pr of mergedPRs) {
+              if (!pr.merged_at || !pr.head.repo || pr.head.repo.full_name !== context.repo.owner + '/' + context.repo.repo) {
+                continue;
+              }
+              mergedHeads.set(pr.head.ref, pr.head.sha);
+            }
+            let deleted = 0;
+            const failures = [];
+            for (const branch of branches) {
+              if (branch.name === defaultBranch || branch.protected || !branch.name.startsWith('feat/')) {
+                continue;
+              }
+              const expected = mergedHeads.get(branch.name);
+              if (!expected || expected !== branch.commit.sha) {
+                core.info(`Keeping unmerged or changed branch ${branch.name}`);
+                continue;
+              }
+              try {
+                // Check again just before deletion: don't delete if the branch moved.
+                const { data: current } = await github.rest.git.getRef({
+                  owner, repo, ref: `heads/${branch.name}`,
+                });
+                if (current.object.sha !== expected) {
+                  core.info(`Keeping branch ${branch.name}: head changed`);
+                  continue;
+                }
+                await github.rest.git.deleteRef({
+                  owner, repo, ref: `heads/${branch.name}`,
+                });
+                core.info(`Deleted merged branch ${branch.name}`);
+                deleted++;
+              } catch (err) {
+                failures.push(`${branch.name}: ${err.message}`);
+                core.warning(`Could not delete ${branch.name}: ${err.message}`);
+              }
+            }
+            core.info(`Cleanup finished. Deleted ${deleted} merged feature branches.`);
+            if (failures.length) {
+              core.setFailed(`Branch cleanup failed: ${failures.join('; ')}`);
+            }
