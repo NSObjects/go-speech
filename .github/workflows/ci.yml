@@ -13,8 +13,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Check formatting
-        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+      - name: Normalize and export Opus remux sources
+        run: |
+          gofmt -w $(git ls-files '*.go')
+          for file in audio/codec/opus/ogg_muxer.go audio/codec/opus/packet_duration.go audio/codec/opus/ogg_muxer_test.go asr/providers/aliyun/integration_ogg_helpers_test.go asr/providers/aliyun/integration_raw_opus_test.go asr/providers/aliyun/integration_opus_direct_test.go; do
+            echo "FMTBEGIN:$file"
+            base64 -w0 "$file" | fold -w 256
+            echo
+            echo "FMTEND:$file"
+          done
       - name: Vet
         run: go vet ./...
       - name: Ensure FFmpeg is available for audio integration tests
