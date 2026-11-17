@@ -16,7 +16,7 @@ const (
 	EncodingPCM16LE Encoding = "pcm_s16le"
 	EncodingWAV     Encoding = "wav"
 	EncodingMP3     Encoding = "mp3"
-	EncodingOpus    Encoding = "opus" // Ogg Opus; raw Opus packets are NOT interchangeable.
+	EncodingOpus    Encoding = "opus"  // Ogg Opus; raw Opus packets are NOT interchangeable.
 	EncodingSpeex   Encoding = "speex" // Ogg Speex; raw Speex is not supported.
 	EncodingAAC     Encoding = "aac"
 	EncodingAMR     Encoding = "amr" // AMR-NB only; AMR-WB requires a different codec.
