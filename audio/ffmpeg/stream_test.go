@@ -53,7 +53,7 @@ func TestStreamDecoderCompressedFragments(t *testing.T) {
 	}{
 		{"ogg-opus", audio.EncodingOpus, func(t *testing.T) []byte {
 			return compressedTone(t, binaryName, "libopus", "ogg")
-		}, 16000},
+		}, 48000},
 		{"ogg-speex", audio.EncodingSpeex, func(t *testing.T) []byte {
 			return compressedTone(t, binaryName, "libspeex", "ogg")
 		}, 16000},
@@ -161,6 +161,89 @@ func TestStreamDecoderCompressedFragments(t *testing.T) {
 				t.Fatal("stream decoder did not reach EOF", ctx.Err())
 			}
 		})
+	}
+}
+
+// TestStreamDecoderEmitsBeforeEndOfInput proves this is a *streaming*
+// decoder rather than an append-all-and-convert implementation.
+func TestStreamDecoderEmitsBeforeEndOfInput(t *testing.T) {
+	binaryName := checkFFmpeg(t)
+	raw := tone()
+	longPCM := bytes.Repeat(raw.Data, 8) // Eight seconds of continuous speech-band audio.
+	cmd := exec.Command(binaryName, "-hide_banner", "-loglevel", "error", "-nostdin",
+		"-f", "s16le", "-ar", "16000", "-ac", "1", "-i", "pipe:0",
+		"-c:a", "libopus", "-b:a", "32k", "-f", "ogg", "pipe:1")
+	cmd.Stdin = bytes.NewReader(longPCM)
+	encoded, err := cmd.Output()
+	if err != nil {
+		t.Skipf("optional libopus encoder unavailable: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	stream, err := OpenStreamDecoder(ctx, StreamConfig{
+		Input: audio.Format{Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1},
+		Output: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+		Binary: binaryName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	firstPCM := make(chan struct{})
+	readDone := make(chan error, 1)
+	go func() {
+		seen := false
+		buf := make([]byte, 4096)
+		for {
+			n, err := stream.Read(ctx, buf)
+			if n > 0 && !seen {
+				seen = true
+				close(firstPCM)
+			}
+			if errors.Is(err, io.EOF) {
+				readDone <- nil
+				return
+			}
+			if err != nil {
+				readDone <- err
+				return
+			}
+		}
+	}()
+	writeAll := func(data []byte) {
+		t.Helper()
+		for len(data) > 0 {
+			n, err := stream.Write(ctx, data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n == 0 {
+				t.Fatal("compressed input write stalled")
+			}
+			data = data[n:]
+		}
+	}
+	mid := len(encoded) / 2
+	writeAll(encoded[:mid])
+	select {
+	case <-firstPCM:
+		// PCM arrived while we intentionally kept input open and paused.
+	case err := <-readDone:
+		t.Fatalf("unexpected early decoder termination: %v", err)
+	case <-time.After(4 * time.Second):
+		t.Fatal("no PCM produced before CloseInput; decoder is not incremental")
+	}
+	writeAll(encoded[mid:])
+	if err := stream.CloseInput(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-readDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
 }
 
