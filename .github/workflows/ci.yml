@@ -13,16 +13,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Normalize Go source formatting before checks
-        run: gofmt -w $(git ls-files '*.go')
-      - name: Export formatted Go source for repository cleanup
-        run: |
-          for file in asr/providers/aliyun/*.go; do
-            echo "FMTBEGIN:$file"
-            base64 -w0 "$file" | fold -w 256
-            echo
-            echo "FMTEND:$file"
-          done
+      - name: Check formatting
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
       - name: Vet
         run: go vet ./...
       - name: Test with race detector
