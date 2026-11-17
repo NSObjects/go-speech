@@ -68,7 +68,7 @@ func TestAliyunLiveOpusPipeline(t *testing.T) {
 
 	type transcript struct {
 		text string
-		err error
+		err  error
 	}
 	results := make(chan transcript, 1)
 	go func() {
