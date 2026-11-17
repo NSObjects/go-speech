@@ -358,7 +358,7 @@ func TestSequencedLastResponseAndLimits(t *testing.T) {
 func TestCredentialsModesAndASRHeaders(t *testing.T) {
 	for _, tc := range []struct {
 		name, apiKey, appID, accessToken string
-		legacy bool
+		legacy                           bool
 	}{
 		{name: "api key", apiKey: "new-key"},
 		{name: "legacy asr app credentials", appID: "app-123", accessToken: "legacy-token", legacy: true},
