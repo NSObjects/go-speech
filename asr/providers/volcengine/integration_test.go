@@ -48,7 +48,10 @@ func TestVolcengineLiveASR(t *testing.T) {
 		t.Fatalf("connect Volcengine: %v", err)
 	}
 	defer stream.Close()
-	type result struct{ text string; err error }
+	type result struct {
+		text string
+		err  error
+	}
 	done := make(chan result, 1)
 	go func() {
 		var final []string

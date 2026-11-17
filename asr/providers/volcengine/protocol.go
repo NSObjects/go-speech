@@ -43,7 +43,7 @@ func encodeFrame(kind, flags, serialization byte, payload []byte) ([]byte, error
 		return nil, errors.New("volcengine: compressed frame exceeds size limit")
 	}
 	frame := make([]byte, 8+compressed.Len())
-	frame[0] = 0x11  // protocol v1, four-byte header
+	frame[0] = 0x11 // protocol v1, four-byte header
 	frame[1] = kind<<4 | flags
 	frame[2] = serialization<<4 | 1 // gzip
 	binary.BigEndian.PutUint32(frame[4:8], uint32(compressed.Len()))
@@ -137,7 +137,9 @@ type serverPayload struct {
 func (m wireMessage) result() ([]recognition, bool, error) {
 	if m.kind == messageServerError {
 		msg := string(m.payload)
-		var body struct{ Message string `json:"message"` }
+		var body struct {
+			Message string `json:"message"`
+		}
 		if json.Unmarshal(m.payload, &body) == nil && body.Message != "" {
 			msg = body.Message
 		}
@@ -145,7 +147,7 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 		return nil, false, &speecherr.Error{
 			Code: speecherr.CodeUnavailable, Provider: "volcengine",
 			Operation: "receive", RemoteCode: code,
-			Err: fmt.Errorf("remote error %s: %s", code, msg),
+			Err:       fmt.Errorf("remote error %s: %s", code, msg),
 			Retryable: m.code >= 50000000,
 		}
 	}
@@ -173,8 +175,8 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 		return nil, false, &speecherr.Error{
 			Code: code, Provider: "volcengine", Operation: "receive",
 			RemoteCode: strconv.Itoa(p.Code),
-			Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited,
-			Err: fmt.Errorf("remote response %d: %s", p.Code, p.Message),
+			Retryable:  code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited,
+			Err:        fmt.Errorf("remote response %d: %s", p.Code, p.Message),
 		}
 	}
 	last := p.IsLastPackage || m.flags&flagLast != 0

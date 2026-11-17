@@ -31,7 +31,7 @@ func testRequestFrame(data []byte) (byte, byte, []byte, error) {
 	// Use the same parser with an expected server response type solely for
 	// checking the gzip/body framing; request validation is separate below.
 	copied := append([]byte(nil), data...)
-	copied[1] = messageFullResponse<<4
+	copied[1] = messageFullResponse << 4
 	msg, err := parseFrame(copied)
 	if err != nil {
 		return 0, 0, nil, err
@@ -99,12 +99,12 @@ func TestWebSocketStreamRoundTrip(t *testing.T) {
 		var config struct {
 			Audio struct {
 				Format string `json:"format"`
-				Codec string `json:"codec"`
-				Rate int `json:"rate"`
+				Codec  string `json:"codec"`
+				Rate   int    `json:"rate"`
 			} `json:"audio"`
 			Request struct {
 				ModelName string `json:"model_name"`
-				Corpus struct {
+				Corpus    struct {
 					Context string `json:"context"`
 				} `json:"corpus"`
 			} `json:"request"`
@@ -169,7 +169,7 @@ func TestWebSocketStreamRoundTrip(t *testing.T) {
 	defer cancel()
 	session, err := provider.Stream.OpenStream(ctx, asr.Config{
 		Format: audio.Format{Encoding: audio.EncodingOpus, SampleRate: 16000, Channels: 1},
-		Hints: []string{"go-speech"},
+		Hints:  []string{"go-speech"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -210,9 +210,9 @@ func TestWebSocketStreamRoundTrip(t *testing.T) {
 
 func TestProtocolErrorsAndTerminalReason(t *testing.T) {
 	cases := []struct {
-		name string
+		name  string
 		frame func() []byte
-		want speecherr.Code
+		want  speecherr.Code
 	}{
 		{"invalid gzip", func() []byte { return []byte{0x11, 0x90, 0x11, 0, 0, 0, 0, 1, 42} }, speecherr.CodeProtocol},
 		{"remote failure", func() []byte {
@@ -282,7 +282,7 @@ func TestContextCancellationAndExplicitClose(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("parent cancellation lost: %v", err)
 		}
-	case <-time.After(4*time.Second):
+	case <-time.After(4 * time.Second):
 		t.Fatal("Recv did not unblock on parent cancellation")
 	}
 	if err := stream.Close(); err != nil {

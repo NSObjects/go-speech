@@ -5,8 +5,8 @@ package volcengine
 
 import (
 	"context"
-	"encoding/json"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	DefaultEndpoint   = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
-	ResourceSeedASR2  = "volc.seedasr.sauc.duration"
+	DefaultEndpoint            = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
+	ResourceSeedASR2           = "volc.seedasr.sauc.duration"
 	ResourceSeedASR2Concurrent = "volc.seedasr.sauc.concurrent"
-	defaultStartTimeout = 15 * time.Second
+	defaultStartTimeout        = 15 * time.Second
 )
 
 var _ asr.StreamRecognizer = (*Client)(nil)
@@ -35,12 +35,12 @@ var _ asr.StreamRecognizer = (*Client)(nil)
 // ResourceID selects the enabled ASR service and billing mode.
 // Each OpenStream creates its own WebSocket; no global mutable state.
 type Config struct {
-	APIKey       string
-	ResourceID   string
-	Endpoint     string
-	UID          string
-	StartTimeout time.Duration
-	Dialer       *websocket.Dialer
+	APIKey          string
+	ResourceID      string
+	Endpoint        string
+	UID             string
+	StartTimeout    time.Duration
+	Dialer          *websocket.Dialer
 	EnableNonStream bool // Optional second-pass recognition for stable endings.
 }
 
@@ -131,7 +131,7 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 		}
 		req["request"].(map[string]any)["corpus"] = map[string]any{"context": string(contextBytes)}
 	}
-	payload, err := jsonMarshal(req)
+	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "volcengine", Operation: "encode", Err: err}
 	}

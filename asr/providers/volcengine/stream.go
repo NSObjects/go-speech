@@ -26,15 +26,15 @@ type Stream struct {
 	done   chan struct{}
 	once   sync.Once
 
-	writeMu   sync.Mutex
-	readMu    sync.Mutex
+	writeMu    sync.Mutex
+	readMu     sync.Mutex
 	sendClosed bool
 	sentAudio  bool
 
-	finished    bool // readMu
-	terminalErr error // readMu
-	queue       []asr.Event // readMu
-	lastText    string // readMu
+	finished    bool                // readMu
+	terminalErr error               // readMu
+	queue       []asr.Event         // readMu
+	lastText    string              // readMu
 	finalSeen   map[string]struct{} // readMu
 }
 
