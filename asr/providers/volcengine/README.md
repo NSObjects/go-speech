@@ -150,7 +150,10 @@ key and resources are correct, share the log ID with Volcengine support.
 - [Official streaming ASR API](https://docs.volcengine.com/docs/doubao-voice/bidirectional-streaming-automatic-speech-recognition-websocket?lang=zh)
 - [New console guidance](https://docs.volcengine.com/docs/doubao-voice/console-guidance?lang=zh)
 
-The paid live GitHub Actions integration has successfully recognized actual
-synthesized speech on Seed-ASR 2.0. The CI now tests both `ResultFull` and
-`ResultSingle`. Local mock-WebSocket tests additionally validate multi-utterance
-streaming behavior and terminal error semantics.
+The paid live GitHub Actions integration exercises real synthesized audio on
+Seed-ASR 2.0, including two different spoken utterances separated by two seconds
+of silence. Both `ResultFull` and `ResultSingle` must return ordered finalized
+text for each utterance without repeating the earlier transcript. Local
+mock-WebSocket tests validate streaming and terminal error semantics. This
+fixture checks multi-utterance correctness, not production WER, noisy speech,
+accent coverage, or interruption latency.

@@ -16,9 +16,10 @@ import (
 )
 
 // TestVolcengineLiveASR uses a real billable Volcengine service endpoint.
-// Synthetic speech is streamed at approximately realtime speed. The test is
-// skipped by ordinary go test; automatic online CI runs it when credentials
-// are configured in the repository's Actions secrets.
+// Two different synthetic utterances separated by silence are streamed at
+// approximately real-time speed. The test verifies both distinct sentences
+// survive with no repeated full-mode transcription. It is omitted from ordinary
+// go test; automatic paid CI uses repository Actions credentials.
 func TestVolcengineLiveASR(t *testing.T) {
 	apiKey := os.Getenv("VOLCENGINE_API_KEY")
 	fixture := os.Getenv("VOLCENGINE_TEST_PCM_FILE")
@@ -57,24 +58,29 @@ func TestVolcengineLiveASR(t *testing.T) {
 			}
 			defer stream.Close()
 			type result struct {
-				text string
-				err  error
+				finals   []string
+				partials int
+				err      error
 			}
 			done := make(chan result, 1)
 			go func() {
-				var final []string
+				var finals []string
+				partials := 0
 				for {
 					event, err := stream.Recv(ctx)
 					if errors.Is(err, io.EOF) {
-						done <- result{text: strings.Join(final, " ")}
+						done <- result{finals: finals, partials: partials}
 						return
 					}
 					if err != nil {
 						done <- result{err: err}
 						return
 					}
-					if event.Type == asr.EventFinal {
-						final = append(final, event.Text)
+					switch event.Type {
+					case asr.EventFinal:
+						finals = append(finals, event.Text)
+					case asr.EventPartial:
+						partials++
 					}
 				}
 			}()
@@ -101,10 +107,18 @@ func TestVolcengineLiveASR(t *testing.T) {
 				if received.err != nil {
 					t.Fatalf("Volcengine ASR: %v", received.err)
 				}
-				if strings.TrimSpace(received.text) == "" {
-					t.Fatal("Volcengine returned no confirmed final ASR text")
+				joined := strings.ToLower(strings.Join(received.finals, " "))
+				t.Logf("Volcengine ASR finals=%q, partial event count=%d", received.finals, received.partials)
+				if len(received.finals) < 2 {
+					t.Fatalf("expected two distinct confirmed utterances, received %d: %q", len(received.finals), received.finals)
 				}
-				t.Logf("Volcengine ASR recognized: %q", received.text)
+				appleIndex, carIndex := strings.Index(joined, "apple"), strings.Index(joined, "car")
+				if appleIndex < 0 || carIndex < 0 || appleIndex >= carIndex {
+					t.Fatalf("missing or reordered utterances; recognized %q", joined)
+				}
+				if strings.Count(joined, "apple") != 1 || strings.Count(joined, "car") != 1 {
+					t.Fatalf("detected repeated transcript text in confirmed segments: %q", joined)
+				}
 			case <-ctx.Done():
 				t.Fatalf("waiting for final Volcengine ASR result: %v", ctx.Err())
 			}
