@@ -30,7 +30,7 @@ jobs:
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       DASHSCOPE_WS_ENDPOINT: ${{ vars.DASHSCOPE_WS_ENDPOINT }}
       DASHSCOPE_ASR_MODEL: ${{ inputs.model }}
-      ASR_TEST_PCM_FILE: ${{ runner.temp }}/speech-test.pcm
+      ASR_TEST_PCM_FILE: /tmp/speech-test.pcm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
