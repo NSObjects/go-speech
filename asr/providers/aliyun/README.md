@@ -10,6 +10,12 @@ A single `aliyun.Client` supports these DashScope WebSocket task models:
 | `paraformer-realtime-v2` | Lower-cost comparison | Flexible |
 | `paraformer-realtime-8k-v2` | 8 kHz telephony | **8 kHz only** |
 
+All five model IDs accept PCM, PCM WAV, MP3, Ogg Opus, Ogg Speex, AAC and AMR-NB;
+`aliyun.SupportedAudio(model)` exposes the model-specific allowed format,
+sample rate and mono-channel constraints. Ogg encapsulation is required for
+Opus/Speex. See [audio format guide](../../../docs/AUDIO.md) for decoding and
+re-sampling limitations.
+
 The adapter uses a separate WebSocket connection per task. Connection pooling and
 cross-task reuse are **not implemented yet**. Input chunks must already be encoded
 to match `asr.Config.Format`; the adapter does not resample or transcode.

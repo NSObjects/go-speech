@@ -184,6 +184,8 @@ func mapAudioFormat(f audio.Format) (string, error) {
 		return "mp3", nil
 	case audio.EncodingOpus:
 		return "opus", nil // Ogg encapsulation required.
+	case audio.EncodingSpeex:
+		return "speex", nil // Ogg encapsulation required.
 	case audio.EncodingAAC:
 		return "aac", nil
 	case audio.EncodingAMR:

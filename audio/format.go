@@ -8,21 +8,25 @@ import (
 
 // Encoding identifies the representation of audio bytes.
 // Providers may support only a subset of the declared encodings.
+// Opus and Speex constants represent Ogg-encapsulated data; they never mean
+// raw codec packets. PCM16LE is headerless little-endian signed 16-bit PCM.
 type Encoding string
 
 const (
 	EncodingPCM16LE Encoding = "pcm_s16le"
 	EncodingWAV     Encoding = "wav"
 	EncodingMP3     Encoding = "mp3"
-	EncodingOpus    Encoding = "opus"
+	EncodingOpus    Encoding = "opus" // Ogg Opus; raw Opus packets are NOT interchangeable.
+	EncodingSpeex   Encoding = "speex" // Ogg Speex; raw Speex is not supported.
 	EncodingAAC     Encoding = "aac"
-	EncodingAMR     Encoding = "amr"
+	EncodingAMR     Encoding = "amr" // AMR-NB only; AMR-WB requires a different codec.
 )
 
 // ErrInvalidFormat indicates an invalid audio format description.
 var ErrInvalidFormat = errors.New("audio: invalid format")
 
-// Format describes audio bytes. SampleRate is in Hz; Channels is the channel count.
+// Format describes actual audio bytes. SampleRate is in Hz; Channels is the
+// channel count. It is NOT a request to resample: metadata must match the data.
 // A valid Format does not imply that a given provider supports it.
 type Format struct {
 	Encoding   Encoding

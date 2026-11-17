@@ -64,3 +64,11 @@ go vet ./...
 ## License
 
 Apache-2.0.
+
+## Audio formats
+
+The [`audio`](audio/) package now provides format detection, PCM16 WAV reading/writing,
+mono/stereo conversion, a stateful PCM16 streaming resampler, and model capability
+validation. Compressed audio is **passed through**, not decoded/transcoded.
+See [docs/AUDIO.md](docs/AUDIO.md) for supported codecs, Ogg requirements,
+chunk handling, and ASR integration examples.
