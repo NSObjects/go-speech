@@ -181,7 +181,7 @@ func TestStreamDecoderEmitsBeforeEndOfInput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 	stream, err := OpenStreamDecoder(ctx, StreamConfig{
-		Input: audio.Format{Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1},
+		Input:  audio.Format{Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1},
 		Output: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
 		Binary: binaryName,
 	})
