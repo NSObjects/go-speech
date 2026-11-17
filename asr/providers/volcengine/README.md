@@ -167,3 +167,14 @@ mock tests stress four independent sessions on the same Client and a
 per-receive timeout that must close only its own stream and keep its original
 context error on later reads. These tests do not establish accuracy for
 Mandarin, children, noise, or production-scale concurrency.
+
+## Mandarin integration checks
+
+The automatic billable Volcengine workflow additionally creates two Mandarin
+PCM fixtures using the offline `espeak-ng -v zh` voice: a short "你好" greeting
+and the sentence "今天天气很好". These are recognized in real time through
+Seed-ASR 2.0 using its default language handling: `asr.Config.Language` must
+remain unset on this endpoint because language selection is not supported.
+The real cloud assertions require confirmed Chinese transcript content, not
+just a successful handshake. These machine-generated samples do **not** validate
+recorded children, accents, overlapping voices, or background noise.
