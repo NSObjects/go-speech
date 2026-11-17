@@ -75,33 +75,11 @@ jobs:
 
       - name: Ogg Opus passthrough and raw Opus to Ogg remux (no transcoding)
         if: matrix.model == 'fun-asr-realtime'
-        run: go test -tags=integration -run '^TestAliyunLiveOggPassthroughAndRemux
-
-      - name: Install native libopus for raw-device-packet integration
-        if: matrix.model == 'fun-asr-realtime'
-        run: sudo apt-get install -y pkg-config libopus-dev
-
-      - name: Raw Opus packet decode to live ASR (Fun-ASR smoke test)
-        if: matrix.model == 'fun-asr-realtime'
-        env:
-          CGO_ENABLED: "1"
-        run: go test -tags="integration libopus" -run '^TestAliyunLiveRawOpusPipeline$' -count=1 -v -timeout 3m ./asr/providers/aliyun
- -count=1 -v -timeout 4m ./asr/providers/aliyun
+        run: go test -tags=integration -run '^TestAliyunLiveOggPassthroughAndRemux$' -count=1 -v -timeout 4m ./asr/providers/aliyun
 
       - name: Ogg Opus decode to live ASR (Fun-ASR smoke test)
         if: matrix.model == 'fun-asr-realtime'
-        run: go test -tags=integration -run '^TestAliyunLiveOpusPipeline
-
-      - name: Install native libopus for raw-device-packet integration
-        if: matrix.model == 'fun-asr-realtime'
-        run: sudo apt-get install -y pkg-config libopus-dev
-
-      - name: Raw Opus packet decode to live ASR (Fun-ASR smoke test)
-        if: matrix.model == 'fun-asr-realtime'
-        env:
-          CGO_ENABLED: "1"
-        run: go test -tags="integration libopus" -run '^TestAliyunLiveRawOpusPipeline$' -count=1 -v -timeout 3m ./asr/providers/aliyun
- -count=1 -v -timeout 3m ./asr/providers/aliyun
+        run: go test -tags=integration -run '^TestAliyunLiveOpusPipeline$' -count=1 -v -timeout 3m ./asr/providers/aliyun
 
       - name: Install native libopus for raw-device-packet integration
         if: matrix.model == 'fun-asr-realtime'
