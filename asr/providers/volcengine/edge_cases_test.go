@@ -29,7 +29,7 @@ func TestNoSpeechResponseDoesNotCommitProvisionalText(t *testing.T) {
 				serverResult(t, ws, false, map[string]any{
 					"code": 1000,
 					"result": map[string]any{
-						"text": "ghost",
+						"text":       "ghost",
 						"utterances": []any{map[string]any{"text": "ghost", "definite": false}},
 					},
 				})
