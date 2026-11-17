@@ -72,3 +72,17 @@ mono/stereo conversion, a stateful PCM16 streaming resampler, and model capabili
 validation. Compressed audio is **passed through**, not decoded/transcoded.
 See [docs/AUDIO.md](docs/AUDIO.md) for supported codecs, Ogg requirements,
 chunk handling, and ASR integration examples.
+
+## Optional compressed audio transcoding
+
+Complete compressed audio buffers can be converted to PCM16LE or WAV by the
+opt-in [`audio/ffmpeg`](audio/ffmpeg/) adapter, which requires an installed
+FFmpeg executable. Core `audio` remains Go-only; microphone packet streaming
+and codec session reuse are not provided by this batch adapter.
+
+## Real Aliyun ASR integration
+
+The offline CI needs no cloud credentials. A separate
+[manually triggered, paid Aliyun ASR integration workflow](.github/workflows/aliyun-asr-integration.yml)
+uses your `DASHSCOPE_API_KEY` secret and `DASHSCOPE_WS_ENDPOINT` variable to
+exercise real ASR with synthetic spoken audio. See [docs/INTEGRATION.md](docs/INTEGRATION.md).

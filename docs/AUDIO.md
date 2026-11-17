@@ -90,14 +90,46 @@ The streaming converter is **not safe for concurrent Process/Flush calls**.
 `Flush` is necessary: it checks incomplete PCM frames and emits buffered
 filter tail. The converter intentionally has a short filter lookahead.
 
+## Optional FFmpeg backend for complete compressed audio
+
+The independent package `audio/ffmpeg` adds opt-in decoding and resampling of
+**complete buffers** (MP3, Ogg Opus, Ogg Speex, AAC, AMR-NB, PCM16, WAV) to
+PCM16LE or PCM16 WAV using an installed `ffmpeg` binary. It does not add CGo,
+native codec libraries, or an FFmpeg requirement to the core `audio` package.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+result, err := audio.Convert(ctx, compressed, audio.Format{
+    Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1,
+}, ffmpeg.Converter{MaxInputBytes: 8 << 20, MaxOutputBytes: 16 << 20})
+```
+
+Import `context`, `github.com/NSObjects/go-speech/audio`, and
+`github.com/NSObjects/go-speech/audio/ffmpeg` as appropriate.
+
+`audio.Convert` is a format-aware router: it copies matching complete input,
+uses built-in PCM/WAV conversion where possible, and delegates compressed
+transcoding to the explicit backend. It rejects mismatched output metadata.
+The FFmpeg adapter uses stdin/stdout pipes, caps input and decoded output,
+observes context cancellation, and limits stderr. Callers should separately
+apply timeouts, concurrency limits and duration limits for untrusted input.
+
+**Realtime compressed audio:** this adapter is not a live streaming codec.
+Do not create a fresh FFmpeg subprocess for every microphone packet. A
+long-running decoder with preserved codec/container state is separate future
+work. If the ASR model already accepts the compressed encoding, prefer
+passthrough without decoding.
+
 ## Compressed audio and performance
 
 - If the destination accepts the original encoding and sample rate, **pass
   the bytes through**; do not decode/re-encode without a reason.
-- `go-speech/audio` does **not** currently decode or transcode MP3, Ogg Opus,
-  Ogg Speex, AAC or AMR. `ConvertPCM16` returns
-  `audio.ErrUnsupportedConversion` for these formats.
-- Codec backends may be added separately; a per-chunk FFmpeg subprocess would
+- Core `go-speech/audio` does **not** decode MP3, Ogg Opus, Ogg Speex, AAC or
+  AMR. `ConvertPCM16` returns `audio.ErrUnsupportedConversion`; the opt-in
+  `audio/ffmpeg` backend adds complete-buffer decoding only.
+- The FFmpeg executable is an external runtime dependency of the optional
+  adapter, not a Go module dependency. A per-chunk FFmpeg subprocess would
   be inappropriate for low-latency streaming.
 - Audio conversion is **explicit**. ASR `Stream.Send` transmits exactly the
   bytes supplied by the caller.
