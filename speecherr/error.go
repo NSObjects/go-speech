@@ -17,16 +17,18 @@ const (
 	CodeTimeout         Code = "timeout"
 	CodeUnsupported     Code = "unsupported"
 	CodeInternal        Code = "internal"
+	CodeProtocol        Code = "protocol" // Malformed or inconsistent provider protocol messages.
 )
 
 // Error wraps a provider failure while preserving its original cause.
 // Retryable is advisory; callers must still consider idempotency and context.
 type Error struct {
-	Code      Code
-	Provider  string
-	Operation string
-	Retryable bool
-	Err       error
+	Code       Code
+	Provider   string
+	Operation  string
+	RemoteCode string // Original provider error code, if supplied.
+	Retryable  bool
+	Err        error
 }
 
 func (e *Error) Error() string {

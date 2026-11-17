@@ -108,3 +108,13 @@ the new pure-Go `opus.OggMuxer` produces a valid streaming Ogg Opus container:
 FFmpeg/CGo, and the original compressed Opus payload is unchanged.
 See [docs/AUDIO.md](docs/AUDIO.md) and the automatic paid integration tests
 for both Ogg passthrough and raw-packet repackaging.
+
+## ASR stream failure handling
+
+Streaming adapters now expose shared `asr.ErrStreamClosed` and
+`asr.ErrInputClosed` errors, preserve cancellation, and keep the original
+terminal `Recv` error visible on repeated calls. Malformed remote protocol
+events use `speecherr.CodeProtocol`; the original remote service code is
+available in `speecherr.Error.RemoteCode`. Do not retry audio on the same
+failed session: open a new session and decide at the application layer if
+replaying audio is safe. See [docs/DESIGN.md](docs/DESIGN.md).
