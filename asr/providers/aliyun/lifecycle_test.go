@@ -41,7 +41,7 @@ func lifecycleEndpoint(t *testing.T, afterStart func(*websocket.Conn, string)) s
 			return
 		}
 		if err := c.WriteJSON(map[string]any{
-			"header": map[string]any{"event": "task-started", "task_id": task.Header.TaskID},
+			"header":  map[string]any{"event": "task-started", "task_id": task.Header.TaskID},
 			"payload": map[string]any{"output": map[string]any{}},
 		}); err != nil {
 			t.Errorf("send task-started: %v", err)

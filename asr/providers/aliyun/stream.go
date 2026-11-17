@@ -24,13 +24,13 @@ var (
 // Stream is a task-specific WebSocket session. It permits one concurrent sender
 // and one concurrent receiver. A canceled Send/Recv context closes the session.
 type Stream struct {
-	conn       *websocket.Conn
-	parent     context.Context
-	taskID     string
-	done       chan struct{}
-	once       sync.Once
-	writeMu    sync.Mutex
-	readMu     sync.Mutex
+	conn        *websocket.Conn
+	parent      context.Context
+	taskID      string
+	done        chan struct{}
+	once        sync.Once
+	writeMu     sync.Mutex
+	readMu      sync.Mutex
 	sendClosed  bool  // writeMu
 	finished    bool  // readMu
 	terminalErr error // readMu: first terminal failure remains observable
@@ -208,6 +208,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 	}
 }
+
 // fail remembers the first terminal receive failure. Caller holds readMu.
 // A subsequent Recv reports the original remote/protocol/transport error,
 // instead of replacing it with an unhelpful "stream closed" error.
@@ -313,8 +314,8 @@ func taskFailure(h responseHeader) error {
 	return &speecherr.Error{
 		Code: code, Provider: "aliyun", Operation: "task",
 		RemoteCode: h.ErrorCode,
-		Err: fmt.Errorf("remote error %q: %s", h.ErrorCode, h.ErrorMessage),
-		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeTimeout || code == speecherr.CodeRateLimited,
+		Err:        fmt.Errorf("remote error %q: %s", h.ErrorCode, h.ErrorMessage),
+		Retryable:  code == speecherr.CodeUnavailable || code == speecherr.CodeTimeout || code == speecherr.CodeRateLimited,
 	}
 }
 func (s *Stream) awaitStarted(ctx context.Context) error {

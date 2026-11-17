@@ -13,15 +13,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Normalize formatting and export changed sources
-        run: |
-          gofmt -w $(git ls-files '*.go')
-          for file in asr/errors.go asr/errors_test.go asr/asr.go asr/providers/aliyun/stream.go asr/providers/aliyun/lifecycle_test.go speecherr/error.go speecherr/error_test.go; do
-            echo "FMTBEGIN:$file"
-            base64 -w0 "$file" | fold -w 256
-            echo
-            echo "FMTEND:$file"
-          done
+      - name: Check formatting
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
       - name: Vet
         run: go vet ./...
       - name: Ensure FFmpeg is available for audio integration tests
