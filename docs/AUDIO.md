@@ -188,3 +188,88 @@ for bare Opus/AMR frames or strict latency targets.
 ```sh
 go test -race ./audio ./asr/providers/aliyun
 ```
+
+## Native raw Opus / AMR-NB packet decoders (optional CGo)
+
+Device transports may send **raw Opus codec packets** or **AMR-NB storage
+frames** rather than Ogg/AMR file streams. Do **not** label a raw Opus
+packet as `audio.EncodingOpus`: that encoding represents **Ogg Opus** in
+the existing file/stream ASR interface.
+
+New optional codec modules:
+
+- `audio/codec/opus`: one stateful decoder per raw-Opus stream; call
+  `Decode(packet)` for each complete packet. Sample rates 8/12/16/24/48kHz,
+  mono/stereo, returns PCM16LE. **Requires libopus when enabled**.
+- `audio/codec/amrnb`: one stateful decoder per AMR-NB frame stream, each
+  20ms frame decoded to **320 bytes of 8kHz mono PCM16LE**. Expects one
+  3GPP file-storage frame: **one-byte FT/Q header + speech bytes**, not
+  an RTP payload or a complete `#!AMR` file. **Requires OpenCORE-AMR-NB
+  when enabled**. A pure-Go `ValidateFrame` rejects reserved FT or bad
+  frame lengths.
+
+Enable each optional native module at build time:
+
+```sh
+# Ubuntu/Debian prerequisites:
+sudo apt-get install -y pkg-config libopus-dev libopencore-amrnb-dev
+
+CGO_ENABLED=1 go test -tags="libopus opencoreamr" ./...
+# Build applications with those tags to enable native packet decoders.
+```
+
+On macOS, install `opus` and `opencore-amr` via Homebrew if available
+for the target platform, and ensure `pkg-config` can find the package.
+Distributions must separately package the system codec libraries.
+
+Example: raw Opus packet → PCM16LE using libopus:
+
+```go
+decoder, err := opus.NewDecoder(16000, 1)
+if err != nil { return err }
+defer decoder.Close()
+
+// packet is one complete raw Opus payload, not an Ogg page.
+pcm, err := decoder.Decode(packet)
+if err != nil { return err }
+_ = pcm  // ready for the selected model's PCM input
+```
+
+If the application is built without optional tags, calling `NewDecoder`
+returns `opus.ErrUnavailable` or `amrnb.ErrUnavailable`. The SDK
+never silently enables a platform-specific dependency.
+
+### Pure-Go AMR-NB file framing for the FFmpeg backend
+
+For devices that send successive **AMR-NB storage frames** with one-byte
+FT/Q headers but no initial file magic, `amrnb.Framer` emits `#!AMR\n`
+only once, followed by validated frames, into the existing long-lived
+`ffmpeg.StreamDecoder`. It is useful when a native AMR decoder cannot
+be installed, while keeping the subprocess state across packets.
+
+```go
+stream, err := ffmpeg.OpenStreamDecoder(ctx, ffmpeg.StreamConfig{
+    Input: audio.Format{Encoding: audio.EncodingAMR, SampleRate: 8000, Channels: 1},
+    Output: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+})
+if err != nil { return err }
+defer stream.Close()
+
+framer, err := amrnb.NewFramer(stream)
+if err != nil { return err }
+// Run a concurrent stream.Read(ctx, pcmBuf) loop to avoid pipe backpressure.
+for _, frame := range amrFrames {
+    if err := framer.WriteFrame(ctx, frame); err != nil { return err }
+}
+return framer.CloseInput()
+```
+
+**RTP is a distinct framing layer.** RFC 4867 packets may contain CMR,
+ToC lists, multiple speech frames, and bandwidth-efficient bit packing.
+Do not pass complete RTP payloads directly to these per-frame decoders.
+Parse and depacketize the transport first. Likewise, AMR-WB is not AMR-NB.
+
+These decoders have their own per-session codec state. For raw Opus, libopus
+supports at most 120ms audio per encoded packet. Both native decode methods
+return allocated, caller-owned PCM bytes; reuse a decoder across consecutive
+packets of one call and close it at end of session.

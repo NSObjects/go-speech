@@ -88,3 +88,15 @@ The offline CI needs no cloud credentials. A separate
 [manually triggered, paid Aliyun ASR integration workflow](.github/workflows/aliyun-asr-integration.yml)
 uses your `DASHSCOPE_API_KEY` secret and `DASHSCOPE_WS_ENDPOINT` variable to
 exercise real ASR with synthetic spoken audio. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
+
+## Raw device packet decoding (optional)
+
+`audio/codec/opus` and `audio/codec/amrnb` now provide optional native
+packet-level decoders. Raw Opus decoding is backed by libopus; AMR-NB frame
+decoding uses OpenCORE-AMR-NB. Both are compiled in only under explicit
+`libopus` / `opencoreamr` build tags with CGo. The default build remains
+free of system codec dependencies.
+
+The `amrnb.Framer` pure-Go utility also packages storage frames for the
+existing persistent FFmpeg decoder. See [docs/AUDIO.md](docs/AUDIO.md)
+for raw-packet vs Ogg vs RTP distinctions and setup.
