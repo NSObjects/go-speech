@@ -74,7 +74,7 @@ func TestStreamDecoderCompressedFragments(t *testing.T) {
 			defer cancel()
 			target := audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1}
 			session, err := OpenStreamDecoder(ctx, StreamConfig{
-				Input: audio.Format{Encoding: tc.enc, SampleRate: tc.rate, Channels: 1},
+				Input:  audio.Format{Encoding: tc.enc, SampleRate: tc.rate, Channels: 1},
 				Output: target,
 				Binary: binaryName,
 			})
@@ -168,7 +168,7 @@ func TestStreamDecoderEarlyCloseAndCancellation(t *testing.T) {
 	binaryName := checkFFmpeg(t)
 	format := audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1}
 	if _, err := OpenStreamDecoder(context.Background(), StreamConfig{
-		Input: format,
+		Input:  format,
 		Output: audio.Format{Encoding: audio.EncodingWAV, SampleRate: 16000, Channels: 1},
 	}); !errors.Is(err, audio.ErrUnsupportedConversion) {
 		t.Fatalf("expected PCM-only stream output: %v", err)
@@ -211,7 +211,7 @@ func TestStreamDecoderMalformedInputReportsExit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s, err := OpenStreamDecoder(ctx, StreamConfig{
-		Input: audio.Format{Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1},
+		Input:  audio.Format{Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1},
 		Output: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
 		Binary: binaryName,
 	})

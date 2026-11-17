@@ -38,18 +38,18 @@ type StreamConfig struct {
 // with themselves. Close may be called from any goroutine, including during
 // an in-flight Write/Read, and is idempotent.
 type StreamDecoder struct {
-	command *exec.Cmd
-	stdin   io.WriteCloser
-	stdout  io.ReadCloser
-	cancel  context.CancelFunc
-	parent  context.Context
+	command    *exec.Cmd
+	stdin      io.WriteCloser
+	stdout     io.ReadCloser
+	cancel     context.CancelFunc
+	parent     context.Context
 	stopParent func() bool
-	stderr  limitedStderr
-	format  audio.Format
+	stderr     limitedStderr
+	format     audio.Format
 
-	writeMu sync.Mutex
-	readMu  sync.Mutex
-	inputClosed bool // guarded by writeMu
+	writeMu     sync.Mutex
+	readMu      sync.Mutex
+	inputClosed bool  // guarded by writeMu
 	terminalErr error // guarded by readMu
 
 	closeOnce sync.Once
