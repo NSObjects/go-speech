@@ -223,7 +223,7 @@ func TestProtocolErrorsAndTerminalReason(t *testing.T) {
 			binary.BigEndian.PutUint32(frame[8:12], uint32(len(payload)))
 			copy(frame[12:], payload)
 			return frame
-		}, speecherr.CodeUnavailable},
+		}, speecherr.CodeUnauthorized},
 		{"invalid frame", func() []byte { return []byte("not a frame") }, speecherr.CodeProtocol},
 	}
 	for _, tc := range cases {
@@ -324,5 +324,33 @@ func TestConfigAndAudioValidation(t *testing.T) {
 		if err != nil || got != want {
 			t.Fatalf("encoding %s maps to %q: %v", enc, got, err)
 		}
+	}
+}
+
+func TestSequencedLastResponseAndLimits(t *testing.T) {
+	jsonBody := []byte(`{"code":1000,"result":{"text":"finished"}}`)
+	frame, err := encodeFrame(messageFullResponse, 3, 1, jsonBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Volcengine response with flags=3 has a signed 4-byte sequence
+	// between the header and payload length.
+	extended := make([]byte, 4+4+len(frame)-4)
+	copy(extended, frame[:4])
+	binary.BigEndian.PutUint32(extended[4:8], ^uint32(6))
+	copy(extended[8:], frame[4:])
+	msg, err := parseFrame(extended)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.seq != -7 || msg.flags != 3 {
+		t.Fatalf("invalid final sequence %+v", msg)
+	}
+	results, last, err := msg.result()
+	if err != nil || !last || len(results) != 1 || results[0].Text != "finished" {
+		t.Fatalf("unexpected parsed result: %+v last=%v err=%v", results, last, err)
+	}
+	if _, err := encodeFrame(messageAudioRequest, 0, 0, make([]byte, maxWirePayload+1)); err == nil {
+		t.Fatal("oversized input must be rejected before compression")
 	}
 }
