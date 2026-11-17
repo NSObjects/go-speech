@@ -34,11 +34,16 @@ mono PCM16LE (or 8kHz for Paraformer 8k), and the SDK sends real-time audio
 chunks over authenticated WebSocket. The test waits for task completion,
 requires a nonempty final transcript, and validates session lifecycle.
 
-Fun-ASR additionally tests both compressed-audio paths:
-**Ogg Opus → persistent FFmpeg decoder → PCM16LE → ASR Stream → Final text**
-and **Ogg-generated raw Opus packets → native libopus PacketDecoder →
-PCM16LE → ASR Stream → Final text**. The latter uses a test-only Ogg
-packet extractor to verify the packet-level decoder with realistic speech.
+Fun-ASR additionally tests **four** Opus paths:
+
+- **Ogg Opus → ASR** (unchanged, zero-transcode passthrough)
+- **Raw Opus packets → pure-Go OggMuxer → ASR** (zero-transcode repackaging)
+- **Ogg Opus → persistent FFmpeg decoder → PCM16LE → ASR**
+- **Raw Opus packets → native libopus PacketDecoder → PCM16LE → ASR**
+
+The direct paths are the recommended routes if the model accepts Ogg Opus.
+The PCM paths remain optional compatibility fallbacks. All tests use the
+same synthetic spoken-English fixture.
 
 The fixtures contain synthetic speech, *not* real children's voices. They
 verify connectivity and correctness, not accuracy, voice-device acoustic
