@@ -26,6 +26,11 @@ const (
 	ResourceSeedASR2           = "volc.seedasr.sauc.duration"
 	ResourceSeedASR2Concurrent = "volc.seedasr.sauc.concurrent"
 	defaultStartTimeout        = 15 * time.Second
+
+	// ResultFull returns cumulative transcript snapshots from the provider.
+	ResultFull = "full"
+	// ResultSingle returns only the current utterance in each result.
+	ResultSingle = "single"
 )
 
 var _ asr.StreamRecognizer = (*Client)(nil)
@@ -41,7 +46,8 @@ type Config struct {
 	UID             string
 	StartTimeout    time.Duration
 	Dialer          *websocket.Dialer
-	EnableNonStream bool // Optional second-pass recognition for stable endings.
+	EnableNonStream bool   // Optional second-pass recognition for stable endings.
+	ResultType      string // "full" (default) or "single"; controls provider response mode.
 }
 
 type Client struct{ cfg Config }
@@ -49,6 +55,12 @@ type Client struct{ cfg Config }
 func New(cfg Config) (*Client, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, argumentError("APIKey is required")
+	}
+	if cfg.ResultType == "" {
+		cfg.ResultType = ResultFull
+	}
+	if cfg.ResultType != ResultFull && cfg.ResultType != ResultSingle {
+		return nil, argumentError("ResultType must be full or single")
 	}
 	if strings.TrimSpace(cfg.ResourceID) == "" {
 		cfg.ResourceID = ResourceSeedASR2
@@ -113,6 +125,7 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 		"request": map[string]any{
 			"model_name": "bigmodel", "enable_itn": true, "enable_punc": true,
 			"show_utterances": true, "enable_nonstream": c.cfg.EnableNonStream,
+			"result_type": c.cfg.ResultType,
 		},
 	}
 	if len(request.Hints) > 0 {
@@ -167,7 +180,7 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 		return nil, connectError(err, resp)
 	}
 	conn.SetReadLimit(maxWirePayload + 128)
-	stream := newStream(conn, ctx)
+	stream := newStream(conn, ctx, c.cfg.ResultType)
 	if err := stream.writeFrame(ctx, frame); err != nil {
 		result := stream.transportError(ctx, "start", err)
 		_ = stream.Close()

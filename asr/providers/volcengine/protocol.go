@@ -165,8 +165,22 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 		return nil, false, protocolWrap(err)
 	}
 	if len(p.PayloadMsg) != 0 && len(p.Result) == 0 {
-		if err := json.Unmarshal(p.PayloadMsg, &p); err != nil {
+		// The provider may wrap the actual result inside payload_msg.
+		// Do not overwrite the outer status or final-packet marker when
+		// unwrapping it: these envelope fields govern the stream lifecycle.
+		var nested serverPayload
+		if err := json.Unmarshal(p.PayloadMsg, &nested); err != nil {
 			return nil, false, protocolWrap(err)
+		}
+		p.Result = nested.Result
+		if nested.IsLastPackage {
+			p.IsLastPackage = true
+		}
+		if nested.Code != 0 {
+			p.Code = nested.Code
+		}
+		if nested.Message != "" {
+			p.Message = nested.Message
 		}
 	}
 	if p.Code != 0 && p.Code != 1000 && p.Code != 20000000 {

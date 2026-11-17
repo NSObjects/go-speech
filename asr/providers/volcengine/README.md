@@ -50,8 +50,22 @@ passing them to the provider; the provider never transforms input implicitly.
 
 ## Streaming semantics
 
-`EventPartial` is a changeable hypothesis. `EventFinal` is a confirmed
-utterance, *not necessarily a conversation turn*. `CloseSend` ends the audio
+For real-time dialogue, choose the provider's `ResultType` in `Config`:
+
+- `ResultFull` (default): cumulative transcript snapshots, with repeated
+  confirmed utterances deduplicated by the adapter.
+- `ResultSingle`: current-utterance updates only. This is generally easier
+  to consume for incremental user speech display and AI toy conversations.
+
+With `show_utterances` enabled, `EventPartial` is the latest hypothesis for
+the **current unconfirmed utterance**, not the cumulative full text.
+`EventFinal` is a confirmed sentence segment, not necessarily a conversation
+turn. Duplicate confirmed sentences from repeated full responses are not
+emitted twice. When the last packet has no utterance metadata, the adapter
+also preserves any trailing unconfirmed text as a final segment.
+
+The SDK does not decide how to stop VAD or when to call LLM/TTS; that remains
+the application's responsibility. `CloseSend` ends the audio
 input with the protocol's final binary message and keeps result reception
 open. `Recv` finishes only after the provider's last response, preserving
 stable `io.EOF` or the first terminal error.
@@ -126,5 +140,7 @@ key and resources are correct, share the log ID with Volcengine support.
 - [Official streaming ASR API](https://docs.volcengine.com/docs/doubao-voice/bidirectional-streaming-automatic-speech-recognition-websocket?lang=zh)
 - [New console guidance](https://docs.volcengine.com/docs/doubao-voice/console-guidance?lang=zh)
 
-**Real cloud verification is pending until the live integration job succeeds.**
-Local mock-WebSocket tests do not verify the upstream account's entitlement.
+The paid live GitHub Actions integration has successfully recognized actual
+synthesized speech on Seed-ASR 2.0. The CI now tests both `ResultFull` and
+`ResultSingle`. Local mock-WebSocket tests additionally validate multi-utterance
+streaming behavior and terminal error semantics.
