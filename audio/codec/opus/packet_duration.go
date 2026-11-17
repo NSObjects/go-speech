@@ -24,7 +24,7 @@ func packetSamples48k(packet []byte) (uint32, error) {
 		perFrame = [...]uint32{120, 240, 480, 960}[config%4]
 	}
 	count := 1
-	remaining := len(packet)-1
+	remaining := len(packet) - 1
 	switch toc & 3 {
 	case 0:
 		if remaining > 1275 {
@@ -76,9 +76,9 @@ func packetSamples48k(packet []byte) (uint32, error) {
 		if padding > len(packet)-cursor {
 			return invalid("padding exceeds payload")
 		}
-		end := len(packet)-padding
+		end := len(packet) - padding
 		if packet[1]&0x80 == 0 {
-			size := end-cursor
+			size := end - cursor
 			if size%count != 0 || size/count > 1275 {
 				return invalid("invalid CBR frame lengths")
 			}
@@ -99,7 +99,7 @@ func packetSamples48k(packet []byte) (uint32, error) {
 			}
 		}
 	}
-	total := uint32(count)*perFrame
+	total := uint32(count) * perFrame
 	if total == 0 || total > 5760 {
 		return invalid("packet duration exceeds 120ms")
 	}
@@ -116,5 +116,5 @@ func frameLength(data []byte) (int, int, bool) {
 	if len(data) < 2 {
 		return 0, 0, false
 	}
-	return int(data[0])+4*int(data[1]), 2, true
+	return int(data[0]) + 4*int(data[1]), 2, true
 }

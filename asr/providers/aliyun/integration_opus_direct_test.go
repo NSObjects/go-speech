@@ -48,20 +48,20 @@ func TestAliyunLiveOggPassthroughAndRemux(t *testing.T) {
 		t.Fatal("truncated Ogg header")
 	}
 	segments := int(ogg[26])
-	headAt := 27+segments
+	headAt := 27 + segments
 	if len(ogg) < headAt+19 || !bytes.Equal(ogg[headAt:headAt+8], []byte("OpusHead")) {
 		t.Fatal("missing OpusHead in test fixture")
 	}
-	preSkip := binary.LittleEndian.Uint16(ogg[headAt+10:headAt+12])
-	sourceRate := int(binary.LittleEndian.Uint32(ogg[headAt+12:headAt+16]))
+	preSkip := binary.LittleEndian.Uint16(ogg[headAt+10 : headAt+12])
+	sourceRate := int(binary.LittleEndian.Uint32(ogg[headAt+12 : headAt+16]))
 	if sourceRate == 0 {
 		sourceRate = 48000
 	}
 	channels := int(ogg[headAt+9])
 	client, err := New(Config{
 		Endpoint: endpoint,
-		APIKey: apiKey,
-		Model: ModelFunASRRealtime,
+		APIKey:   apiKey,
+		Model:    ModelFunASRRealtime,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func TestAliyunLiveOggPassthroughAndRemux(t *testing.T) {
 		defer session.Close()
 		type result struct {
 			text string
-			err error
+			err  error
 		}
 		received := make(chan result, 1)
 		go func() {
@@ -125,7 +125,7 @@ func TestAliyunLiveOggPassthroughAndRemux(t *testing.T) {
 			// Deliberately split Ogg pages over binary WebSocket messages:
 			// service must receive bytes as one continuous Ogg logical stream.
 			for offset := 0; offset < len(ogg); {
-				end := offset+320
+				end := offset + 320
 				if end > len(ogg) {
 					end = len(ogg)
 				}

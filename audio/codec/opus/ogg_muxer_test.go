@@ -34,7 +34,7 @@ func parseTestOggPages(t *testing.T, data []byte) []oggPageInfo {
 		for _, v := range data[at+27 : at+27+segments] {
 			payloadLen += int(v)
 		}
-		end := at+27+segments+payloadLen
+		end := at + 27 + segments + payloadLen
 		if end > len(data) {
 			t.Fatalf("truncated payload at %d", at)
 		}
@@ -47,10 +47,10 @@ func parseTestOggPages(t *testing.T, data []byte) []oggPageInfo {
 			t.Fatalf("bad CRC at %d: got %08x want %08x", at, got, want)
 		}
 		pages = append(pages, oggPageInfo{
-			flags: data[at+5],
-			granule: binary.LittleEndian.Uint64(data[at+6:at+14]),
-			serial: binary.LittleEndian.Uint32(data[at+14:at+18]),
-			seq: binary.LittleEndian.Uint32(data[at+18:at+22]),
+			flags:   data[at+5],
+			granule: binary.LittleEndian.Uint64(data[at+6 : at+14]),
+			serial:  binary.LittleEndian.Uint32(data[at+14 : at+18]),
+			seq:     binary.LittleEndian.Uint32(data[at+18 : at+22]),
 			payload: append([]byte(nil), data[at+27+segments:end]...),
 		})
 		at = end
@@ -125,18 +125,18 @@ func TestPacketDurationAndFraming(t *testing.T) {
 		p    []byte
 		want uint32
 	}{
-		{[]byte{0x00}, 480}, // 10ms SILK
-		{[]byte{0x08}, 960}, // 20ms SILK
-		{[]byte{0x18}, 2880}, // 60ms SILK
-		{[]byte{0x60}, 480}, // hybrid 10ms
-		{[]byte{0x68}, 960}, // hybrid 20ms
-		{[]byte{0x80}, 120}, // CELT 2.5ms
-		{[]byte{0x88}, 240}, // CELT 5ms
-		{[]byte{0x90}, 480}, // CELT 10ms
-		{[]byte{0x98}, 960}, // CELT 20ms
-		{[]byte{0x99, 0xaa, 0xbb}, 1920}, // 2 frames CBR
-		{[]byte{0x9a, 0x01, 0xaa, 0xbb}, 1920}, // 2 frames VBR
-		{[]byte{0x9b, 0x03, 0xaa, 0xbb, 0xcc}, 2880}, // 3 CBR
+		{[]byte{0x00}, 480},                                      // 10ms SILK
+		{[]byte{0x08}, 960},                                      // 20ms SILK
+		{[]byte{0x18}, 2880},                                     // 60ms SILK
+		{[]byte{0x60}, 480},                                      // hybrid 10ms
+		{[]byte{0x68}, 960},                                      // hybrid 20ms
+		{[]byte{0x80}, 120},                                      // CELT 2.5ms
+		{[]byte{0x88}, 240},                                      // CELT 5ms
+		{[]byte{0x90}, 480},                                      // CELT 10ms
+		{[]byte{0x98}, 960},                                      // CELT 20ms
+		{[]byte{0x99, 0xaa, 0xbb}, 1920},                         // 2 frames CBR
+		{[]byte{0x9a, 0x01, 0xaa, 0xbb}, 1920},                   // 2 frames VBR
+		{[]byte{0x9b, 0x03, 0xaa, 0xbb, 0xcc}, 2880},             // 3 CBR
 		{[]byte{0x9b, 0x83, 0x01, 0xaa, 0x01, 0xbb, 0xcc}, 2880}, // 3 VBR
 	} {
 		got, err := packetSamples48k(tc.p)
@@ -146,11 +146,11 @@ func TestPacketDurationAndFraming(t *testing.T) {
 	}
 	for _, p := range [][]byte{
 		nil, {0x9a}, {0x9b, 0}, {0x9b, 0x40}, // bad counts and padding
-		{0x9b, 0x03, 0x00}, // bad CBR length (1 payload byte for 3 frames)
-		{0x9b, 0x43, 255}, // truncated long padding
+		{0x9b, 0x03, 0x00},  // bad CBR length (1 payload byte for 3 frames)
+		{0x9b, 0x43, 255},   // truncated long padding
 		{0x9b, 0x83, 10, 1}, // first VBR frame overflows payload
-		{0x9b, 0x3f}, // 63 frames exceed 120ms
-		{0x99, 0}, // CBR pair length not divisible by two
+		{0x9b, 0x3f},        // 63 frames exceed 120ms
+		{0x99, 0},           // CBR pair length not divisible by two
 	} {
 		if _, err := packetSamples48k(p); !errors.Is(err, ErrOggInvalidPacket) {
 			t.Errorf("invalid Opus packet %x accepted: %v", p, err)
@@ -242,7 +242,7 @@ func TestOggMuxerFFmpegRoundTrip(t *testing.T) {
 	for off := 0; off < len(original); {
 		count := int(original[off+26])
 		table := original[off+27 : off+27+count]
-		pos := off+27+count
+		pos := off + 27 + count
 		dataPos := pos
 		var packet []byte
 		for _, size := range table {
