@@ -17,103 +17,8 @@ jobs:
         run: test -z "$(gofmt -l $(git ls-files '*.go'))"
       - name: Vet
         run: go vet ./...
-      - name: Compile live integration tests (no credentials or network)
-        run: go test -tags=integration -run '^
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y ffmpeg
-          fi
-      - name: Test with race detector
-        run: go test -race ./...
-
-  native-codecs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Install native codec development libraries
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y pkg-config libopus-dev libopencore-amrnb-dev
-          pkg-config --modversion opus opencore-amrnb
-      - name: Race-test native codec builds
-        env:
-          CGO_ENABLED: "1"
-        run: go test -race -tags="libopus opencoreamr" ./...
-      - name: Vet native codec build
-        env:
-          CGO_ENABLED: "1"
-        run: go vet -tags="libopus opencoreamr" ./...
-
-  cleanup-merged-branches:
-    name: Clean merged feature branches
-    # Deletion runs only for a push to the default branch, and only after
-    # both build/test jobs have succeeded. Never run on forked pull requests.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, native-codecs]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: read
-    steps:
-      - name: Delete branches already merged by PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const defaultBranch = 'main';
-            const branches = await github.paginate(github.rest.repos.listBranches, {
-              owner, repo, per_page: 100,
-            });
-            const mergedPRs = await github.paginate(github.rest.pulls.list, {
-              owner, repo, base: defaultBranch, state: 'closed', per_page: 100,
-            });
-            const mergedHeads = new Map();
-            for (const pr of mergedPRs) {
-              if (!pr.merged_at || !pr.head.repo || pr.head.repo.full_name !== context.repo.owner + '/' + context.repo.repo) {
-                continue;
-              }
-              mergedHeads.set(pr.head.ref, pr.head.sha);
-            }
-            let deleted = 0;
-            const failures = [];
-            for (const branch of branches) {
-              if (branch.name === defaultBranch || branch.protected || !branch.name.startsWith('feat/')) {
-                continue;
-              }
-              const expected = mergedHeads.get(branch.name);
-              if (!expected || expected !== branch.commit.sha) {
-                core.info(`Keeping unmerged or changed branch ${branch.name}`);
-                continue;
-              }
-              try {
-                // Check again just before deletion: don't delete if the branch moved.
-                const { data: current } = await github.rest.git.getRef({
-                  owner, repo, ref: `heads/${branch.name}`,
-                });
-                if (current.object.sha !== expected) {
-                  core.info(`Keeping branch ${branch.name}: head changed`);
-                  continue;
-                }
-                await github.rest.git.deleteRef({
-                  owner, repo, ref: `heads/${branch.name}`,
-                });
-                core.info(`Deleted merged branch ${branch.name}`);
-                deleted++;
-              } catch (err) {
-                failures.push(`${branch.name}: ${err.message}`);
-                core.warning(`Could not delete ${branch.name}: ${err.message}`);
-              }
-            }
-            core.info(`Cleanup finished. Deleted ${deleted} merged feature branches.`);
-            if (failures.length) {
-              core.setFailed(`Branch cleanup failed: ${failures.join('; ')}`);
-            }
- ./asr/providers/volcengine
+      - name: Compile live integration tests (without credentials)
+        run: go test -tags=integration -run TestNonexistentCompileOnly ./asr/providers/volcengine
       - name: Ensure FFmpeg is available for audio integration tests
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
@@ -178,7 +83,7 @@ jobs:
             let deleted = 0;
             const failures = [];
             for (const branch of branches) {
-              if (branch.name === defaultBranch || branch.protected || !branch.name.startsWith('feat/')) {
+              if (branch.name === defaultBranch || branch.protected || !(branch.name.startsWith('feat/') || branch.name.startsWith('fix/'))) {
                 continue;
               }
               const expected = mergedHeads.get(branch.name);
