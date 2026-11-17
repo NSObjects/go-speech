@@ -36,6 +36,8 @@ jobs:
           fi
       - name: Test with race detector
         run: go test -race ./...
+      - name: Recheck context deadline classification for socket timing races
+        run: go test -race -run '^TestRecvDeadlineStopsSessionAndRetainsError$' -count=10 ./asr/providers/volcengine
 
   native-codecs:
     runs-on: ubuntu-latest
