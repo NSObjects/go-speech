@@ -31,6 +31,9 @@ type wireMessage struct {
 }
 
 func encodeFrame(kind, flags, serialization byte, payload []byte) ([]byte, error) {
+	if len(payload) > maxWirePayload {
+		return nil, errors.New("volcengine: audio or request frame exceeds size limit")
+	}
 	var compressed bytes.Buffer
 	zw := gzip.NewWriter(&compressed)
 	if _, err := zw.Write(payload); err != nil {
@@ -144,11 +147,17 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 			msg = body.Message
 		}
 		code := strconv.FormatUint(uint64(m.code), 10)
+		class := speecherr.CodeUnavailable
+		switch m.code {
+		case 401, 403:
+			class = speecherr.CodeUnauthorized
+		case 429:
+			class = speecherr.CodeRateLimited
+		}
 		return nil, false, &speecherr.Error{
-			Code: speecherr.CodeUnavailable, Provider: "volcengine",
-			Operation: "receive", RemoteCode: code,
-			Err:       fmt.Errorf("remote error %s: %s", code, msg),
-			Retryable: m.code >= 50000000,
+			Code: class, Provider: "volcengine", Operation: "receive",
+			RemoteCode: code, Err: fmt.Errorf("remote error %s: %s", code, msg),
+			Retryable: class == speecherr.CodeRateLimited || (class == speecherr.CodeUnavailable && m.code >= 50000000),
 		}
 	}
 	var p serverPayload
