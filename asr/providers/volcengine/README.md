@@ -157,3 +157,13 @@ text for each utterance without repeating the earlier transcript. Local
 mock-WebSocket tests validate streaming and terminal error semantics. This
 fixture checks multi-utterance correctness, not production WER, noisy speech,
 accent coverage, or interruption latency.
+
+## Regression coverage
+
+The paid automated Volcengine run also checks a short synthesized English
+"Hello." utterance (with a trailing silence interval). A short recognition
+result is required, not merely a successful WebSocket handshake. The offline
+mock tests stress four independent sessions on the same Client and a
+per-receive timeout that must close only its own stream and keep its original
+context error on later reads. These tests do not establish accuracy for
+Mandarin, children, noise, or production-scale concurrency.
