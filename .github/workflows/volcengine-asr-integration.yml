@@ -13,8 +13,6 @@ jobs:
     timeout-minutes: 10
     env:
       VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
-      VOLCENGINE_APP_ID: ${{ vars.VOLCENGINE_APP_ID || secrets.VOLCENGINE_APP_ID }}
-      VOLCENGINE_ACCESS_TOKEN: ${{ secrets.VOLCENGINE_ACCESS_TOKEN }}
       VOLCENGINE_RESOURCE_ID: ${{ vars.VOLCENGINE_RESOURCE_ID }}
       VOLCENGINE_WS_ENDPOINT: ${{ vars.VOLCENGINE_WS_ENDPOINT }}
       VOLCENGINE_TEST_PCM_FILE: /tmp/volcengine-test.pcm
@@ -24,22 +22,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Validate ASR credentials
+      - name: Require new-console Volcengine API Key
         run: |
-          if [ -n "$VOLCENGINE_APP_ID" ] && [ -n "$VOLCENGINE_ACCESS_TOKEN" ]; then
-            echo "Using documented legacy ASR AppID + AccessToken authentication"
-          elif [ -n "$VOLCENGINE_API_KEY" ]; then
-            echo "Using X-Api-Key authentication"
-          else
-            echo "::error title=Missing ASR credentials::Configure VOLCENGINE_API_KEY or both VOLCENGINE_APP_ID and VOLCENGINE_ACCESS_TOKEN."
-            exit 1
-          fi
-          if [ -n "$VOLCENGINE_APP_ID" ] && [ -z "$VOLCENGINE_ACCESS_TOKEN" ]; then
-            echo "::error title=Incomplete legacy credentials::VOLCENGINE_APP_ID is set but VOLCENGINE_ACCESS_TOKEN is missing."
-            exit 1
-          fi
-          if [ -z "$VOLCENGINE_APP_ID" ] && [ -n "$VOLCENGINE_ACCESS_TOKEN" ]; then
-            echo "::error title=Incomplete legacy credentials::VOLCENGINE_ACCESS_TOKEN is set but VOLCENGINE_APP_ID is missing."
+          if [ -z "$VOLCENGINE_API_KEY" ]; then
+            echo "::error title=Missing API key::Set VOLCENGINE_API_KEY to the new-console APP Key in Repository secrets."
             exit 1
           fi
       - name: Install speech fixture tools

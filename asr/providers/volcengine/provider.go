@@ -31,14 +31,11 @@ const (
 var _ asr.StreamRecognizer = (*Client)(nil)
 
 // Config specifies the Volcengine streaming ASR transport and credentials.
-// Use APIKey for the current console, or AppID + AccessToken for the
-// documented legacy *ASR* headers. Do not use TTS or dialogue auth headers.
+// Use an X-Api-Key from the speech model console, not an Alibaba API key.
 // ResourceID selects the enabled ASR service and billing mode.
 // Each OpenStream creates its own WebSocket; no global mutable state.
 type Config struct {
-	APIKey          string // New-console API key (X-Api-Key).
-	AppID           string // Legacy ASR app ID (X-Api-App-Key).
-	AccessToken     string // Legacy ASR access token (X-Api-Access-Key).
+	APIKey          string
 	ResourceID      string
 	Endpoint        string
 	UID             string
@@ -50,13 +47,8 @@ type Config struct {
 type Client struct{ cfg Config }
 
 func New(cfg Config) (*Client, error) {
-	legacyApp := strings.TrimSpace(cfg.AppID) != ""
-	legacyToken := strings.TrimSpace(cfg.AccessToken) != ""
-	if legacyApp != legacyToken {
-		return nil, argumentError("legacy ASR auth requires both AppID and AccessToken")
-	}
-	if !legacyApp && strings.TrimSpace(cfg.APIKey) == "" {
-		return nil, argumentError("APIKey or both AppID and AccessToken are required")
+	if strings.TrimSpace(cfg.APIKey) == "" {
+		return nil, argumentError("APIKey is required")
 	}
 	if strings.TrimSpace(cfg.ResourceID) == "" {
 		cfg.ResourceID = ResourceSeedASR2
@@ -159,15 +151,7 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 		dialer.HandshakeTimeout = c.cfg.StartTimeout
 	}
 	headers := http.Header{}
-	if c.cfg.AppID != "" && c.cfg.AccessToken != "" {
-		// The legacy *ASR* API requires X-Api-App-Key (App ID) and
-		// X-Api-Access-Key (Access Token). Do not use X-Api-App-Token:
-		// it is not documented for this ASR endpoint.
-		headers.Set("X-Api-App-Key", c.cfg.AppID)
-		headers.Set("X-Api-Access-Key", c.cfg.AccessToken)
-	} else {
-		headers.Set("X-Api-Key", c.cfg.APIKey)
-	}
+	headers.Set("X-Api-Key", c.cfg.APIKey)
 	headers.Set("X-Api-Resource-Id", c.cfg.ResourceID)
 	headers.Set("X-Api-Request-Id", id)
 	headers.Set("X-Api-Connect-Id", id)

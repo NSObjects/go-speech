@@ -7,7 +7,7 @@ optimized bidirectional WebSocket interface (`bigmodel_async`).
 - Recommended endpoint: `wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async`
 - Recommended 2.0 hourly resource: `volc.seedasr.sauc.duration` (must be enabled on the API key).
 - Other 2.0 resource: `volc.seedasr.sauc.concurrent`.
-- Auth: new console `X-Api-Key` **or** legacy ASR `X-Api-App-Key` (App ID) + `X-Api-Access-Key` (Access Token), plus `X-Api-Resource-Id` and random request/connection IDs.
+- Auth: `X-Api-Key`, `X-Api-Resource-Id`, random request/connection IDs.
 - Wire format: Volcengine V3 binary WebSocket frames, gzip JSON config and gzip audio frames.
 - Supported input: 16 kHz PCM16LE, PCM16 WAV, MP3, **Ogg Opus**; no automatic conversion.
 - This package implements `asr.StreamRecognizer`, not batch ASR or TTS.
@@ -22,7 +22,7 @@ import (
 )
 
 client, err := volcengine.New(volcengine.Config{
-    APIKey: apiKey, // Or use AppID + AccessToken for legacy ASR auth.
+    APIKey: apiKey,
     ResourceID: volcengine.ResourceSeedASR2,
     EnableNonStream: true, // optional second pass for accurate sentence finals
 })
@@ -84,28 +84,3 @@ requires the matching resource enabled in the Volcengine console.
 
 The real endpoint is **not verified until a live job succeeds**. Local
 mock-server tests do not prove the upstream API has accepted a request.
-
-### Old-console ASR authentication
-
-The **streaming ASR** `bigmodel_async` endpoint supports the documented legacy pair:
-
-```go
-client, err := volcengine.New(volcengine.Config{
-    AppID: appID,
-    AccessToken: accessToken,
-    ResourceID: volcengine.ResourceSeedASR2,
-})
-```
-
-For GitHub Actions, configure `VOLCENGINE_APP_ID` as a repository variable
-(or secret) and `VOLCENGINE_ACCESS_TOKEN` as a repository secret. The
-workflow uses this pair when both are present, otherwise it uses
-`VOLCENGINE_API_KEY`. It **fails** when credentials are missing or only
-one member of the legacy pair is present. Do not put tokens in repository
-variables, commits or workflow logs.
-
-**Important:** The official ASR V3 legacy headers are `X-Api-App-Key` and
-`X-Api-Access-Key`. The names `X-Api-App-Id` and `X-Api-App-Token` are
-**not** the documented legacy pair for this ASR endpoint. Do not assume an
-App Token issued for another voice service is accepted as an ASR Access Token.
-Official reference: https://docs.volcengine.com/docs/doubao-voice/old-version-console-authentication-reference-example?lang=zh
