@@ -328,6 +328,15 @@ func (s *Stream) transportError(ctx context.Context, op string, err error) error
 	if e := s.parent.Err(); e != nil {
 		return e
 	}
+	// A WebSocket read may hit its deadline a moment before the
+	// context cancellation timer fires. If the socket timed out at the
+	// caller's deadline, preserve context.DeadlineExceeded rather than
+	// misclassifying the caller deadline as a retryable provider timeout.
+	var timeout net.Error
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) &&
+		errors.As(err, &timeout) && timeout.Timeout() {
+		return context.DeadlineExceeded
+	}
 	if s.closed() || errors.Is(err, asr.ErrStreamClosed) {
 		return asr.ErrStreamClosed
 	}
