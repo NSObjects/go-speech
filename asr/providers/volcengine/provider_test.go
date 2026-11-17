@@ -82,7 +82,11 @@ func TestWebSocketStreamRoundTrip(t *testing.T) {
 		if req.Header.Get("X-Api-Key") != "test-key" ||
 			req.Header.Get("X-Api-Resource-Id") != ResourceSeedASR2 ||
 			req.Header.Get("X-Api-Request-Id") == "" ||
-			req.Header.Get("X-Api-Sequence") != "-1" {
+			req.Header.Get("X-Api-Sequence") != "-1" ||
+			req.Header.Get("X-Api-App-Key") != "" ||
+			req.Header.Get("X-Api-Access-Key") != "" ||
+			req.Header.Get("X-Api-App-Id") != "" ||
+			req.Header.Get("X-Api-App-Token") != "" {
 			report(fmt.Errorf("invalid authentication headers"))
 			return
 		}
@@ -352,5 +356,53 @@ func TestSequencedLastResponseAndLimits(t *testing.T) {
 	}
 	if _, err := encodeFrame(messageAudioRequest, 0, 0, make([]byte, maxWirePayload+1)); err == nil {
 		t.Fatal("oversized input must be rejected before compression")
+	}
+}
+
+func TestUnauthorizedHandshakePreservesSafeDiagnostics(t *testing.T) {
+	const logID = "test-log-id"
+	const status = "100001"
+	const secret = "my-private-api-key"
+	const responseBodyMarker = "do-not-echo-response-body"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Api-Key"); got != secret {
+			t.Errorf("new-console X-Api-Key not forwarded")
+		}
+		w.Header().Set("X-Tt-Logid", logID)
+		w.Header().Set("X-Api-Status-Code", status)
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(responseBodyMarker))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		APIKey:   secret,
+		Endpoint: "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v3/sauc/bigmodel_async",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	stream, err := client.OpenStream(ctx, asr.Config{
+		Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+	})
+	if stream != nil {
+		defer stream.Close()
+		t.Fatal("unexpected ASR stream after 401")
+	}
+	if !speecherr.IsCode(err, speecherr.CodeUnauthorized) {
+		t.Fatalf("expected unauthorized classification, got %v", err)
+	}
+	var providerErr *speecherr.Error
+	if !errors.As(err, &providerErr) || providerErr.RemoteCode != status || providerErr.Retryable {
+		t.Fatalf("expected non-retryable provider diagnostics, got %v", err)
+	}
+	message := err.Error()
+	if !strings.Contains(message, "HTTP 401") || !strings.Contains(message, logID) {
+		t.Fatalf("missing safe HTTP 401 diagnostics: %v", err)
+	}
+	if strings.Contains(message, secret) || strings.Contains(message, responseBodyMarker) {
+		t.Fatal("sensitive credentials or remote response body leaked into error")
 	}
 }
