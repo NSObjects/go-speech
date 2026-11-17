@@ -14,7 +14,16 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Check formatting
-        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+        run: |
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$unformatted" ]; then
+            echo "::error title=Unformatted Go files::Run gofmt -w on the files below"
+            for file in $unformatted; do
+              echo "Unformatted: $file"
+              gofmt -d "$file"
+            done
+            exit 1
+          fi
       - name: Vet
         run: go vet ./...
       - name: Compile live integration tests (without credentials)
