@@ -77,7 +77,7 @@ jobs:
 
       - name: Ogg Opus decode to live ASR (Fun-ASR smoke test)
         if: matrix.model == 'fun-asr-realtime'
-        run: go test -tags=integration -run '^TestAliyunLiveOpusPipeline -count=1 -v -timeout 3m ./asr/providers/aliyun
+        run: go test -tags=integration -run '^TestAliyunLiveOpusPipeline$' -count=1 -v -timeout 3m ./asr/providers/aliyun
 
       - name: Install native libopus for raw-device-packet integration
         if: matrix.model == 'fun-asr-realtime'
@@ -87,4 +87,4 @@ jobs:
         if: matrix.model == 'fun-asr-realtime'
         env:
           CGO_ENABLED: "1"
-        run: go test -tags="integration libopus" -run '^TestAliyunLiveRawOpusPipeline -count=1 -v -timeout 3m ./asr/providers/aliyun
+        run: go test -tags="integration libopus" -run '^TestAliyunLiveRawOpusPipeline$' -count=1 -v -timeout 3m ./asr/providers/aliyun
