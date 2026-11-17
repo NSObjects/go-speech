@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"net"
 	"sync"
 	"time"
@@ -31,19 +32,22 @@ type Stream struct {
 	sendClosed bool
 	sentAudio  bool
 
-	finished    bool                // readMu
-	terminalErr error               // readMu
-	queue       []asr.Event         // readMu
-	lastText    string              // readMu
-	finalSeen   map[string]struct{} // readMu
+	finished      bool                // readMu
+	terminalErr   error               // readMu
+	queue         []asr.Event         // readMu
+	resultType    string              // immutable
+	pendingText   string              // readMu: latest unconfirmed utterance
+	confirmedText string              // readMu: concatenated confirmed segments
+	lastFinalText string              // readMu: most recent confirmed utterance
+	finalSeen     map[string]struct{} // readMu
 }
 
 var _ asr.Stream = (*Stream)(nil)
 
-func newStream(conn *websocket.Conn, parent context.Context) *Stream {
+func newStream(conn *websocket.Conn, parent context.Context, resultType string) *Stream {
 	s := &Stream{
 		conn: conn, parent: parent, done: make(chan struct{}),
-		finalSeen: make(map[string]struct{}),
+		resultType: resultType, finalSeen: make(map[string]struct{}),
 	}
 	go func() {
 		select {
@@ -165,9 +169,6 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	if s == nil {
 		return asr.Event{}, asr.ErrStreamClosed
 	}
-	if err := ctx.Err(); err != nil {
-		return asr.Event{}, err
-	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
 	for {
@@ -182,6 +183,11 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		if s.terminalErr != nil {
 			return asr.Event{}, s.terminalErr
+		}
+		// A completed stream stays at EOF (or its original terminal error)
+		// even when a later caller supplies a canceled context.
+		if err := ctx.Err(); err != nil {
+			return asr.Event{}, s.fail(err)
 		}
 		if err := s.parent.Err(); err != nil {
 			return asr.Event{}, s.fail(err)
@@ -223,28 +229,65 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	}
 }
 
+// addEvents converts provider transcript snapshots to the vendor-independent
+// events. In "full" mode the provider repeats already finalized utterances
+// in subsequent responses; only *new* definite utterances become EventFinal.
+// Partial events always describe the current unconfirmed utterance when the
+// provider includes utterance metadata. This prevents committing cumulative
+// text more than once in a multi-sentence conversation.
 func (s *Stream) addEvents(results []recognition, last bool) {
-	newFinal := false
+	var partial string
+	var fallback string
+	hasUtterances := false
 	for _, r := range results {
+		if len(r.Utterances) > 0 {
+			hasUtterances = true
+		} else if r.Text != "" {
+			fallback = r.Text
+		}
 		for _, u := range r.Utterances {
-			if u.Definite && u.Text != "" {
-				key := fmt.Sprintf("%d:%d:%s", u.Start, u.End, u.Text)
-				if _, seen := s.finalSeen[key]; !seen {
-					s.finalSeen[key] = struct{}{}
-					s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: u.Text})
-					newFinal = true
-				}
+			if u.Text == "" {
+				continue
 			}
-		}
-		if r.Text != "" && r.Text != s.lastText {
-			s.lastText = r.Text
-			if !last {
-				s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: r.Text})
+			if !u.Definite {
+				partial = u.Text
+				continue
 			}
+			key := fmt.Sprintf("%d:%d:%s", u.Start, u.End, u.Text)
+			if _, alreadyEmitted := s.finalSeen[key]; alreadyEmitted {
+				continue
+			}
+			s.finalSeen[key] = struct{}{}
+			s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: u.Text})
+			s.confirmedText += u.Text
+			s.lastFinalText = u.Text
+			s.pendingText = ""
 		}
-		if last && r.Text != "" && !newFinal && len(s.finalSeen) == 0 {
-			s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: r.Text})
+	}
+
+	// If utterance metadata is unavailable, fall back to the text field.
+	// The default full mode repeats confirmed text, so remove that prefix
+	// before exposing a new tentative segment.
+	if !hasUtterances && fallback != "" {
+		if s.resultType == ResultFull {
+			fallback = strings.TrimPrefix(fallback, s.confirmedText)
 		}
+		if fallback != s.lastFinalText {
+			partial = fallback
+		}
+	}
+	if partial != "" && partial != s.pendingText {
+		// Never emit a provisional event after the terminal response.
+		if !last {
+			s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: partial})
+		}
+		s.pendingText = partial
+	}
+	if last && s.pendingText != "" {
+		// The provider may omit utterance metadata in its last response.
+		// Preserve the final unconfirmed segment instead of losing speech.
+		s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: s.pendingText})
+		s.pendingText = ""
 	}
 }
 
