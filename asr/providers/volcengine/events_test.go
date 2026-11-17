@@ -106,8 +106,8 @@ func TestNestedPayloadDoesNotDiscardEndOfStreamFlag(t *testing.T) {
 		kind:    messageFullResponse,
 		payload: []byte(`{"code":0,"is_last_package":true,"payload_msg":{"result":[{"text":"confirmed","utterances":[{"text":"confirmed","definite":true,"start_time":0,"end_time":400}]}]}}`),
 	}
-	results, last, err := message.result()
-	if err != nil || !last || len(results) != 1 || results[0].Text != "confirmed" {
+	results, last, noSpeech, err := message.result()
+	if err != nil || !last || noSpeech || len(results) != 1 || results[0].Text != "confirmed" {
 		t.Fatalf("nested result: %#v, last=%v, err=%v", results, last, err)
 	}
 }

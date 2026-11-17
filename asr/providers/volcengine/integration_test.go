@@ -125,3 +125,66 @@ func TestVolcengineLiveASR(t *testing.T) {
 		})
 	}
 }
+
+// TestVolcengineLiveSilence verifies that pure PCM silence never becomes
+// confirmed recognized speech, including upstream no-speech responses (1013).
+func TestVolcengineLiveSilence(t *testing.T) {
+	apiKey := os.Getenv("VOLCENGINE_API_KEY")
+	if apiKey == "" {
+		t.Fatal("VOLCENGINE_API_KEY is required")
+	}
+	cfg := Config{
+		APIKey:     apiKey,
+		ResourceID: os.Getenv("VOLCENGINE_RESOURCE_ID"),
+		ResultType: ResultSingle,
+	}
+	if endpoint := os.Getenv("VOLCENGINE_WS_ENDPOINT"); endpoint != "" {
+		cfg.Endpoint = endpoint
+	}
+	client, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stream, err := client.OpenStream(ctx, asr.Config{
+		Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+	})
+	if err != nil {
+		t.Fatalf("connect Volcengine for silence: %v", err)
+	}
+	defer stream.Close()
+
+	// Five 200ms chunks of signed 16-bit zero PCM = 1s of silence.
+	silenceChunk := make([]byte, 16000*2/5)
+	for i := 0; i < 5; i++ {
+		if err := stream.Send(ctx, silenceChunk); err != nil {
+			t.Fatalf("send silence frame %d: %v", i, err)
+		}
+		select {
+		case <-time.After(200 * time.Millisecond):
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	if err := stream.CloseSend(ctx); err != nil {
+		t.Fatalf("close silence stream input: %v", err)
+	}
+	for {
+		event, err := stream.Recv(ctx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("silent ASR stream terminated unexpectedly: %v", err)
+		}
+		if event.Type == asr.EventFinal && strings.TrimSpace(event.Text) != "" {
+			t.Fatalf("pure silence produced confirmed transcript %q", event.Text)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := stream.Recv(context.Background()); !errors.Is(err, io.EOF) {
+			t.Fatalf("unstable EOF after silence, call %d: %v", i, err)
+		}
+	}
+}
