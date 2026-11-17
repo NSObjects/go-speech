@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"net"
+	"strings"
 	"sync"
 	"time"
 

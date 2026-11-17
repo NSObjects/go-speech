@@ -13,15 +13,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Go format and collect normalized ASR files
-        run: |
-          gofmt -w $(git ls-files '*.go')
-          for file in asr/providers/volcengine/{provider,stream,protocol,events_test,integration_test}.go; do
-            echo "FMTBEGIN:$file"
-            base64 -w0 "$file" | fold -w 256
-            echo
-            echo "FMTEND:$file"
-          done
+      - name: Check formatting
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
       - name: Vet
         run: go vet ./...
       - name: Compile live integration tests (without credentials)

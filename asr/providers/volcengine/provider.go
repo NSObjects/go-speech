@@ -46,7 +46,7 @@ type Config struct {
 	UID             string
 	StartTimeout    time.Duration
 	Dialer          *websocket.Dialer
-	EnableNonStream bool // Optional second-pass recognition for stable endings.
+	EnableNonStream bool   // Optional second-pass recognition for stable endings.
 	ResultType      string // "full" (default) or "single"; controls provider response mode.
 }
 

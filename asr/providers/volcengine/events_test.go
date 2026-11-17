@@ -103,7 +103,7 @@ func TestTerminalTextWithoutUtteranceMetadata(t *testing.T) {
 
 func TestNestedPayloadDoesNotDiscardEndOfStreamFlag(t *testing.T) {
 	message := wireMessage{
-		kind: messageFullResponse,
+		kind:    messageFullResponse,
 		payload: []byte(`{"code":0,"is_last_package":true,"payload_msg":{"result":[{"text":"confirmed","utterances":[{"text":"confirmed","definite":true,"start_time":0,"end_time":400}]}]}}`),
 	}
 	results, last, err := message.result()
