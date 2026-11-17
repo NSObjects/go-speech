@@ -21,9 +21,11 @@ import (
 // are configured in the repository's Actions secrets.
 func TestVolcengineLiveASR(t *testing.T) {
 	apiKey := os.Getenv("VOLCENGINE_API_KEY")
+	appID := os.Getenv("VOLCENGINE_APP_ID")
+	accessToken := os.Getenv("VOLCENGINE_ACCESS_TOKEN")
 	fixture := os.Getenv("VOLCENGINE_TEST_PCM_FILE")
-	if apiKey == "" || fixture == "" {
-		t.Fatal("VOLCENGINE_API_KEY and VOLCENGINE_TEST_PCM_FILE are required")
+	if (apiKey == "" && (appID == "" || accessToken == "")) || fixture == "" {
+		t.Fatal("VOLCENGINE_API_KEY or VOLCENGINE_APP_ID + VOLCENGINE_ACCESS_TOKEN, plus VOLCENGINE_TEST_PCM_FILE are required")
 	}
 	raw, err := os.ReadFile(fixture)
 	if err != nil {
@@ -33,7 +35,10 @@ func TestVolcengineLiveASR(t *testing.T) {
 	if err := audio.ValidateBuffer(audio.Buffer{Data: raw, Format: format}); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Config{APIKey: apiKey, ResourceID: os.Getenv("VOLCENGINE_RESOURCE_ID"), EnableNonStream: true}
+	cfg := Config{
+		APIKey: apiKey, AppID: appID, AccessToken: accessToken,
+		ResourceID: os.Getenv("VOLCENGINE_RESOURCE_ID"), EnableNonStream: true,
+	}
 	if endpoint := os.Getenv("VOLCENGINE_WS_ENDPOINT"); endpoint != "" {
 		cfg.Endpoint = endpoint
 	}
