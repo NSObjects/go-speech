@@ -33,7 +33,7 @@ go-speech/
 go get github.com/NSObjects/go-speech@latest
 ```
 
-> ASR 已包含阿里云 Provider（五模型）及火山引擎豆包流式 ASR Provider（V3 bigmodel_async）。TTS 目前仍仅有公共接口；新接入的火山 Provider 在真实云端测试成功前应视为待联调。
+> ASR 已包含阿里云 Provider（五模型）及火山引擎豆包流式 ASR Provider（V3 bigmodel_async，Seed-ASR 2.0 的 `full`/`single` 模式已通过真实云端识别测试）。TTS 目前仍仅有公共接口。
 
 ## 主要 API
 
