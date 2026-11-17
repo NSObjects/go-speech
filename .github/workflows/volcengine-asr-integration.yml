@@ -22,22 +22,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Check whether paid Volcengine credentials are configured
-        id: credentials
+      - name: Require configured Volcengine API key
         run: |
-          if [ -n "$VOLCENGINE_API_KEY" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Volcengine live test skipped: configure VOLCENGINE_API_KEY secret"
+          if [ -z "$VOLCENGINE_API_KEY" ]; then
+            echo "::error title=Missing Actions secret::VOLCENGINE_API_KEY is empty. Add it under Settings > Secrets and variables > Actions > Repository secrets."
+            exit 1
           fi
       - name: Install speech fixture tools
-        if: steps.credentials.outputs.enabled == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y espeak-ng ffmpeg
       - name: Generate real spoken-audio PCM fixture
-        if: steps.credentials.outputs.enabled == 'true'
         run: |
           espeak-ng -v en -s 130 -w "${RUNNER_TEMP}/volcengine-test.wav" \
             "Hello. This is an integration test for Volcengine streaming speech recognition."
@@ -46,5 +41,4 @@ jobs:
             -c:a pcm_s16le -f s16le "$VOLCENGINE_TEST_PCM_FILE"
           test -s "$VOLCENGINE_TEST_PCM_FILE"
       - name: Test real optimized bidirectional ASR
-        if: steps.credentials.outputs.enabled == 'true'
         run: go test -tags=integration -run '^TestVolcengineLiveASR$' -count=1 -v -timeout 3m ./asr/providers/volcengine
