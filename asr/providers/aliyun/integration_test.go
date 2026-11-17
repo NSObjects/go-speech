@@ -5,7 +5,6 @@ package aliyun
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -17,9 +16,8 @@ import (
 )
 
 // TestAliyunLiveASR intentionally uses paid production infrastructure.
-// Run it only via the manually triggered integration workflow or with
-// -tags=integration and a real recorded/synthesized PCM16LE speech fixture.
-// It never runs as part of the ordinary PR/push CI.
+// The separate automatic paid-ASR workflow runs it for every trusted push/PR.
+// It is excluded from the standard offline Go CI by the integration build tag.
 func TestAliyunLiveASR(t *testing.T) {
 	apiKey := os.Getenv("DASHSCOPE_API_KEY")
 	endpoint := os.Getenv("DASHSCOPE_WS_ENDPOINT")
@@ -104,7 +102,7 @@ func TestAliyunLiveASR(t *testing.T) {
 		if strings.TrimSpace(received.text) == "" {
 			t.Fatalf("ASR returned no final text for %s (the fixture must contain intelligible speech)", model)
 		}
-		t.Log(fmt.Sprintf("ASR model %s recognized: %q", model, received.text))
+		t.Logf("ASR model %s recognized: %q", model, received.text)
 	case <-ctx.Done():
 		t.Fatalf("waiting for final ASR results: %v", ctx.Err())
 	}
