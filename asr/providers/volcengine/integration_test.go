@@ -38,6 +38,10 @@ func TestVolcengineLiveASR(t *testing.T) {
 	for _, resultType := range []string{ResultFull, ResultSingle} {
 		t.Run(resultType, func(t *testing.T) {
 			cfg := Config{APIKey: apiKey, ResourceID: os.Getenv("VOLCENGINE_RESOURCE_ID"), EnableNonStream: true, ResultType: resultType}
+			if resultType == ResultSingle {
+				// Verify provider-side 700ms silence segmentation against the real service.
+				cfg.EndWindowSize = 700 * time.Millisecond
+			}
 			if endpoint := os.Getenv("VOLCENGINE_WS_ENDPOINT"); endpoint != "" {
 				cfg.Endpoint = endpoint
 			}
