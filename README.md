@@ -77,8 +77,10 @@ chunk handling, and ASR integration examples.
 
 Complete compressed audio buffers can be converted to PCM16LE or WAV by the
 opt-in [`audio/ffmpeg`](audio/ffmpeg/) adapter, which requires an installed
-FFmpeg executable. Core `audio` remains Go-only; microphone packet streaming
-and codec session reuse are not provided by this batch adapter.
+FFmpeg executable. Core `audio` remains Go-only. The same optional package also provides a
+**persistent** `ffmpeg.OpenStreamDecoder` that accepts successive Ogg Opus,
+Ogg Speex, AMR-NB, MP3, AAC or PCM/WAV fragments and outputs streaming PCM16LE.
+It is not a raw-Opus-packet decoder; see [audio design](docs/AUDIO.md).
 
 ## Real Aliyun ASR integration
 
