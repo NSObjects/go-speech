@@ -46,11 +46,14 @@ func (c Config) parameters(cfg asr.Config, format string) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
-	sampleRate := cfg.Format.SampleRate
-	if (family == familyQwenMessage && sampleRate != 16000) ||
-		(c.Model == ModelParaformerRealtime8K && sampleRate != 8000) {
-		return nil, unsupported(fmt.Sprintf("model %s does not support %d Hz", c.Model, sampleRate))
+	capability, err := SupportedAudio(c.Model)
+	if err != nil {
+		return nil, err
 	}
+	if err := capability.Validate(cfg.Format); err != nil {
+		return nil, unsupported(err.Error())
+	}
+	sampleRate := cfg.Format.SampleRate
 	if c.MaxSentenceSilenceMs != 0 && (c.MaxSentenceSilenceMs < 200 || c.MaxSentenceSilenceMs > 6000) {
 		return nil, badArgument("MaxSentenceSilenceMs must be between 200 and 6000")
 	}
