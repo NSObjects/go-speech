@@ -7,7 +7,7 @@ package audio
 // fragments of a continuous file/container stream. PacketDecoder is not a
 // network transport, RTP depacketizer, or VAD.
 type PacketDecoder interface {
-    Decode(packet []byte) ([]byte,error)
-    OutputFormat() Format
-    Close() error
+	Decode(packet []byte) ([]byte, error)
+	OutputFormat() Format
+	Close() error
 }

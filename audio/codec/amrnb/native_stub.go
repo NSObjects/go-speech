@@ -2,5 +2,5 @@
 
 package amrnb
 
-func Available() bool{return false}
-func openNative()(nativeDecoder,error){return nil,ErrUnavailable}
+func Available() bool                    { return false }
+func openNative() (nativeDecoder, error) { return nil, ErrUnavailable }
