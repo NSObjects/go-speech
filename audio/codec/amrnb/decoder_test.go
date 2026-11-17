@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"testing"
-
 )
 
 func frame(ft uint8) []byte {
