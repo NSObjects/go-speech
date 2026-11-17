@@ -16,6 +16,8 @@ optimized bidirectional WebSocket interface (`bigmodel_async`).
 
 ```go
 import (
+    "time"
+
     "github.com/NSObjects/go-speech/asr"
     "github.com/NSObjects/go-speech/audio"
     "github.com/NSObjects/go-speech/asr/providers/volcengine"
@@ -25,6 +27,7 @@ client, err := volcengine.New(volcengine.Config{
     APIKey: apiKey,
     ResourceID: volcengine.ResourceSeedASR2,
     EnableNonStream: true, // optional second pass for accurate sentence finals
+    EndWindowSize: 700 * time.Millisecond, // optional provider-side silence threshold
 })
 if err != nil { return err }
 
@@ -63,6 +66,13 @@ the **current unconfirmed utterance**, not the cumulative full text.
 turn. Duplicate confirmed sentences from repeated full responses are not
 emitted twice. When the last packet has no utterance metadata, the adapter
 also preserves any trailing unconfirmed text as a final segment.
+
+`EndWindowSize` optionally configures Volcengine\'s own `end_window_size` silence
+threshold for returning `definite` sentences (milliseconds on the wire, minimum
+200ms; omit to use the service default of approximately 800ms). For example,
+`700*time.Millisecond` adjusts provider-side segmentation without changing the
+application\'s VAD or when it ends a conversation turn. It is not a local
+endpoint detector and does not automatically call `CloseSend`.
 
 The SDK does not decide how to stop VAD or when to call LLM/TTS; that remains
 the application's responsibility. `CloseSend` ends the audio

@@ -46,8 +46,9 @@ type Config struct {
 	UID             string
 	StartTimeout    time.Duration
 	Dialer          *websocket.Dialer
-	EnableNonStream bool   // Optional second-pass recognition for stable endings.
-	ResultType      string // "full" (default) or "single"; controls provider response mode.
+	EnableNonStream bool          // Optional second-pass recognition for stable endings.
+	ResultType      string        // "full" (default) or "single"; controls provider response mode.
+	EndWindowSize   time.Duration // Optional provider-side silence window; 0 uses the service default (~800ms).
 }
 
 type Client struct{ cfg Config }
@@ -61,6 +62,9 @@ func New(cfg Config) (*Client, error) {
 	}
 	if cfg.ResultType != ResultFull && cfg.ResultType != ResultSingle {
 		return nil, argumentError("ResultType must be full or single")
+	}
+	if cfg.EndWindowSize != 0 && (cfg.EndWindowSize < 200*time.Millisecond || cfg.EndWindowSize%time.Millisecond != 0) {
+		return nil, argumentError("EndWindowSize must be at least 200ms and a whole number of milliseconds")
 	}
 	if strings.TrimSpace(cfg.ResourceID) == "" {
 		cfg.ResourceID = ResourceSeedASR2
@@ -127,6 +131,10 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 			"show_utterances": true, "enable_nonstream": c.cfg.EnableNonStream,
 			"result_type": c.cfg.ResultType,
 		},
+	}
+	if c.cfg.EndWindowSize != 0 {
+		// Volcengine takes milliseconds. Omit the field to keep the provider default.
+		req["request"].(map[string]any)["end_window_size"] = int64(c.cfg.EndWindowSize / time.Millisecond)
 	}
 	if len(request.Hints) > 0 {
 		hints := make([]map[string]string, 0, len(request.Hints))
