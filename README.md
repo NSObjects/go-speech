@@ -2,7 +2,7 @@
 
 [![Go CI](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml)
 
-A vendor-independent ASR and TTS SDK for Go. **Early ASR adapter: Alibaba Cloud WebSocket models (see below); no TTS adapter yet.**
+A vendor-independent ASR and TTS SDK for Go. **ASR adapters: Alibaba Cloud and Volcengine Doubao streaming WebSocket; no TTS adapter yet.**
 
 面向 Go 应用的多厂商语音识别（ASR）和语音合成（TTS）库。库本身与 Eino、LLM、智能体及具体语音设备无关。
 
@@ -33,7 +33,7 @@ go-speech/
 go get github.com/NSObjects/go-speech@latest
 ```
 
-> ASR 已包含阿里云 Provider：支持 Qwen-Audio 3.1 Streaming / Message、Fun-ASR-Realtime 和 Paraformer v2（含 8 kHz）。TTS 目前仍仅有公共接口；生产接入前需使用真实账号和录音进行端到端验证。
+> ASR 已包含阿里云 Provider（五模型）及火山引擎豆包流式 ASR Provider（V3 bigmodel_async）。TTS 目前仍仅有公共接口；新接入的火山 Provider 在真实云端测试成功前应视为待联调。
 
 ## 主要 API
 
@@ -118,3 +118,10 @@ events use `speecherr.CodeProtocol`; the original remote service code is
 available in `speecherr.Error.RemoteCode`. Do not retry audio on the same
 failed session: open a new session and decide at the application layer if
 replaying audio is safe. See [docs/DESIGN.md](docs/DESIGN.md).
+
+## 火山引擎 Doubao ASR
+
+新增 [`asr/providers/volcengine`](asr/providers/volcengine/)：支持官方推荐的
+V3 `bigmodel_async` WebSocket 二进制协议、PCM16/WAV/MP3/Ogg Opus 原样传输、
+流式部分/最终结果、Context 取消和统一错误。详细接入方式见
+[火山引擎 Provider 文档](asr/providers/volcengine/README.md)。

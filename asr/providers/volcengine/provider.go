@@ -1,0 +1,234 @@
+// Package volcengine implements Doubao large-model, bidirectional streaming
+// ASR over the official Volcengine WebSocket binary protocol. Audio is passed
+// through unchanged; the caller must supply a model-compatible format.
+package volcengine
+
+import (
+	"context"
+	"encoding/json"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/speecherr"
+	"github.com/gorilla/websocket"
+)
+
+const (
+	DefaultEndpoint   = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
+	ResourceSeedASR2  = "volc.seedasr.sauc.duration"
+	ResourceSeedASR2Concurrent = "volc.seedasr.sauc.concurrent"
+	defaultStartTimeout = 15 * time.Second
+)
+
+var _ asr.StreamRecognizer = (*Client)(nil)
+
+// Config specifies the Volcengine streaming ASR transport and credentials.
+// Use an X-Api-Key from the speech model console, not an Alibaba API key.
+// ResourceID selects the enabled ASR service and billing mode.
+// Each OpenStream creates its own WebSocket; no global mutable state.
+type Config struct {
+	APIKey       string
+	ResourceID   string
+	Endpoint     string
+	UID          string
+	StartTimeout time.Duration
+	Dialer       *websocket.Dialer
+	EnableNonStream bool // Optional second-pass recognition for stable endings.
+}
+
+type Client struct{ cfg Config }
+
+func New(cfg Config) (*Client, error) {
+	if strings.TrimSpace(cfg.APIKey) == "" {
+		return nil, argumentError("APIKey is required")
+	}
+	if strings.TrimSpace(cfg.ResourceID) == "" {
+		cfg.ResourceID = ResourceSeedASR2
+	}
+	if cfg.Endpoint == "" {
+		cfg.Endpoint = DefaultEndpoint
+	}
+	if cfg.StartTimeout < 0 {
+		return nil, argumentError("StartTimeout cannot be negative")
+	}
+	if cfg.StartTimeout == 0 {
+		cfg.StartTimeout = defaultStartTimeout
+	}
+	u, err := url.Parse(cfg.Endpoint)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, argumentError("invalid Volcengine WebSocket endpoint")
+	}
+	if u.Scheme != "wss" && !(u.Scheme == "ws" && isLoopback(u.Hostname())) {
+		return nil, argumentError("wss is required outside loopback tests")
+	}
+	if u.Path != "/api/v3/sauc/bigmodel_async" {
+		return nil, argumentError("only the bidirectional optimized bigmodel_async endpoint is supported")
+	}
+	if cfg.UID == "" {
+		cfg.UID = "go-speech"
+	}
+	if cfg.Dialer != nil {
+		copyDialer := *cfg.Dialer
+		cfg.Dialer = &copyDialer
+	}
+	return &Client{cfg: cfg}, nil
+}
+
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream, error) {
+	if c == nil {
+		return nil, argumentError("nil client")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	format, codec, err := modelAudio(request.Format)
+	if err != nil {
+		return nil, err
+	}
+	if request.Language != "" {
+		return nil, unsupportedError("Language selection is not supported on bigmodel_async")
+	}
+	req := map[string]any{
+		"user": map[string]any{"uid": c.cfg.UID},
+		"audio": map[string]any{
+			"format": format, "codec": codec, "rate": request.Format.SampleRate,
+			"bits": 16, "channel": request.Format.Channels,
+		},
+		"request": map[string]any{
+			"model_name": "bigmodel", "enable_itn": true, "enable_punc": true,
+			"show_utterances": true, "enable_nonstream": c.cfg.EnableNonStream,
+		},
+	}
+	if len(request.Hints) > 0 {
+		hints := make([]map[string]string, 0, len(request.Hints))
+		for _, hint := range request.Hints {
+			hint = strings.TrimSpace(hint)
+			if hint == "" {
+				return nil, argumentError("ASR hint cannot be empty")
+			}
+			hints = append(hints, map[string]string{"word": hint})
+		}
+		// Volcengine expects corpus.context to be JSON encoded as a string.
+		contextBytes, err := json.Marshal(map[string]any{"hotwords": hints})
+		if err != nil {
+			return nil, err
+		}
+		req["request"].(map[string]any)["corpus"] = map[string]any{"context": string(contextBytes)}
+	}
+	payload, err := jsonMarshal(req)
+	if err != nil {
+		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "volcengine", Operation: "encode", Err: err}
+	}
+	frame, err := encodeFrame(messageFullRequest, 0, 1, payload)
+	if err != nil {
+		return nil, err
+	}
+	id, err := newRequestID()
+	if err != nil {
+		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "volcengine", Operation: "request_id", Err: err}
+	}
+	dialer := *websocket.DefaultDialer
+	if c.cfg.Dialer != nil {
+		dialer = *c.cfg.Dialer
+	}
+	if dialer.HandshakeTimeout == 0 {
+		dialer.HandshakeTimeout = c.cfg.StartTimeout
+	}
+	headers := http.Header{}
+	headers.Set("X-Api-Key", c.cfg.APIKey)
+	headers.Set("X-Api-Resource-Id", c.cfg.ResourceID)
+	headers.Set("X-Api-Request-Id", id)
+	headers.Set("X-Api-Connect-Id", id)
+	headers.Set("X-Api-Sequence", "-1")
+	conn, resp, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
+	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		if e := ctx.Err(); e != nil {
+			return nil, e
+		}
+		return nil, connectError(err, resp)
+	}
+	conn.SetReadLimit(maxWirePayload + 128)
+	stream := newStream(conn, ctx)
+	if err := stream.writeFrame(ctx, frame); err != nil {
+		result := stream.transportError(ctx, "start", err)
+		_ = stream.Close()
+		return nil, result
+	}
+	return stream, nil
+}
+
+func modelAudio(f audio.Format) (format, codec string, err error) {
+	if err := f.Validate(); err != nil {
+		return "", "", &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "volcengine", Operation: "start", Err: err}
+	}
+	if f.SampleRate != 16000 || (f.Channels != 1 && f.Channels != 2) {
+		return "", "", unsupportedError("optimized ASR requires 16kHz mono/stereo input")
+	}
+	switch f.Encoding {
+	case audio.EncodingPCM16LE:
+		return "pcm", "raw", nil
+	case audio.EncodingWAV:
+		return "wav", "raw", nil
+	case audio.EncodingMP3:
+		return "mp3", "raw", nil
+	case audio.EncodingOpus:
+		return "ogg", "opus", nil // Ogg Opus required; raw Opus is not accepted.
+	default:
+		return "", "", unsupportedError(fmt.Sprintf("unsupported encoding %q", f.Encoding))
+	}
+}
+
+func argumentError(msg string) error {
+	return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "volcengine", Operation: "configure", Err: errors.New(msg)}
+}
+
+func unsupportedError(msg string) error {
+	return &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "volcengine", Operation: "start", Err: errors.New(msg)}
+}
+
+func connectError(err error, resp *http.Response) error {
+	code := speecherr.CodeUnavailable
+	if resp != nil {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			code = speecherr.CodeUnauthorized
+		case http.StatusTooManyRequests:
+			code = speecherr.CodeRateLimited
+		case http.StatusBadRequest:
+			code = speecherr.CodeInvalidArgument
+		}
+	}
+	return &speecherr.Error{
+		Code: code, Provider: "volcengine", Operation: "connect", Err: err,
+		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited,
+	}
+}
+
+func newRequestID() (string, error) {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	buf[6] = buf[6]&15 | 0x40
+	buf[8] = buf[8]&63 | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[:4], buf[4:6], buf[6:8], buf[8:10], buf[10:]), nil
+}

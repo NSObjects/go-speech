@@ -67,6 +67,8 @@ checks actual model behavior separately.
 
 ## Next milestone
 
-This repository should next prioritize another ASR provider adapter using
-these same shared semantics, then add cross-provider contract test helpers.
+The Volcengine Doubao V3 optimized streaming adapter is now the second ASR
+provider implementation. Both implement the same `asr.StreamRecognizer`
+contract, but have separate WebSocket framing and credentials. Continue by
+running live cloud integration and adding cross-provider contract tests.
 Do not introduce implicit audio conversion into `Stream.Send`.
