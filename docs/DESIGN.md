@@ -37,8 +37,11 @@ management belong to the application or other dedicated modules.
 
 ## Next milestone
 
-Implement one ASR provider and one TTS provider behind these contracts with
-contract tests, then compare a second vendor before finalizing the public API.
+ASR: the first multi-model Alibaba Cloud WebSocket adapter now supports Qwen-Audio 3.1
+Streaming / Message, Fun-ASR-Realtime and Paraformer v2 (including 8 kHz).
+Next: validate with real credentials and recorded speech, add cancellation and failure
+contract tests, compare another provider, and implement TTS independently.
+Connection reuse is deliberately deferred. Each ASR stream owns one WebSocket.
 
 ## Errors
 

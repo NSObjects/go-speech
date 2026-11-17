@@ -2,7 +2,7 @@
 
 [![Go CI](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml)
 
-A vendor-independent ASR and TTS SDK for Go. **Early foundation: provider adapters are not implemented yet.**
+A vendor-independent ASR and TTS SDK for Go. **Early ASR adapter: Alibaba Cloud WebSocket models (see below); no TTS adapter yet.**
 
 面向 Go 应用的多厂商语音识别（ASR）和语音合成（TTS）库。库本身与 Eino、LLM、智能体及具体语音设备无关。
 
@@ -33,7 +33,7 @@ go-speech/
 go get github.com/NSObjects/go-speech@latest
 ```
 
-> 注意：当前只提供公共接口与 Registry，还没有可直接调用的厂商 Provider。接入厂商后再用于实际识别与合成。
+> ASR 已包含阿里云 Provider：支持 Qwen-Audio 3.1 Streaming / Message、Fun-ASR-Realtime 和 Paraformer v2（含 8 kHz）。TTS 目前仍仅有公共接口；生产接入前需使用真实账号和录音进行端到端验证。
 
 ## 主要 API
 
@@ -49,6 +49,8 @@ go get github.com/NSObjects/go-speech@latest
 ```
 
 流式 ASR 的 `EventFinal` 是确认的文本片段，不一定意味着整轮发言结束；VAD/turn endpointing 应由上层处理。流式 TTS 暂时接收完整文本，未来可额外扩展增量文本输入接口。
+
+具体用法参见 [阿里云 ASR Adapter](asr/providers/aliyun/README.md)。
 
 更多设计约束参见 [docs/DESIGN.md](docs/DESIGN.md)。
 
