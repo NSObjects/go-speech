@@ -137,8 +137,13 @@ type serverPayload struct {
 	PayloadMsg    json.RawMessage `json:"payload_msg"`
 }
 
-func (m wireMessage) result() ([]recognition, bool, error) {
+// result decodes a server response. noSpeech distinguishes an explicit 1013
+// result from an empty final response that may follow provisional speech.
+func (m wireMessage) result() ([]recognition, bool, bool, error) {
 	if m.kind == messageServerError {
+		if m.code == 1013 { // provider: audio was silent; no recognized text
+			return nil, true, true, nil
+		}
 		msg := string(m.payload)
 		var body struct {
 			Message string `json:"message"`
@@ -154,7 +159,7 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 		case 429:
 			class = speecherr.CodeRateLimited
 		}
-		return nil, false, &speecherr.Error{
+		return nil, false, false, &speecherr.Error{
 			Code: class, Provider: "volcengine", Operation: "receive",
 			RemoteCode: code, Err: fmt.Errorf("remote error %s: %s", code, msg),
 			Retryable: class == speecherr.CodeRateLimited || (class == speecherr.CodeUnavailable && m.code >= 50000000),
@@ -162,7 +167,7 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 	}
 	var p serverPayload
 	if err := json.Unmarshal(m.payload, &p); err != nil {
-		return nil, false, protocolWrap(err)
+		return nil, false, false, protocolWrap(err)
 	}
 	if len(p.PayloadMsg) != 0 && len(p.Result) == 0 {
 		// The provider may wrap the actual result inside payload_msg.
@@ -170,7 +175,7 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 		// unwrapping it: these envelope fields govern the stream lifecycle.
 		var nested serverPayload
 		if err := json.Unmarshal(p.PayloadMsg, &nested); err != nil {
-			return nil, false, protocolWrap(err)
+			return nil, false, false, protocolWrap(err)
 		}
 		p.Result = nested.Result
 		if nested.IsLastPackage {
@@ -186,8 +191,8 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 	if p.Code != 0 && p.Code != 1000 && p.Code != 20000000 {
 		code := speecherr.CodeUnavailable
 		switch {
-		case p.Code == 1013: // valid no-speech response
-			return nil, p.IsLastPackage || m.flags&flagLast != 0, nil
+		case p.Code == 1013: // provider: audio was silent; no recognized text
+			return nil, true, true, nil
 		case p.Code == 401 || p.Code == 403:
 			code = speecherr.CodeUnauthorized
 		case p.Code == 429:
@@ -195,7 +200,7 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 		case p.Code >= 4000 && p.Code < 5000:
 			code = speecherr.CodeInvalidArgument
 		}
-		return nil, false, &speecherr.Error{
+		return nil, false, false, &speecherr.Error{
 			Code: code, Provider: "volcengine", Operation: "receive",
 			RemoteCode: strconv.Itoa(p.Code),
 			Retryable:  code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited,
@@ -204,17 +209,17 @@ func (m wireMessage) result() ([]recognition, bool, error) {
 	}
 	last := p.IsLastPackage || m.flags&flagLast != 0
 	if len(p.Result) == 0 || bytes.Equal(bytes.TrimSpace(p.Result), []byte("null")) {
-		return nil, last, nil
+		return nil, last, false, nil
 	}
 	var single recognition
 	if err := json.Unmarshal(p.Result, &single); err == nil {
-		return []recognition{single}, last, nil
+		return []recognition{single}, last, false, nil
 	}
 	var batch []recognition
 	if err := json.Unmarshal(p.Result, &batch); err != nil {
-		return nil, false, protocolWrap(err)
+		return nil, false, false, protocolWrap(err)
 	}
-	return batch, last, nil
+	return batch, last, false, nil
 }
 
 func protocolError(msg string) error {

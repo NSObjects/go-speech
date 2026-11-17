@@ -350,8 +350,8 @@ func TestSequencedLastResponseAndLimits(t *testing.T) {
 	if msg.seq != -7 || msg.flags != 3 {
 		t.Fatalf("invalid final sequence %+v", msg)
 	}
-	results, last, err := msg.result()
-	if err != nil || !last || len(results) != 1 || results[0].Text != "finished" {
+	results, last, noSpeech, err := msg.result()
+	if err != nil || !last || noSpeech || len(results) != 1 || results[0].Text != "finished" {
 		t.Fatalf("unexpected parsed result: %+v last=%v err=%v", results, last, err)
 	}
 	if _, err := encodeFrame(messageAudioRequest, 0, 0, make([]byte, maxWirePayload+1)); err == nil {

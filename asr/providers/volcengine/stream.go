@@ -217,11 +217,17 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		if err != nil {
 			return asr.Event{}, s.fail(err)
 		}
-		results, last, err := message.result()
+		results, last, noSpeech, err := message.result()
 		if err != nil {
 			return asr.Event{}, s.fail(err)
 		}
-		s.addEvents(results, last)
+		if noSpeech {
+			// An explicit provider no-speech result must not upgrade an
+			// earlier provisional hypothesis to a final utterance.
+			s.pendingText = ""
+		} else {
+			s.addEvents(results, last)
+		}
 		if last {
 			s.finished = true
 			_ = s.Close()
@@ -253,6 +259,10 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				partial = u.Text
 				continue
 			}
+			// A definite utterance supersedes a provisional hypothesis
+			// seen earlier in this response, even when the provider lists
+			// the provisional entry before the confirmed entry.
+			partial = ""
 			key := fmt.Sprintf("%d:%d:%s", u.Start, u.End, u.Text)
 			if _, alreadyEmitted := s.finalSeen[key]; alreadyEmitted {
 				continue
