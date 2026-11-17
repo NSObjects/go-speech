@@ -2,8 +2,10 @@
 
 The ordinary `Go CI` workflow is offline (mock WebSocket and local codec tests).
 The separate **Aliyun ASR Integration (automatic, paid)** workflow runs
-**automatically for every push**, on same-repository PRs, and on manual dispatch.
-Pull requests originating in external forks are skipped to protect the API key.
+**automatically for every push** (all branches), and optionally on manual
+dispatch. The workflow deliberately has **no pull_request trigger**: the
+separate Go CI checks PRs without secrets, and a branch push already runs
+real ASR once without duplicate PR cloud charges.
 
 ## Repository configuration
 
@@ -58,7 +60,7 @@ go test -tags=integration -run '^TestAliyunLiveASR$' -v ./asr/providers/aliyun
 To run the decoded Opus pipeline locally, also set
 `ASR_TEST_OPUS_FILE` to an Ogg Opus file and install FFmpeg.
 
-CI automatically runs the online model matrix on every push and trusted PR.
+CI automatically runs the online model matrix on every push.
 Runs are not canceled or replaced by a shared concurrency group. You can
 rerun individual failing jobs in GitHub Actions; no manual first-time trigger
 is necessary.

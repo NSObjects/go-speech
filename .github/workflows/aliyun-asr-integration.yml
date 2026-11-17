@@ -2,18 +2,16 @@ name: Aliyun ASR Integration (automatic, paid)
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Run on every push. Do not use a shared concurrency group: GitHub may
-# replace a still-pending run even when cancel-in-progress is false.
-# PR jobs from external forks are excluded from credentials-bearing work.
+# Every push runs paid integration once. PRs use the separate offline Go CI,
+# avoiding duplicate cloud charges for the same branch and not exposing secrets
+# to any pull_request event. Manual dispatch is optional for diagnostics.
 jobs:
   live-asr:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:

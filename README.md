@@ -85,7 +85,7 @@ It is not a raw-Opus-packet decoder; see [audio design](docs/AUDIO.md).
 ## Real Aliyun ASR integration
 
 The offline CI needs no cloud credentials. An [automatic, paid Aliyun ASR integration workflow](.github/workflows/aliyun-asr-integration.yml)
-runs on every push and trusted PR, testing five ASR models with your `DASHSCOPE_API_KEY` secret and `DASHSCOPE_WS_ENDPOINT` variable to exercise real ASR with synthetic spoken audio. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
+runs on every push, testing five ASR models with your `DASHSCOPE_API_KEY` secret and `DASHSCOPE_WS_ENDPOINT` variable to exercise real ASR with synthetic spoken audio. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 ## Raw device packet decoding (optional)
 
