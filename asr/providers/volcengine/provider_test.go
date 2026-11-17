@@ -376,7 +376,7 @@ func TestUnauthorizedHandshakePreservesSafeDiagnostics(t *testing.T) {
 	defer server.Close()
 
 	client, err := New(Config{
-		APIKey: secret,
+		APIKey:   secret,
 		Endpoint: "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v3/sauc/bigmodel_async",
 	})
 	if err != nil {
