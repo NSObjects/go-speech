@@ -98,3 +98,13 @@ free of system codec dependencies.
 The `amrnb.Framer` pure-Go utility also packages storage frames for the
 existing persistent FFmpeg decoder. See [docs/AUDIO.md](docs/AUDIO.md)
 for raw-packet vs Ogg vs RTP distinctions and setup.
+
+## Recommended Opus path: no decode/re-encode
+
+When the selected ASR model accepts Ogg Opus, forward existing Ogg Opus
+bytes directly. For device transport that sends **complete raw Opus packets**,
+the new pure-Go `opus.OggMuxer` produces a valid streaming Ogg Opus container:
+`Headers() → WritePacket(packet) → Close()`. It does not decode to PCM or use
+FFmpeg/CGo, and the original compressed Opus payload is unchanged.
+See [docs/AUDIO.md](docs/AUDIO.md) and the automatic paid integration tests
+for both Ogg passthrough and raw-packet repackaging.

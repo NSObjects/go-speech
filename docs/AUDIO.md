@@ -120,6 +120,66 @@ persistent `OpenStreamDecoder` for a continuous compressed stream. Never start
 one process per microphone packet. If the ASR model accepts the original
 compressed encoding, prefer direct passthrough without decoding.
 
+## Zero-transcode Opus: passthrough or pure-Go Ogg encapsulation
+
+Alibaba Cloud ASR accepts **Ogg Opus** input, not bare raw Opus packets.
+A decoded PCM intermediate is unnecessary when the target model supports
+Opus. Select the cheapest compatible representation:
+
+1. **Already Ogg Opus:** send the original continuous Ogg bytes as `audio.EncodingOpus` without changes.
+2. **Complete raw Opus packets:** use `opus.OggMuxer` to add Ogg pages,
+   keeping the original compressed packet bytes unchanged. The muxer does
+   not use CGo or FFmpeg.
+3. **Unsupported codec/model:** only then use the optional decoder to PCM.
+
+For one raw Opus capture session:
+
+```go
+// Imports: github.com/NSObjects/go-speech/asr,
+// github.com/NSObjects/go-speech/audio,
+// github.com/NSObjects/go-speech/audio/codec/opus.
+muxer, err := opus.NewOggMuxer(opus.OggConfig{
+    Channels: 1, InputSampleRate: 16000, PreSkip: encoderLookahead48k,
+})
+if err != nil { return err }
+
+// The session uses audio.Format{Encoding: audio.EncodingOpus,
+// SampleRate: 16000, Channels: 1} and a model supporting Ogg Opus.
+headers, err := muxer.Headers()
+if err != nil { return err }
+if err := session.Send(ctx, headers); err != nil { return err }
+for _, rawOpusPacket := range packets {
+    page, err := muxer.WritePacket(rawOpusPacket) // one *complete* packet
+    if err != nil { return err }
+    if err := session.Send(ctx, page); err != nil { return err }
+}
+eos, err := muxer.Close()
+if err != nil { return err }
+if err := session.Send(ctx, eos); err != nil { return err }
+return session.CloseSend(ctx)
+```
+
+The muxer generates both mandatory Ogg headers, uses random logical stream
+serials, page sequence numbers, RFC 6716 packet-duration parsing, granule
+positions measured at 48 kHz, and Ogg CRCs. Each packet yields one page
+with no extra packet buffering. `Close` generates the EOS page.
+
+**Encoder lookahead matters:** `PreSkip` is supplied by the encoding device,
+measured in 48kHz samples. It is not discoverable from the raw packet bytes
+alone. Using zero when unknown may expose a few samples of decoder priming;
+do not invent an encoder-specific value. For pre-encoded Ogg, preserve the
+original `OpusHead` and skip conversion entirely.
+
+Do not pass RTP headers, corrupted/lost/reordered packets, or Opus packet
+fragments to `WritePacket`. This is **not** an RTP depacketizer, packet-loss
+concealment engine, or jitter buffer. Each microphone conversation must use
+a new Ogg muxer. A raw packet plus an added Ogg header is not the same thing
+as encoding PCM again.
+
+Live CI tests both **Ogg Opus direct passthrough** and **raw Opus → pure-Go
+Ogg muxer → ASR**, with no Opus decoding. The separate FFmpeg/libopus
+to-PCM tests remain as compatibility fallbacks.
+
 ## Persistent compressed stream decoder
 
 The optional `audio/ffmpeg` package now also provides
