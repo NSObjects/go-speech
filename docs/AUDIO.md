@@ -115,11 +115,59 @@ The FFmpeg adapter uses stdin/stdout pipes, caps input and decoded output,
 observes context cancellation, and limits stderr. Callers should separately
 apply timeouts, concurrency limits and duration limits for untrusted input.
 
-**Realtime compressed audio:** this adapter is not a live streaming codec.
-Do not create a fresh FFmpeg subprocess for every microphone packet. A
-long-running decoder with preserved codec/container state is separate future
-work. If the ASR model already accepts the compressed encoding, prefer
-passthrough without decoding.
+**Complete-buffer Converter is not a streaming decoder.** Use the separate
+persistent `OpenStreamDecoder` for a continuous compressed stream. Never start
+one process per microphone packet. If the ASR model accepts the original
+compressed encoding, prefer direct passthrough without decoding.
+
+## Persistent compressed stream decoder
+
+The optional `audio/ffmpeg` package now also provides
+`ffmpeg.OpenStreamDecoder(ctx, StreamConfig)`. **One subprocess persists
+throughout the stream**; incoming byte fragments share codec and container
+state. Its input may be continuous **Ogg Opus**, Ogg Speex, AMR-NB, MP3,
+ADTS AAC, PCM16LE or WAV bytes. Output is raw PCM16LE in the requested
+sample rate and channel count. This is separate from the complete-buffer
+`audio.Convert` API.
+
+```go
+decoder, err := ffmpeg.OpenStreamDecoder(ctx, ffmpeg.StreamConfig{
+    Input: audio.Format{
+        Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1,
+    },
+    Output: audio.Format{
+        Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1,
+    },
+})
+if err != nil { return err }
+defer decoder.Close()
+
+// Two concurrent loops are required to avoid pipe deadlock:
+// A producer calls decoder.Write(ctx, contiguousOggBytes) for every chunk,
+// then decoder.CloseInput(). A consumer calls decoder.Read(ctx, buffer)
+// until io.EOF, forwarding returned PCM bytes.
+```
+
+The decoder supports a single concurrent writer and a single concurrent
+reader. `CloseInput` is idempotent and allows the decoder's buffered audio
+to flush; `Close` aborts and reaps the process. Canceling an I/O operation
+context ends the entire decoder session. Output read chunk boundaries
+are arbitrary: a Read may split a PCM sample.
+
+**Crucial format distinction:** A raw packet produced by a device using
+the Opus codec is *not* an Ogg container. This FFmpeg stream implementation
+accepts **Ogg Opus pages**, not bare Opus packets. Device packet formats
+require explicit encapsulation or a separate codec implementation.
+AMR-NB accepts its single `#!AMR` header followed by consecutive frames.
+Each stream must start with its own header, and the header must not be
+repeated for every chunk.
+
+FFmpeg demuxer buffering and codec lookahead can delay PCM availability,
+so a working persistent process is not automatically a low-latency
+production solution. Measure time-to-first-PCM and worst-case latency
+using real device audio. Prefer direct compressed passthrough if the
+selected ASR model accepts it, and consider a native in-process decoder
+for bare Opus/AMR frames or strict latency targets.
 
 ## Compressed audio and performance
 
@@ -129,8 +177,8 @@ passthrough without decoding.
   AMR. `ConvertPCM16` returns `audio.ErrUnsupportedConversion`; the opt-in
   `audio/ffmpeg` backend adds complete-buffer decoding only.
 - The FFmpeg executable is an external runtime dependency of the optional
-  adapter, not a Go module dependency. A per-chunk FFmpeg subprocess would
-  be inappropriate for low-latency streaming.
+  batch and persistent stream adapters, not a Go module dependency.
+  A separate subprocess *per packet* would be inappropriate.
 - Audio conversion is **explicit**. ASR `Stream.Send` transmits exactly the
   bytes supplied by the caller.
 - This package does not implement VAD or device audio playback.

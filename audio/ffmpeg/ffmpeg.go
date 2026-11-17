@@ -1,7 +1,8 @@
 // Package ffmpeg implements an optional, bounded *complete-buffer* audio
-// transcoder using an installed FFmpeg executable. No FFmpeg process is
-// started merely by importing this package. It does NOT implement realtime
-// per-chunk conversion; spawning FFmpeg once per packet is not appropriate.
+// transcoder and a persistent compressed audio stream decoder using an installed
+// FFmpeg executable. No FFmpeg process is started merely by importing this
+// package. The Converter performs one subprocess per complete audio buffer;
+// OpenStreamDecoder persists one subprocess across many audio chunks.
 package ffmpeg
 
 import (
