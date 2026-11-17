@@ -29,7 +29,8 @@ func TestWebSocketRoundTripAllModels(t *testing.T) {
         t.Run(m.name,func(t *testing.T){
             observed:=make(chan error,1)
             server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-                ws,err:=(websocket.Upgrader{}).Upgrade(w,r,nil)
+                upgrader:=websocket.Upgrader{}
+                ws,err:=upgrader.Upgrade(w,r,nil)
                 if err!=nil{observed<-err;return}
                 defer ws.Close()
                 if got:=r.Header.Get("Authorization");got!="Bearer test-token"{observed<-fmt.Errorf("bad auth header %q",got);return}
