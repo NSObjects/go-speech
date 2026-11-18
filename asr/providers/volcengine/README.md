@@ -231,3 +231,19 @@ without calling `Recv`, and canceling one active stream does not terminate
 another stream sharing the same Client. These are scoped resource-release
 regressions, **not** proof of a leak-free multi-hour production deployment.
 Real microphone recordings and embedded-device Ogg muxers remain unverified.
+
+### Ultra-short synthetic speech CI diagnostics
+
+The existing real `TestVolcengineLiveShortSpeech` still **fails** when the
+synthesized English "Hello." has no confirmed recognition or wrong text. In
+practice the same real service has sometimes returned `[]` despite
+previously recognizing `hello`. This is a **known unresolved short-speech
+quality risk**, not a proven Ogg/PCM SDK framing defect.
+
+The automatic workflow runs this *unchanged strict test* in its own
+`continue-on-error` diagnostic step and produces an explicit GitHub Actions
+warning / job summary when it fails. The separate protocol and long-duration
+cloud checks remain **gating**: they must pass in order for the workflow to
+succeed. A green workflow therefore **does not** claim that ultra-short speech
+is reliably recognized. Real recorded voice datasets are required for
+acoustic-quality acceptance before production deployment.
