@@ -27,8 +27,19 @@ The signed URL includes Tencent's `input_sample_rate=8000`; Tencent handles
 upsampling. **The SDK does not resample or convert the bytes.**
 
 `Config.HotwordID` optionally selects a Tencent-managed hotword table.
-Leave it empty to use the account default. Per-request `asr.Config.Hints`
-are still unsupported and will return a typed error rather than be ignored.
+Leave it empty to use the account default. Alternatively, callers can supply
+`asr.Config.Hints` for one recognition session: the SDK validates up to 128
+hotwords and signs Tencent's temporary `hotword_list` parameter, assigning
+moderate weight `5` to each item (e.g. `悟空|5,游戏|5`). Repeated hints are
+deduplicated in their original order. Tencent limits each hint to 30 characters
+(including no more than 10 Han characters), without whitespace, commas or
+pipe delimiters. Invalid hints return `speecherr.CodeInvalidArgument`
+**before** connecting.
+
+`HotwordID` and request `Hints` are intentionally mutually exclusive:
+Tencent would otherwise silently prefer the temporary list. Hints are
+per-stream; the client is not mutated and concurrent sessions stay isolated.
+No accuracy improvement is promised without comparing recognition results.
 The caller controls approximately real-time audio pacing (Tencent recommends
 200 ms chunks per 200 ms for the general realtime protocol and 40 ms chunks
 for the separate V2 sentence protocol). No device integration, SDK-managed
@@ -52,9 +63,10 @@ is discarded, preventing downstream callers from reverting committed text.
 The caller may send and receive concurrently. Explicit Close and context
 cancellation terminate the session; terminal errors remain stable.
 
-Per-request language and hints are currently unsupported rather than
-silently ignored: choose the engine in `Config`. The SDK does not
-implement non-streaming batch recognition via this adapter.
+Per-request `Language` is unsupported rather than silently ignored:
+choose the engine in `Config`. Per-request `Hints` use Tencent temporary
+hotwords, as documented above. The SDK does not implement non-streaming batch
+recognition via this adapter.
 
 ## Example
 
@@ -72,6 +84,7 @@ s, err := client.OpenStream(ctx, asr.Config{
         Encoding: audio.EncodingPCM16LE,
         SampleRate: 16000, Channels: 1,
     },
+    Hints: []string{"悟空", "游戏"}, // Optional: session-specific Tencent hotwords.
 })
 if err != nil { return err }
 defer s.Close()
@@ -91,6 +104,7 @@ Automatic billable Tencent cloud CI runs on every push using
 `TENCENT_SECRET_KEY` (secrets). It uses `espeak-ng` and `ffmpeg` to
 create short Mandarin PCM fixtures. Cloud gates cover:
 - a configured-engine smoke stream with finalized text and stable EOF;
+- per-request temporary hotwords accepted by Tencent Cloud;
 - three concurrent 16 kHz streams;
 - a sustained ~20-second 16 kHz session;
 - 8 kHz PCM sent unchanged to a 16 kHz engine with `input_sample_rate=8000`.
