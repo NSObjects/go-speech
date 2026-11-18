@@ -47,7 +47,7 @@ type Config struct {
 	// ReadIdleTimeout bounds a single Recv wait without a message.
 	// Zero (default) disables the SDK idle timeout; the caller's context still applies.
 	ReadIdleTimeout time.Duration
-	NeedVAD          bool
+	NeedVAD         bool
 	// HotwordID selects a Tencent-managed hotword table; empty uses the account default.
 	HotwordID string
 	// InputSampleRate=8000 explicitly accepts 8 kHz PCM for a 16 kHz engine.
