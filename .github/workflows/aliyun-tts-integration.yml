@@ -10,7 +10,7 @@ permissions:
 jobs:
   live-tts:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     env:
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       DASHSCOPE_WS_ENDPOINT: ${{ vars.DASHSCOPE_WS_ENDPOINT }}
@@ -30,5 +30,13 @@ jobs:
             wss://*/api-ws/v1/inference) ;;
             *) echo "DASHSCOPE_WS_ENDPOINT must be a secure DashScope WebSocket endpoint" >&2; exit 1 ;;
           esac
-      - name: Real CosyVoice streaming synthesis and EOF
-        run: go test -tags=integration -run '^TestAliyunLiveCosyVoice$' -count=1 -v -timeout 2m ./tts/providers/aliyun
+      - name: Verify ffprobe for actual MP3/WAV audio analysis
+        run: |
+          if ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get install -y ffmpeg || {
+              sudo apt-get update -qq
+              sudo apt-get install -y ffmpeg
+            }
+          fi
+      - name: Real CosyVoice streaming PCM, MP3/WAV and batch format checks
+        run: go test -tags=integration -run '^TestAliyunLiveCosyVoice(EncodedFormats)?$' -count=1 -v -timeout 4m ./tts/providers/aliyun
