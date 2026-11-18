@@ -26,14 +26,15 @@ type Stream struct {
 	once        sync.Once
 	writeMu     sync.Mutex
 	readMu      sync.Mutex
-	terminalMu  sync.Mutex // terminalErr can be set by Send, CloseSend, or Recv
 	sendClosed  bool
 	sentAudio   bool
 	finished    bool
 	terminalErr error // terminalMu
-	readIdleTimeout time.Duration // immutable after OpenStream handshake
 	finalSeen   map[int]struct{}
 	queue       []asr.Event // readMu; one server message may contain multiple sentences
+
+	terminalMu      sync.Mutex    // terminalErr can be set by Send, CloseSend, or Recv
+	readIdleTimeout time.Duration // immutable after OpenStream handshake
 }
 
 var _ asr.Stream = (*Stream)(nil)
