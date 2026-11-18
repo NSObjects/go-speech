@@ -344,7 +344,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			case 0:
 				s.queue = append(s.queue, asr.Event{Type: asr.EventSpeechStart})
 			case 1:
-				if r.Text != "" {
+				if _, finalized := s.finalSeen[r.Index]; !finalized && r.Text != "" {
 					s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: r.Text})
 				}
 			case 2:
@@ -362,7 +362,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			for _, sentence := range list.SentenceList {
 				switch sentence.Type {
 				case 0:
-					if sentence.Text != "" {
+					if _, finalized := s.finalSeen[sentence.ID]; !finalized && sentence.Text != "" {
 						s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: sentence.Text})
 					}
 				case 1:

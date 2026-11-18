@@ -16,7 +16,10 @@ jobs:
       TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
       TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
       TENCENT_ASR_MODEL: ${{ vars.TENCENT_ASR_MODEL }}
+      TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL }}
       TENCENT_TEST_PCM_FILE: /tmp/tencent-speech-test.pcm
+      TENCENT_TEST_16K_PCM_FILE: /tmp/tencent-speech-test-16k.pcm
+      TENCENT_TEST_8K_PCM_FILE: /tmp/tencent-speech-test-8k.pcm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -36,14 +39,31 @@ jobs:
               sudo apt-get install -y espeak-ng ffmpeg
             }
           fi
-      - name: Generate a realtime-paced mono PCM16LE fixture
+      - name: Generate mono PCM16LE fixtures for 16k, 8k and configured engine
         run: |
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/tencent-speech.wav"             "你好，今天天气很好。我们一起玩游戏。"
+          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/tencent-speech.wav" "你好，今天天气很好。我们一起玩游戏。"
+          ffmpeg -hide_banner -loglevel error -y -i "${RUNNER_TEMP}/tencent-speech.wav" -ac 1 -ar 16000 -c:a pcm_s16le -f s16le "$TENCENT_TEST_16K_PCM_FILE"
+          ffmpeg -hide_banner -loglevel error -y -i "${RUNNER_TEMP}/tencent-speech.wav" -ac 1 -ar 8000 -c:a pcm_s16le -f s16le "$TENCENT_TEST_8K_PCM_FILE"
           rate=16000
           if [[ "$TENCENT_ASR_MODEL" == 8k_* ]]; then
             rate=8000
           fi
-          ffmpeg -hide_banner -loglevel error -y             -i "${RUNNER_TEMP}/tencent-speech.wav" -ac 1 -ar "$rate"             -c:a pcm_s16le -f s16le "$TENCENT_TEST_PCM_FILE"
+          if [[ "$rate" == 8000 ]]; then
+            cp "$TENCENT_TEST_8K_PCM_FILE" "$TENCENT_TEST_PCM_FILE"
+          else
+            cp "$TENCENT_TEST_16K_PCM_FILE" "$TENCENT_TEST_PCM_FILE"
+          fi
+          test -s "$TENCENT_TEST_16K_PCM_FILE"
+          test -s "$TENCENT_TEST_8K_PCM_FILE"
           test -s "$TENCENT_TEST_PCM_FILE"
       - name: Real Tencent Cloud PCM streaming ASR and terminal EOF
-        run: go test -tags=integration -run '^TestTencentLivePCMASR$' -count=1 -v -timeout 2m ./asr/providers/tencent
+        run: go test -tags=integration -run TestTencentLivePCMASR -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud concurrent streaming sessions
+        run: go test -tags=integration -run TestTencentLiveConcurrentSessions -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud sustained PCM and stable EOF
+        run: go test -tags=integration -run TestTencentLiveSustainedPCM -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud 8k PCM input to 16k engine
+        run: go test -tags=integration -run TestTencentLiveEightKInputToSixteenKEngine -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud large-model 2.0 (opt-in; requires entitlement)
+        if: env.TENCENT_V2_ASR_MODEL != ''
+        run: go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent
