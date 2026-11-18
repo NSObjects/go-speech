@@ -85,9 +85,14 @@ func liveSession(ctx context.Context, engine string, rate, inputRate int, pcm []
 		}
 	}()
 
-	// One 100 ms frame for each 100 ms of audio, never a faster-than-realtime burst.
-	chunkSize := rate * 2 / 10
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// Tencent V2 documents 40 ms chunks; the traditional engine uses 100 ms.
+	// In both cases maintain 1:1 realtime upload pacing.
+	frameMS := 100
+	if strings.HasSuffix(engine, "_2.0") {
+		frameMS = 40
+	}
+	chunkSize := rate * 2 * frameMS / 1000
+	ticker := time.NewTicker(time.Duration(frameMS) * time.Millisecond)
 	defer ticker.Stop()
 	for offset := 0; offset < len(pcm); offset += chunkSize {
 		if offset > 0 {
