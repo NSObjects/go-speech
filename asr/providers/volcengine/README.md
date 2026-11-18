@@ -178,3 +178,13 @@ remain unset on this endpoint because language selection is not supported.
 The real cloud assertions require confirmed Chinese transcript content, not
 just a successful handshake. These machine-generated samples do **not** validate
 recorded children, accents, overlapping voices, or background noise.
+
+## Continuous-session regression
+
+The billable live workflow also streams four distinct Mandarin utterances over
+**one** WebSocket connection, separated by two-second silences, in both
+`ResultFull` and `ResultSingle` modes. The test verifies at least four
+confirmed sentence events, keyword order, no cumulative duplicates, and stable
+end-of-stream behavior. An offline test replays 32 cumulative transcript
+snapshots to stress deduplication. This is a multi-utterance integration test,
+not a multi-hour soak test, concurrency benchmark or children's voice sample.
