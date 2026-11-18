@@ -38,7 +38,7 @@ func testClient(t *testing.T, handler func(*websocket.Conn, *http.Request)) *Cli
 	client, err := New(Config{
 		AppID: "1250000000", SecretID: "secret-id", SecretKey: "secret-key",
 		Endpoint: "ws" + strings.TrimPrefix(server.URL, "http"),
-		NeedVAD: true,
+		NeedVAD:  true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestTencentValidationAndAudioCapabilities(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		engine string
-		rate int
+		rate   int
 	}{
 		{"16k_zh", 16000}, {"16k_zh_en_2.0", 16000}, {"8k_zh", 8000},
 	} {
@@ -292,9 +292,9 @@ func TestTencentValidationAndAudioCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		name string
-		config asr.Config
-		want speecherr.Code
+		name     string
+		config   asr.Config
+		want     speecherr.Code
 		sentinel error
 	}{
 		{"invalid audio", asr.Config{Format: audio.Format{

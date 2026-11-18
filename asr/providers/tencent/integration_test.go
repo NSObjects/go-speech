@@ -53,8 +53,8 @@ func TestTencentLivePCMASR(t *testing.T) {
 	defer s.Close()
 	type received struct {
 		partials int
-		finals []string
-		err error
+		finals   []string
+		err      error
 	}
 	result := make(chan received, 1)
 	go func() {
@@ -93,7 +93,7 @@ func TestTencentLivePCMASR(t *testing.T) {
 		select {
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
-		case <-time.After(100*time.Millisecond):
+		case <-time.After(100 * time.Millisecond):
 		}
 	}
 	if err := s.CloseSend(ctx); err != nil {

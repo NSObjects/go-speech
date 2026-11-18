@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	DefaultEndpoint    = "wss://asr.cloud.tencent.com"
-	DefaultEngineModel = "16k_zh"
+	DefaultEndpoint     = "wss://asr.cloud.tencent.com"
+	DefaultEngineModel  = "16k_zh"
 	defaultStartTimeout = 15 * time.Second
 	defaultWriteTimeout = 10 * time.Second
 )
@@ -59,7 +59,7 @@ func New(cfg Config) (*Client, error) {
 	if cfg.EngineModel == "" {
 		cfg.EngineModel = DefaultEngineModel
 	}
-	if strings.TrimSpace(cfg.EngineModel) != cfg.EngineModel || strings.ContainsAny(cfg.EngineModel, "&?=/# \\t\\r\\n") {
+	if strings.TrimSpace(cfg.EngineModel) != cfg.EngineModel || strings.ContainsAny(cfg.EngineModel, "&?=/# \t\r\n") {
 		return nil, argumentError("invalid EngineModel")
 	}
 	if cfg.Endpoint == "" {
@@ -103,9 +103,9 @@ func SupportedAudio(engine string) audio.Capability {
 		rate = 8000
 	}
 	return audio.Capability{
-		Encodings: []audio.Encoding{audio.EncodingPCM16LE},
+		Encodings:   []audio.Encoding{audio.EncodingPCM16LE},
 		SampleRates: []int{rate},
-		Channels: []int{1},
+		Channels:    []int{1},
 	}
 }
 
@@ -235,7 +235,7 @@ func connectError(err error, resp *http.Response) error {
 	}
 	return &speecherr.Error{
 		Code: code, Provider: "tencent", Operation: "connect",
-		Err: errors.New(message),
+		Err:       errors.New(message),
 		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeTimeout || code == speecherr.CodeRateLimited,
 	}
 }

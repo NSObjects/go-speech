@@ -190,11 +190,11 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 }
 
 type response struct {
-	Code      int     `json:"code"`
-	Message   string  `json:"message"`
-	VoiceID   string  `json:"voice_id"`
-	Final     int     `json:"final"`
-	Result    *segment `json:"result"`
+	Code    int      `json:"code"`
+	Message string   `json:"message"`
+	VoiceID string   `json:"voice_id"`
+	Final   int      `json:"final"`
+	Result  *segment `json:"result"`
 }
 type segment struct {
 	SliceType int    `json:"slice_type"`
@@ -238,7 +238,7 @@ func remoteError(r response) error {
 	return &speecherr.Error{
 		Code: code, Provider: "tencent", Operation: "recognize",
 		RemoteCode: strconv.Itoa(r.Code),
-		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout,
+		Retryable:  code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout,
 		// Tencent's text is not treated as a stable SDK contract.
 		Err: fmt.Errorf("Tencent ASR error %d: %s", r.Code, r.Message),
 	}
