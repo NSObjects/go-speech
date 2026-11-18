@@ -89,7 +89,7 @@ func TestCosyVoiceRecvDeadlineRetainsOriginalCause(t *testing.T) {
 		if !closed {
 			t.Fatal("peer did not close after deadline")
 		}
-	case <-time.After(2*time.Second):
+	case <-time.After(2 * time.Second):
 		t.Fatal("peer blocked after stream deadline")
 	}
 }
@@ -129,7 +129,7 @@ func TestCosyVoiceExplicitCloseWithoutRecvReleasesPeer(t *testing.T) {
 		if !closed {
 			t.Fatal("peer not released by Close")
 		}
-	case <-time.After(2*time.Second):
+	case <-time.After(2 * time.Second):
 		t.Fatal("peer still blocked after Close")
 	}
 }

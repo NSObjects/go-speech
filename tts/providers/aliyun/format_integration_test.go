@@ -37,18 +37,18 @@ func TestAliyunLiveCosyVoiceEncodedFormats(t *testing.T) {
 		voice = "longanyang"
 	}
 	client, err := New(Config{
-		APIKey: os.Getenv("DASHSCOPE_API_KEY"),
+		APIKey:   os.Getenv("DASHSCOPE_API_KEY"),
 		Endpoint: os.Getenv("DASHSCOPE_WS_ENDPOINT"),
-		Model: model,
+		Model:    model,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		name string
+		name   string
 		format audio.Format
-		codec string
-		batch bool
+		codec  string
+		batch  bool
 	}{
 		{"mp3-stream", audio.Format{Encoding: audio.EncodingMP3, SampleRate: 22050, Channels: 1}, "mp3", false},
 		{"wav-stream", audio.Format{Encoding: audio.EncodingWAV, SampleRate: 22050, Channels: 1}, "pcm_s16le", false},
@@ -58,8 +58,8 @@ func TestAliyunLiveCosyVoiceEncodedFormats(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 			defer cancel()
 			req := tts.Request{
-				Text: "今天天气很好，我们一起学习。",
-				Voice: voice,
+				Text:   "今天天气很好，我们一起学习。",
+				Voice:  voice,
 				Format: tc.format,
 			}
 			var data []byte
