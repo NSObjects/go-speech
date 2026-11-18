@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -64,8 +65,19 @@ func verifySignature(r *http.Request, secret string) bool {
 		return false
 	}
 	q.Del("signature")
+	// Tencent's HMAC input is sorted key=value pairs with the original
+	// decoded values, rather than the percent-encoded network query.
+	keys := make([]string, 0, len(q))
+	for key := range q {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		pairs = append(pairs, key+"="+q.Get(key))
+	}
 	mac := hmac.New(sha1.New, []byte(secret))
-	_, _ = mac.Write([]byte(r.Host + r.URL.Path + "?" + q.Encode()))
+	_, _ = mac.Write([]byte(r.Host + r.URL.Path + "?" + strings.Join(pairs, "&")))
 	want := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 	return hmac.Equal([]byte(signature), []byte(want))
 }
