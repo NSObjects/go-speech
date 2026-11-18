@@ -1,0 +1,49 @@
+name: Tencent Cloud ASR Integration (automatic, paid)
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-asr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TENCENT_APP_ID: ${{ vars.TENCENT_APP_ID }}
+      TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+      TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+      TENCENT_ASR_MODEL: ${{ vars.TENCENT_ASR_MODEL }}
+      TENCENT_TEST_PCM_FILE: /tmp/tencent-speech-test.pcm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify Tencent Cloud ASR credentials
+        run: |
+          test -n "$TENCENT_APP_ID" || { echo "TENCENT_APP_ID repository variable is required" >&2; exit 1; }
+          test -n "$TENCENT_SECRET_ID" || { echo "TENCENT_SECRET_ID repository secret is required" >&2; exit 1; }
+          test -n "$TENCENT_SECRET_KEY" || { echo "TENCENT_SECRET_KEY repository secret is required" >&2; exit 1; }
+      - name: Install Mandarin speech fixture tools
+        run: |
+          if ! command -v espeak-ng >/dev/null 2>&1 || ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get install -y espeak-ng ffmpeg || {
+              sudo apt-get update -qq
+              sudo apt-get install -y espeak-ng ffmpeg
+            }
+          fi
+      - name: Generate a realtime-paced mono PCM16LE fixture
+        run: |
+          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/tencent-speech.wav"             "你好，今天天气很好。我们一起玩游戏。"
+          rate=16000
+          if [[ "$TENCENT_ASR_MODEL" == 8k_* ]]; then
+            rate=8000
+          fi
+          ffmpeg -hide_banner -loglevel error -y             -i "${RUNNER_TEMP}/tencent-speech.wav" -ac 1 -ar "$rate"             -c:a pcm_s16le -f s16le "$TENCENT_TEST_PCM_FILE"
+          test -s "$TENCENT_TEST_PCM_FILE"
+      - name: Real Tencent Cloud PCM streaming ASR and terminal EOF
+        run: go test -tags=integration -run '^TestTencentLivePCMASR$' -count=1 -v -timeout 2m ./asr/providers/tencent
