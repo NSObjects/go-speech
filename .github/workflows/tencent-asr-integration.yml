@@ -58,6 +58,8 @@ jobs:
           test -s "$TENCENT_TEST_PCM_FILE"
       - name: Real Tencent Cloud PCM streaming ASR and terminal EOF
         run: go test -tags=integration -run TestTencentLivePCMASR -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud per-request hotword hints
+        run: go test -tags=integration -run TestTencentLiveRequestHints -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud concurrent streaming sessions
         run: go test -tags=integration -run TestTencentLiveConcurrentSessions -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud sustained PCM and stable EOF

@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -140,8 +141,12 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	if req.Language != "" {
 		return nil, unsupportedError("language is selected by EngineModel; per-request Language is not supported")
 	}
-	if len(req.Hints) > 0 {
-		return nil, unsupportedError("per-request Hints are not yet supported")
+	if len(req.Hints) > 0 && c.cfg.HotwordID != "" {
+		return nil, requestError("Hints and HotwordID cannot be used together")
+	}
+	hotwords, err := encodeHints(req.Hints)
+	if err != nil {
+		return nil, err
 	}
 	voiceID, err := requestID()
 	if err != nil {
@@ -152,7 +157,7 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "nonce", Err: err}
 	}
 	nonce := 1 + binary.BigEndian.Uint32(entropy[:])%999999999
-	target := c.signedURL(time.Now(), nonce, voiceID)
+	target := c.signedURLWithHints(time.Now(), nonce, voiceID, hotwords)
 	dialer := *websocket.DefaultDialer
 	if c.cfg.Dialer != nil {
 		dialer = *c.cfg.Dialer
@@ -180,9 +185,14 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 }
 
 // signedURL signs the host + request path + lexically sorted query exactly as
-// required by the Tencent ASR V2 WebSocket protocol. Never log this URL: the
-// signature and SecretID are credentials.
+// required by Tencent. The HMAC input contains UNESCAPED query values (including
+// Chinese hotwords), while the actual request URL percent-encodes those values.
+// Never log the signed URL: it contains SecretID, hotwords and signature.
 func (c *Client) signedURL(now time.Time, nonce uint32, voiceID string) string {
+	return c.signedURLWithHints(now, nonce, voiceID, "")
+}
+
+func (c *Client) signedURLWithHints(now time.Time, nonce uint32, voiceID, hotwords string) string {
 	u, _ := url.Parse(c.cfg.Endpoint) // validated by New
 	u.Path = "/asr/v2/" + c.cfg.AppID
 	params := url.Values{}
@@ -201,6 +211,9 @@ func (c *Client) signedURL(now time.Time, nonce uint32, voiceID string) string {
 	if c.cfg.HotwordID != "" {
 		params.Set("hotword_id", c.cfg.HotwordID)
 	}
+	if hotwords != "" {
+		params.Set("hotword_list", hotwords)
+	}
 	if c.cfg.InputSampleRate != 0 {
 		params.Set("input_sample_rate", strconv.Itoa(c.cfg.InputSampleRate))
 	}
@@ -209,13 +222,28 @@ func (c *Client) signedURL(now time.Time, nonce uint32, voiceID string) string {
 	} else {
 		params.Set("needvad", "0")
 	}
-	// URL query encoding is deterministic and sorts keys by key name.
-	query := params.Encode()
+	// Tencent signs raw parameter values; url.Values.Encode is only for
+	// transmission. Signing the encoded UTF-8 bytes rejects Chinese hotwords.
 	mac := hmac.New(sha1.New, []byte(c.cfg.SecretKey))
-	_, _ = mac.Write([]byte(u.Host + u.Path + "?" + query))
+	_, _ = mac.Write([]byte(u.Host + u.Path + "?" + signatureQuery(params)))
 	params.Set("signature", base64.StdEncoding.EncodeToString(mac.Sum(nil)))
 	u.RawQuery = params.Encode()
 	return u.String()
+}
+
+// signatureQuery implements Tencent's sorted, unescaped key=value canonical
+// string. All of the provider's query parameters are single-valued.
+func signatureQuery(params url.Values) string {
+	keys := make([]string, 0, len(params))
+	for key := range params {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key+"="+params.Get(key))
+	}
+	return strings.Join(parts, "&")
 }
 
 func requestID() (string, error) {
@@ -230,6 +258,9 @@ func requestID() (string, error) {
 
 func argumentError(message string) error {
 	return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "tencent", Operation: "configure", Err: errors.New(message)}
+}
+func requestError(message string) error {
+	return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "tencent", Operation: "start", Err: errors.New(message)}
 }
 func unsupportedError(message string) error {
 	return &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "start", Err: errors.New(message)}

@@ -36,6 +36,10 @@ func livePCMFixture(t *testing.T, envName string) []byte {
 }
 
 func liveSession(ctx context.Context, engine string, rate, inputRate int, pcm []byte) (liveResult, error) {
+	return liveSessionWithHints(ctx, engine, rate, inputRate, pcm, nil)
+}
+
+func liveSessionWithHints(ctx context.Context, engine string, rate, inputRate int, pcm []byte, hints []string) (liveResult, error) {
 	var empty liveResult
 	client, err := New(Config{
 		AppID:           os.Getenv("TENCENT_APP_ID"),
@@ -48,9 +52,12 @@ func liveSession(ctx context.Context, engine string, rate, inputRate int, pcm []
 	if err != nil {
 		return empty, err
 	}
-	stream, err := client.OpenStream(ctx, asr.Config{Format: audio.Format{
-		Encoding: audio.EncodingPCM16LE, SampleRate: rate, Channels: 1,
-	}})
+	stream, err := client.OpenStream(ctx, asr.Config{
+		Format: audio.Format{
+			Encoding: audio.EncodingPCM16LE, SampleRate: rate, Channels: 1,
+		},
+		Hints: hints,
+	})
 	if err != nil {
 		return empty, fmt.Errorf("Tencent model %s handshake: %w", engine, err)
 	}
@@ -213,4 +220,17 @@ func TestTencentLiveLargeModelV2(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("Tencent large model 2.0 %s partials=%d finals=%d", model, out.partials, len(out.finals))
+}
+
+// Tencent must accept the signed temporary hotword_list during a real PCM
+// session. This checks interoperability, not recognition accuracy.
+func TestTencentLiveRequestHints(t *testing.T) {
+	pcm := livePCMFixture(t, "TENCENT_TEST_16K_PCM_FILE")
+	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
+	defer cancel()
+	out, err := liveSessionWithHints(ctx, DefaultEngineModel, 16000, 0, pcm, []string{"天气", "游戏"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Tencent request hints partials=%d finals=%d", out.partials, len(out.finals))
 }
