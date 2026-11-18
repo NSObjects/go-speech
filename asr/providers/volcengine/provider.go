@@ -197,12 +197,31 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 	return stream, nil
 }
 
+// SupportedAudio reports the accepted input formats for the optimized
+// bigmodel_async streaming endpoint. These are transport capabilities: Opus
+// requires Ogg encapsulation and audio bytes are never transcoded implicitly.
+func SupportedAudio() audio.Capability {
+	return audio.Capability{
+		Encodings: []audio.Encoding{
+			audio.EncodingPCM16LE,
+			audio.EncodingWAV,
+			audio.EncodingMP3,
+			audio.EncodingOpus,
+		},
+		SampleRates: []int{16000},
+		Channels:    []int{1, 2},
+	}
+}
+
 func modelAudio(f audio.Format) (format, codec string, err error) {
 	if err := f.Validate(); err != nil {
 		return "", "", &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "volcengine", Operation: "start", Err: err}
 	}
-	if f.SampleRate != 16000 || (f.Channels != 1 && f.Channels != 2) {
-		return "", "", unsupportedError("optimized ASR requires 16kHz mono/stereo input")
+	if err := SupportedAudio().Validate(f); err != nil {
+		return "", "", &speecherr.Error{
+			Code: speecherr.CodeUnsupported, Provider: "volcengine",
+			Operation: "start", Err: err,
+		}
 	}
 	switch f.Encoding {
 	case audio.EncodingPCM16LE:

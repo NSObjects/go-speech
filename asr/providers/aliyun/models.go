@@ -51,7 +51,7 @@ func (c Config) parameters(cfg asr.Config, format string) (map[string]any, error
 		return nil, err
 	}
 	if err := capability.Validate(cfg.Format); err != nil {
-		return nil, unsupported(err.Error())
+		return nil, unsupportedAudio(err)
 	}
 	sampleRate := cfg.Format.SampleRate
 	if c.MaxSentenceSilenceMs != 0 && (c.MaxSentenceSilenceMs < 200 || c.MaxSentenceSilenceMs > 6000) {
@@ -131,4 +131,13 @@ func (c Config) parameters(cfg asr.Config, format string) (map[string]any, error
 }
 func unsupported(msg string) error {
 	return &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "aliyun", Operation: "configure", Err: errors.New(msg)}
+}
+
+// unsupportedAudio preserves the shared audio.ErrUnsupportedFormat sentinel,
+// allowing callers to distinguish format incompatibility from other features.
+func unsupportedAudio(err error) error {
+	return &speecherr.Error{
+		Code: speecherr.CodeUnsupported, Provider: "aliyun",
+		Operation: "start", Err: err,
+	}
 }

@@ -72,3 +72,21 @@ provider implementation. Both implement the same `asr.StreamRecognizer`
 contract, but have separate WebSocket framing and credentials. Continue by
 running live cloud integration and adding cross-provider contract tests.
 Do not introduce implicit audio conversion into `Stream.Send`.
+
+## ASR audio capability and error contract
+
+Audio format metadata must match the actual bytes; the ASR provider will
+**not** resample or transcode. Callers may query `aliyun.SupportedAudio(model)`
+and `volcengine.SupportedAudio()` before opening a session, then call
+`audio.Capability.Validate(format)` to check a chosen format.
+
+- Invalid metadata (missing encoding, nonpositive sample rate or channel
+  count) returns `speecherr.CodeInvalidArgument` and preserves
+  `audio.ErrInvalidFormat` through `errors.Is`.
+- Structurally valid but unsupported encoding, rate or channel count returns
+  `speecherr.CodeUnsupported` and preserves `audio.ErrUnsupportedFormat`
+  through `errors.Is`. Unsupported **provider features** such as explicit
+  language selection may also return `CodeUnsupported`, but must not
+  masquerade as an unsupported audio format.
+- Credentials, networking, vendor event decoding, and streaming lifecycle
+  still use the existing `speecherr.Error` and `asr.Stream` contracts.
