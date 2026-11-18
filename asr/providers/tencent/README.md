@@ -79,6 +79,33 @@ choose the engine in `Config`. Per-request `Hints` use Tencent temporary
 hotwords, as documented above. The SDK does not implement non-streaming batch
 recognition via this adapter.
 
+## Reconnection and duplicate-result safety
+
+A Tencent WebSocket session cannot be resumed. **After any disconnection,
+including a retryable one, discard the old stream and call `OpenStream` again.**
+This generates fresh `voice_id`, nonce and signature for the replacement.
+The SDK deliberately does **not** replay previously sent audio, because a
+successful local WebSocket write does not prove which PCM bytes Tencent
+processed before the connection broke.
+
+The caller owns the recording buffer and transcript lifecycle:
+- Treat `EventPartial` as provisional UI text; commit `EventFinal` once.
+- Preserve committed text across a reconnect, but do not automatically
+  re-submit the corresponding PCM. Only send audio chosen explicitly for the
+  **new** session.
+- If replaying an unconfirmed audio tail is necessary, the application must
+  choose the overlap boundary and deduplicate any resulting transcript. The
+  SDK cannot guarantee exactly-once delivery across broken WebSockets.
+- `speecherr.Error.Retryable` permits considering a new connection; it is
+  **not** authorization to resend the original audio or billable request.
+  Tencent remote error `4004` (quota exhausted) is reported as
+  `CodeRateLimited` with `Retryable=false`. Error `4006` (concurrency
+  limit) is transient and remains retryable; both retain their `RemoteCode`.
+
+Tencent recommends pacing PCM input at approximately real-time speed.
+The SDK leaves pacing and capture-buffer management with the caller.
+Long sessions should keep VAD enabled so Tencent can delimit utterances.
+
 ## Example
 
 ```go
@@ -120,6 +147,7 @@ create short Mandarin PCM fixtures. Cloud gates cover:
 - per-request temporary hotwords accepted by Tencent Cloud;
 - three concurrent 16 kHz streams;
 - a sustained ~20-second 16 kHz session;
+- a minute-plus 16 kHz stream to check long-running PCM delivery and stable EOF;
 - 8 kHz PCM sent unchanged to a 16 kHz engine with `input_sample_rate=8000`.
 
 Large-model 2.0 requires a separate billing entitlement. Set the optional
