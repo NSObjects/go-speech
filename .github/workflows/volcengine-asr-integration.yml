@@ -20,6 +20,7 @@ jobs:
       VOLCENGINE_MANDARIN_PCM_FILE: /tmp/volcengine-mandarin.pcm
       VOLCENGINE_MANDARIN_SHORT_PCM_FILE: /tmp/volcengine-mandarin-short.pcm
       VOLCENGINE_CONTINUOUS_PCM_FILE: /tmp/volcengine-continuous.pcm
+      VOLCENGINE_MINUTE_PCM_FILE: /tmp/volcengine-minute.pcm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -103,5 +104,25 @@ jobs:
             "${RUNNER_TEMP}/turn4.pcm" "${RUNNER_TEMP}/tail.pcm" \
             > "$VOLCENGINE_CONTINUOUS_PCM_FILE"
           test -s "$VOLCENGINE_CONTINUOUS_PCM_FILE"
-      - name: Test real streaming ASR (English, Mandarin, short speech, silence, continuous)
-        run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveShortSpeech|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin)$' -count=1 -v -timeout 5m ./asr/providers/volcengine
+      - name: Generate minute-long continuous Mandarin fixture
+        run: |
+          # Twelve whole phrases on a single stream, 4s apart. Keep fixture
+          # construction out of the SDK; no implicit audio transcoding.
+          head -c 128000 /dev/zero > "${RUNNER_TEMP}/minute-gap.pcm"
+          (
+            for n in $(seq 1 12); do
+              if [ $((n % 2)) -eq 1 ]; then
+                cat "${RUNNER_TEMP}/turn1.pcm"
+              else
+                cat "${RUNNER_TEMP}/turn2.pcm"
+              fi
+              if [ "$n" -lt 12 ]; then
+                cat "${RUNNER_TEMP}/minute-gap.pcm"
+              else
+                cat "${RUNNER_TEMP}/tail.pcm"
+              fi
+            done
+          ) > "$VOLCENGINE_MINUTE_PCM_FILE"
+          test "$(stat -c %s "$VOLCENGINE_MINUTE_PCM_FILE")" -ge 1920000
+      - name: Test real streaming ASR (short, Mandarin, continuous, minute session)
+        run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveShortSpeech|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin|TestVolcengineLiveMinuteSession)$' -count=1 -v -timeout 7m ./asr/providers/volcengine
