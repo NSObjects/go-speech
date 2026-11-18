@@ -214,3 +214,20 @@ independent sessions** on one shared Client, checking unique request IDs,
 per-session final transcript isolation and terminal EOF under `go test -race`.
 Neither test is a multi-hour soak nor a real-provider 32-connection load test,
 and neither validates recorded children's speech.
+
+## Real Ogg Opus transport and session teardown
+
+The paid Volcengine CI also verifies a **real** Ogg Opus session, encoding
+a deterministic Mandarin PCM fixture with FFmpeg's `libopus`. The test sends
+complete Ogg pages of one uninterrupted logical stream, paced using the
+48 kHz Opus granule-position timeline. The ASR request explicitly sets
+`Format{Encoding: audio.EncodingOpus, SampleRate: 16000, Channels: 1}`,
+which maps to `audio.format="ogg"` and `audio.codec="opus"`; the SDK does not
+implicitly encode, decode, remux, or adjust the audio. Real Seed-ASR 2.0 must
+produce a confirmed Chinese transcript containing "天气" and clean EOF.
+
+The offline race suite also checks that `Close` releases a connection even
+without calling `Recv`, and canceling one active stream does not terminate
+another stream sharing the same Client. These are scoped resource-release
+regressions, **not** proof of a leak-free multi-hour production deployment.
+Real microphone recordings and embedded-device Ogg muxers remain unverified.

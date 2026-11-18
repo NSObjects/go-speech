@@ -21,6 +21,7 @@ jobs:
       VOLCENGINE_MANDARIN_SHORT_PCM_FILE: /tmp/volcengine-mandarin-short.pcm
       VOLCENGINE_CONTINUOUS_PCM_FILE: /tmp/volcengine-continuous.pcm
       VOLCENGINE_MINUTE_PCM_FILE: /tmp/volcengine-minute.pcm
+      VOLCENGINE_OGG_OPUS_FILE: /tmp/volcengine-ogg-opus.ogg
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -124,5 +125,17 @@ jobs:
             done
           ) > "$VOLCENGINE_MINUTE_PCM_FILE"
           test "$(stat -c %s "$VOLCENGINE_MINUTE_PCM_FILE")" -ge 1920000
-      - name: Test real streaming ASR (short, Mandarin, continuous, minute session)
-        run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveShortSpeech|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin|TestVolcengineLiveMinuteSession)$' -count=1 -v -timeout 7m ./asr/providers/volcengine
+      - name: Generate genuine Ogg Opus fixture from Mandarin PCM
+        run: |
+          # The official optimized ASR API requires format=ogg, codec=opus.
+          # A complete continuous Ogg stream is NOT the same as raw Opus packets.
+          ffmpeg -hide_banner -loglevel error -y -f s16le -ar 16000 -ac 1 \
+            -i "$VOLCENGINE_MANDARIN_PCM_FILE" -c:a libopus \
+            -application voip -b:a 24000 -ar 16000 -ac 1 \
+            -frame_duration 20 -page_duration 200000 -f ogg \
+            "$VOLCENGINE_OGG_OPUS_FILE"
+          test -s "$VOLCENGINE_OGG_OPUS_FILE"
+          ffprobe -v error -show_entries stream=codec_name \
+            -of default=noprint_wrappers=1 "$VOLCENGINE_OGG_OPUS_FILE" | grep -q 'codec_name=opus'
+      - name: Test real streaming ASR (PCM, Mandarin, minute session, Ogg Opus)
+        run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveShortSpeech|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin|TestVolcengineLiveMinuteSession|TestVolcengineLiveOggOpus)$' -count=1 -v -timeout 7m ./asr/providers/volcengine
