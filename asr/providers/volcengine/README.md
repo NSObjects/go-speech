@@ -176,5 +176,28 @@ and the sentence "今天天气很好". These are recognized in real time through
 Seed-ASR 2.0 using its default language handling: `asr.Config.Language` must
 remain unset on this endpoint because language selection is not supported.
 The real cloud assertions require confirmed Chinese transcript content, not
-just a successful handshake. These machine-generated samples do **not** validate
+just a successful handshake. The longer Mandarin sentence must match the
+expected "天气" keyword in both response modes. The ultra-short synthetic
+"你好" sample is a **transport smoke test only**: it must produce a confirmed
+Chinese result, but a mismatch is logged as a quality diagnostic rather than
+failing the entire SDK CI. Seed-ASR 2.0 has actually returned "离" for this
+synthetic sample in an otherwise healthy run, while previous runs returned
+"你好". This variability is an unresolved short-speech accuracy concern,
+not a claimed fix. These machine-generated samples do **not** validate
 recorded children, accents, overlapping voices, or background noise.
+
+## Continuous-session regression
+
+The billable live workflow streams four Mandarin utterances over **one**
+WebSocket, separated by two-second silences, in both `ResultFull` and
+`ResultSingle` modes. The test repeats two complete phrases ("今天天气很好" and "我们一起玩游戏")
+on alternating turns, verifying that a new utterance is **not** mistaken for
+an old cumulative snapshot. It checks four confirmed sentence events, correct
+order and counts, and stable EOF. An offline test replays 32 cumulative
+snapshots. Earlier exploratory runs of short synthetic utterances in a
+continuous session had recognition failures: "明天见" was heard as "民间片",
+and later "你好" was not confirmed at the start while the last "你好" became
+"李敖" in both response modes. These are real **unresolved ASR/fixture
+quality observations**; neither the adapter nor the test can guarantee
+the accuracy of very short utterances within a continuous conversation.
+This test is not a multi-hour soak test or a children's-voice benchmark.
