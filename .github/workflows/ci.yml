@@ -27,7 +27,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Compile live integration tests (without credentials)
-        run: go test -tags=integration -run TestNonexistentCompileOnly ./asr/providers/volcengine
+        run: go test -tags=integration -run TestNonexistentCompileOnly ./asr/providers/volcengine ./asr/providers/tencent
       - name: Ensure FFmpeg is available for audio integration tests
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
