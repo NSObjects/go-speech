@@ -86,13 +86,13 @@ func loopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// SupportedAudio describes the initially implemented CosyVoice WebSocket
-// output formats. Opus output is intentionally not advertised until its
-// container/chunk semantics have a real-cloud regression.
+// SupportedAudio describes CosyVoice WebSocket output formats. EncodingOpus
+// denotes Ogg-encapsulated Opus, never raw codec packets. Audio is delivered
+// unchanged; transport chunks need not align with Ogg page boundaries.
 func SupportedAudio() audio.Capability {
 	return audio.Capability{
 		Encodings: []audio.Encoding{
-			audio.EncodingPCM16LE, audio.EncodingWAV, audio.EncodingMP3,
+			audio.EncodingPCM16LE, audio.EncodingWAV, audio.EncodingMP3, audio.EncodingOpus,
 		},
 		SampleRates: []int{8000, 16000, 22050, 24000, 44100, 48000},
 		Channels:    []int{1},
@@ -125,6 +125,8 @@ func validateRequest(req tts.Request) (tts.Request, string, error) {
 		return req, "wav", nil
 	case audio.EncodingMP3:
 		return req, "mp3", nil
+	case audio.EncodingOpus:
+		return req, "opus", nil
 	default:
 		return req, "", unsupported("unsupported audio encoding")
 	}
