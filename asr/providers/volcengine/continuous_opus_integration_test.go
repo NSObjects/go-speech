@@ -56,9 +56,9 @@ func TestVolcengineLiveContinuousOggOpus(t *testing.T) {
 			defer cancel()
 			stream, err := client.OpenStream(ctx, asr.Config{
 				Format: audio.Format{
-					Encoding: audio.EncodingOpus,
+					Encoding:   audio.EncodingOpus,
 					SampleRate: 16000,
-					Channels: 1,
+					Channels:   1,
 				},
 			})
 			if err != nil {
