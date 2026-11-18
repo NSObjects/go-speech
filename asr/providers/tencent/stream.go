@@ -26,10 +26,12 @@ type Stream struct {
 	once        sync.Once
 	writeMu     sync.Mutex
 	readMu      sync.Mutex
+	terminalMu  sync.Mutex // terminalErr can be set by Send, CloseSend, or Recv
 	sendClosed  bool
 	sentAudio   bool
 	finished    bool
-	terminalErr error
+	terminalErr error // terminalMu
+	readIdleTimeout time.Duration // immutable after OpenStream handshake
 	finalSeen   map[int]struct{}
 	queue       []asr.Event // readMu; one server message may contain multiple sentences
 }
@@ -78,12 +80,24 @@ func (s *Stream) closeError(ctx context.Context) error {
 	}
 	return asr.ErrStreamClosed
 }
+func (s *Stream) terminalFailure() error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	return s.terminalErr
+}
+
+// fail records the first terminal error before closing the socket, so a
+// concurrent Recv observes the original Send/CloseSend failure, not an
+// incidental "connection closed" caused by cleanup.
 func (s *Stream) fail(err error) error {
+	s.terminalMu.Lock()
 	if s.terminalErr == nil {
 		s.terminalErr = err
 	}
+	first := s.terminalErr
+	s.terminalMu.Unlock()
 	_ = s.Close()
-	return s.terminalErr
+	return first
 }
 func (s *Stream) transportError(ctx context.Context, operation string, err error) error {
 	if e := ctx.Err(); e != nil {
@@ -153,9 +167,7 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 		return argumentError("PCM16LE audio must contain complete 16-bit samples")
 	}
 	if err := s.write(ctx, websocket.BinaryMessage, data); err != nil {
-		result := s.transportError(ctx, "send", err)
-		_ = s.Close()
-		return result
+		return s.fail(s.transportError(ctx, "send", err))
 	}
 	s.sentAudio = true
 	return nil
@@ -182,9 +194,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return argumentError("cannot close empty audio input")
 	}
 	if err := s.write(ctx, websocket.TextMessage, []byte(`{"type":"end"}`)); err != nil {
-		result := s.transportError(ctx, "finish", err)
-		_ = s.Close()
-		return result
+		return s.fail(s.transportError(ctx, "finish", err))
 	}
 	s.sendClosed = true
 	return nil
@@ -293,8 +303,8 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
-	if s.terminalErr != nil {
-		return asr.Event{}, s.terminalErr
+	if err := s.terminalFailure(); err != nil {
+		return asr.Event{}, err
 	}
 	if len(s.queue) > 0 {
 		e := s.queue[0]
@@ -319,6 +329,12 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		var deadline time.Time
 		if d, ok := ctx.Deadline(); ok {
 			deadline = d
+		}
+		if s.readIdleTimeout > 0 {
+			idleDeadline := time.Now().Add(s.readIdleTimeout)
+			if deadline.IsZero() || idleDeadline.Before(deadline) {
+				deadline = idleDeadline
+			}
 		}
 		if err := s.conn.SetReadDeadline(deadline); err != nil {
 			stop()
