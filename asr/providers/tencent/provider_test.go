@@ -489,3 +489,37 @@ func TestTencentCloseSendAfterExplicitClose(t *testing.T) {
 		t.Fatalf("CloseSend after Close must report ErrStreamClosed: %v", err)
 	}
 }
+
+func TestTencentMalformedSentenceBatchRetainsProtocolFailure(t *testing.T) {
+	client := testClient(t, func(ws *websocket.Conn, req *http.Request) {
+		id := req.URL.Query().Get("voice_id")
+		if err := sendResponse(ws, id, 0, 0, nil); err != nil {
+			return
+		}
+		if _, _, err := ws.ReadMessage(); err != nil {
+			return
+		}
+		_ = ws.WriteMessage(websocket.TextMessage, []byte(
+			`{"code":0,"voice_id":"`+id+`","sentences":{"sentence_list":[`+
+				`{"sentence_id":0,"sentence_type":0,"sentence":"你好"},`+
+				`{"sentence_id":1,"sentence_type":99,"sentence":"broken"}]}}`))
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	s, err := client.OpenStream(ctx, pcmConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.Send(ctx, []byte{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	_, first := s.Recv(ctx)
+	if !speecherr.IsCode(first, speecherr.CodeProtocol) {
+		t.Fatalf("malformed sentence batch must fail atomically: %v", first)
+	}
+	_, next := s.Recv(context.Background())
+	if next != first {
+		t.Fatalf("terminal protocol error replaced by queued result: %v vs %v", first, next)
+	}
+}

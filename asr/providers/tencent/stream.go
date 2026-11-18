@@ -293,6 +293,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
+	if s.terminalErr != nil {
+		return asr.Event{}, s.terminalErr
+	}
 	if len(s.queue) > 0 {
 		e := s.queue[0]
 		s.queue[0] = asr.Event{}
@@ -301,9 +304,6 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	}
 	if s.finished {
 		return asr.Event{}, io.EOF
-	}
-	if s.terminalErr != nil {
-		return asr.Event{}, s.terminalErr
 	}
 	for {
 		if err := ctx.Err(); err != nil {
