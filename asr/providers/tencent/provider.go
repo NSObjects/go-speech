@@ -49,7 +49,7 @@ type Config struct {
 	// InputSampleRate=8000 explicitly accepts 8 kHz PCM for a 16 kHz engine.
 	// Tencent performs the upsampling; the SDK does not convert audio.
 	InputSampleRate int
-	Dialer       *websocket.Dialer
+	Dialer          *websocket.Dialer
 }
 
 type Client struct{ cfg Config }
