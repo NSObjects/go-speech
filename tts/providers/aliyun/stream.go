@@ -46,7 +46,9 @@ func newStream(conn *websocket.Conn, ctx context.Context, id string, format audi
 	return s
 }
 func (s *Stream) Close() error {
-	if s == nil { return nil }
+	if s == nil {
+		return nil
+	}
 	s.closeOnce.Do(func() {
 		close(s.done)
 		_ = s.conn.Close()
@@ -55,33 +57,50 @@ func (s *Stream) Close() error {
 }
 func (s *Stream) closed() bool {
 	select {
-	case <-s.done: return true
-	default: return false
+	case <-s.done:
+		return true
+	default:
+		return false
 	}
 }
 func (s *Stream) closeError(ctx context.Context) error {
-	if err := ctx.Err(); err != nil { return err }
-	if err := s.parent.Err(); err != nil { return err }
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.parent.Err(); err != nil {
+		return err
+	}
 	return errClosed
 }
+
 // fail is called only under readMu and remembers the first terminal failure.
 func (s *Stream) fail(err error) error {
-	if s.terminalErr == nil { s.terminalErr = err }
+	if s.terminalErr == nil {
+		s.terminalErr = err
+	}
 	_ = s.Close()
 	return s.terminalErr
 }
 
 func (s *Stream) networkError(ctx context.Context, op string, err error) error {
-	if e := ctx.Err(); e != nil { return e }
-	if e := s.parent.Err(); e != nil { return e }
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	if e := s.parent.Err(); e != nil {
+		return e
+	}
 	var ne net.Error
 	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) &&
 		errors.As(err, &ne) && ne.Timeout() {
 		return context.DeadlineExceeded
 	}
-	if s.closed() { return errClosed }
+	if s.closed() {
+		return errClosed
+	}
 	code := speecherr.CodeUnavailable
-	if errors.As(err, &ne) && ne.Timeout() { code = speecherr.CodeTimeout }
+	if errors.As(err, &ne) && ne.Timeout() {
+		code = speecherr.CodeTimeout
+	}
 	return &speecherr.Error{
 		Code: code, Provider: "aliyun", Operation: op, Err: err,
 		Retryable: true,
@@ -89,22 +108,36 @@ func (s *Stream) networkError(ctx context.Context, op string, err error) error {
 }
 
 func (s *Stream) sendJSON(ctx context.Context, event any) error {
-	if err := ctx.Err(); err != nil { return err }
-	if err := s.parent.Err(); err != nil { return err }
-	if s.closed() { return s.closeError(ctx) }
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.parent.Err(); err != nil {
+		return err
+	}
+	if s.closed() {
+		return s.closeError(ctx)
+	}
 	b, err := json.Marshal(event)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
 	defer stop()
 	deadline := time.Now().Add(defaultWriteTimeout)
-	if d, ok := ctx.Deadline(); ok && d.Before(deadline) { deadline = d }
-	if err := s.conn.SetWriteDeadline(deadline); err != nil { return s.networkError(ctx, "write", err) }
-	if err := s.conn.WriteMessage(websocket.TextMessage, b); err != nil { return s.networkError(ctx, "write", err) }
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	if err := s.conn.SetWriteDeadline(deadline); err != nil {
+		return s.networkError(ctx, "write", err)
+	}
+	if err := s.conn.WriteMessage(websocket.TextMessage, b); err != nil {
+		return s.networkError(ctx, "write", err)
+	}
 	return nil
 }
 func command(action, id string, payload any) any {
 	return map[string]any{
-		"header": map[string]any{"action": action, "task_id": id, "streaming": "duplex"},
+		"header":  map[string]any{"action": action, "task_id": id, "streaming": "duplex"},
 		"payload": payload,
 	}
 }
@@ -118,18 +151,30 @@ func (s *Stream) start(ctx context.Context, model string, req tts.Request, encod
 		"task_group": "audio", "task": "tts", "function": "SpeechSynthesizer",
 		"model": model, "parameters": params, "input": map[string]any{},
 	})
-	if err := s.sendJSON(ctx, start); err != nil { return err }
+	if err := s.sendJSON(ctx, start); err != nil {
+		return err
+	}
 
 	deadline := time.Now().Add(timeout)
-	if d, ok := ctx.Deadline(); ok && d.Before(deadline) { deadline = d }
-	if err := s.conn.SetReadDeadline(deadline); err != nil { return s.networkError(ctx, "task-started", err) }
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	if err := s.conn.SetReadDeadline(deadline); err != nil {
+		return s.networkError(ctx, "task-started", err)
+	}
 	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
 	typ, data, err := s.conn.ReadMessage()
 	stop()
-	if err != nil { return s.networkError(ctx, "task-started", err) }
-	if typ != websocket.TextMessage { return protocol("expected task-started text event") }
+	if err != nil {
+		return s.networkError(ctx, "task-started", err)
+	}
+	if typ != websocket.TextMessage {
+		return protocol("expected task-started text event")
+	}
 	ev, err := decodeEvent(data, s.taskID)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	switch ev.Event {
 	case "task-failed":
 		return classifyTaskFailure(ev)
@@ -143,41 +188,65 @@ func (s *Stream) start(ctx context.Context, model string, req tts.Request, encod
 	}
 	if err := s.sendJSON(ctx, command("continue-task", s.taskID, map[string]any{
 		"input": map[string]any{"text": req.Text},
-	})); err != nil { return err }
+	})); err != nil {
+		return err
+	}
 	if err := s.sendJSON(ctx, command("finish-task", s.taskID, map[string]any{
 		"input": map[string]any{},
-	})); err != nil { return err }
+	})); err != nil {
+		return err
+	}
 	return nil
 }
 
 // Recv returns the provider's raw binary audio frame, preserving the actual
 // output format. Control events contain no audio and are not exposed as chunks.
 func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
-	if s == nil { return audio.Chunk{}, errClosed }
+	if s == nil {
+		return audio.Chunk{}, errClosed
+	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
-	if s.finished { return audio.Chunk{}, io.EOF }
-	if s.terminalErr != nil { return audio.Chunk{}, s.terminalErr }
+	if s.finished {
+		return audio.Chunk{}, io.EOF
+	}
+	if s.terminalErr != nil {
+		return audio.Chunk{}, s.terminalErr
+	}
 	for {
-		if err := ctx.Err(); err != nil { return audio.Chunk{}, s.fail(err) }
-		if err := s.parent.Err(); err != nil { return audio.Chunk{}, s.fail(err) }
-		if s.closed() { return audio.Chunk{}, s.fail(s.closeError(ctx)) }
+		if err := ctx.Err(); err != nil {
+			return audio.Chunk{}, s.fail(err)
+		}
+		if err := s.parent.Err(); err != nil {
+			return audio.Chunk{}, s.fail(err)
+		}
+		if s.closed() {
+			return audio.Chunk{}, s.fail(s.closeError(ctx))
+		}
 		stop := context.AfterFunc(ctx, func() { _ = s.Close() })
 		deadline := time.Time{}
-		if d, ok := ctx.Deadline(); ok { deadline = d }
+		if d, ok := ctx.Deadline(); ok {
+			deadline = d
+		}
 		if err := s.conn.SetReadDeadline(deadline); err != nil {
 			stop()
 			return audio.Chunk{}, s.fail(s.networkError(ctx, "recv", err))
 		}
 		typ, data, err := s.conn.ReadMessage()
 		stop()
-		if err != nil { return audio.Chunk{}, s.fail(s.networkError(ctx, "recv", err)) }
+		if err != nil {
+			return audio.Chunk{}, s.fail(s.networkError(ctx, "recv", err))
+		}
 		switch typ {
 		case websocket.BinaryMessage:
-			if len(data) != 0 { return audio.Chunk{Data: data, Format: s.format}, nil }
+			if len(data) != 0 {
+				return audio.Chunk{Data: data, Format: s.format}, nil
+			}
 		case websocket.TextMessage:
 			ev, err := decodeEvent(data, s.taskID)
-			if err != nil { return audio.Chunk{}, s.fail(err) }
+			if err != nil {
+				return audio.Chunk{}, s.fail(err)
+			}
 			switch ev.Event {
 			case "task-failed":
 				return audio.Chunk{}, s.fail(classifyTaskFailure(ev))

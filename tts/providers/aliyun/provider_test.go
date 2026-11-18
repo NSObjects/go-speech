@@ -22,7 +22,10 @@ func mockTTS(t *testing.T, serve func(*websocket.Conn, *http.Request)) string {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
-		if err != nil { t.Errorf("WebSocket upgrade: %v", err); return }
+		if err != nil {
+			t.Errorf("WebSocket upgrade: %v", err)
+			return
+		}
 		defer conn.Close()
 		serve(conn, r)
 	}))
@@ -36,22 +39,30 @@ func sendTTSControl(ws *websocket.Conn, event, id, code string) error {
 		},
 		"payload": map[string]any{},
 	})
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return ws.WriteMessage(websocket.TextMessage, body)
 }
 func readTTSCommand(ws *websocket.Conn, name, id string) (map[string]any, error) {
 	typ, data, err := ws.ReadMessage()
-	if err != nil { return nil, err }
-	if typ != websocket.TextMessage { return nil, fmt.Errorf("wanted text command %s, got type %d", name, typ) }
+	if err != nil {
+		return nil, err
+	}
+	if typ != websocket.TextMessage {
+		return nil, fmt.Errorf("wanted text command %s, got type %d", name, typ)
+	}
 	var event struct {
 		Header struct {
-			Action string `json:"action"`
-			TaskID string `json:"task_id"`
+			Action    string `json:"action"`
+			TaskID    string `json:"task_id"`
 			Streaming string `json:"streaming"`
 		} `json:"header"`
 		Payload map[string]any `json:"payload"`
 	}
-	if err := json.Unmarshal(data, &event); err != nil { return nil, err }
+	if err := json.Unmarshal(data, &event); err != nil {
+		return nil, err
+	}
 	if event.Header.Action != name || event.Header.Streaming != "duplex" ||
 		(id != "" && event.Header.TaskID != id) || event.Header.TaskID == "" {
 		return nil, fmt.Errorf("invalid %s command: %+v", name, event.Header)
@@ -61,8 +72,8 @@ func readTTSCommand(ws *websocket.Conn, name, id string) (map[string]any, error)
 }
 func testRequest() tts.Request {
 	return tts.Request{
-		Text: "你好，欢迎使用语音合成。",
-		Voice: "longanyang",
+		Text:   "你好，欢迎使用语音合成。",
+		Voice:  "longanyang",
 		Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 22050, Channels: 1},
 	}
 }
@@ -73,51 +84,92 @@ func TestCosyVoiceStreamAndBatchRoundTrip(t *testing.T) {
 		report := func(err error) { observed <- err }
 		if request.Header.Get("Authorization") != "Bearer test-key" ||
 			request.Header.Get("X-DashScope-WorkSpace") != "test-workspace" {
-			report(errors.New("incorrect authorization or workspace")); return
+			report(errors.New("incorrect authorization or workspace"))
+			return
 		}
 		run, err := readTTSCommand(ws, "run-task", "")
-		if err != nil { report(err); return }
+		if err != nil {
+			report(err)
+			return
+		}
 		task := run["__task_id"].(string)
 		params, ok := run["parameters"].(map[string]any)
 		if !ok || params["format"] != "pcm" || params["sample_rate"] != float64(22050) ||
 			params["voice"] != "longanyang" || params["text_type"] != "PlainText" ||
 			run["model"] != ModelCosyVoiceV3Flash || run["function"] != "SpeechSynthesizer" {
-			report(fmt.Errorf("invalid run-task payload: %#v", run)); return
+			report(fmt.Errorf("invalid run-task payload: %#v", run))
+			return
 		}
-		if err := sendTTSControl(ws, "task-started", task, ""); err != nil { report(err); return }
+		if err := sendTTSControl(ws, "task-started", task, ""); err != nil {
+			report(err)
+			return
+		}
 		cont, err := readTTSCommand(ws, "continue-task", task)
-		if err != nil { report(err); return }
+		if err != nil {
+			report(err)
+			return
+		}
 		in, ok := cont["input"].(map[string]any)
 		if !ok || in["text"] != testRequest().Text {
-			report(fmt.Errorf("invalid text payload: %#v", cont)); return
+			report(fmt.Errorf("invalid text payload: %#v", cont))
+			return
 		}
 		end, err := readTTSCommand(ws, "finish-task", task)
-		if err != nil { report(err); return }
-		if _, ok := end["input"].(map[string]any); !ok {
-			report(fmt.Errorf("finish-task missing input: %#v", end)); return
+		if err != nil {
+			report(err)
+			return
 		}
-		if err := sendTTSControl(ws, "result-generated", task, ""); err != nil { report(err); return }
-		if err := ws.WriteMessage(websocket.BinaryMessage, []byte{1, 2, 3, 4}); err != nil { report(err); return }
-		if err := sendTTSControl(ws, "result-generated", task, ""); err != nil { report(err); return }
-		if err := ws.WriteMessage(websocket.BinaryMessage, []byte{5, 6}); err != nil { report(err); return }
-		if err := sendTTSControl(ws, "task-finished", task, ""); err != nil { report(err); return }
+		if _, ok := end["input"].(map[string]any); !ok {
+			report(fmt.Errorf("finish-task missing input: %#v", end))
+			return
+		}
+		if err := sendTTSControl(ws, "result-generated", task, ""); err != nil {
+			report(err)
+			return
+		}
+		if err := ws.WriteMessage(websocket.BinaryMessage, []byte{1, 2, 3, 4}); err != nil {
+			report(err)
+			return
+		}
+		if err := sendTTSControl(ws, "result-generated", task, ""); err != nil {
+			report(err)
+			return
+		}
+		if err := ws.WriteMessage(websocket.BinaryMessage, []byte{5, 6}); err != nil {
+			report(err)
+			return
+		}
+		if err := sendTTSControl(ws, "task-finished", task, ""); err != nil {
+			report(err)
+			return
+		}
 		report(nil)
 	})
 	client, err := New(Config{
 		APIKey: "test-key", Endpoint: endpoint, WorkspaceID: "test-workspace",
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	registry := tts.NewRegistry()
-	if err := registry.Register("cosyvoice", tts.Provider{Batch: client, Stream: client}); err != nil { t.Fatal(err) }
+	if err := registry.Register("cosyvoice", tts.Provider{Batch: client, Stream: client}); err != nil {
+		t.Fatal(err)
+	}
 	provider, ok := registry.Lookup("cosyvoice")
-	if !ok || provider.Batch == nil || provider.Stream == nil { t.Fatal("missing TTS capabilities") }
+	if !ok || provider.Batch == nil || provider.Stream == nil {
+		t.Fatal("missing TTS capabilities")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	stream, err := provider.Stream.SynthesizeStream(ctx, testRequest())
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i, want := range [][]byte{{1, 2, 3, 4}, {5, 6}} {
 		got, err := stream.Recv(ctx)
-		if err != nil { t.Fatalf("chunk %d: %v", i, err) }
+		if err != nil {
+			t.Fatalf("chunk %d: %v", i, err)
+		}
 		if string(got.Data) != string(want) || got.Format != testRequest().Format {
 			t.Fatalf("chunk %d: %#v; expected %v", i, got, want)
 		}
@@ -127,26 +179,36 @@ func TestCosyVoiceStreamAndBatchRoundTrip(t *testing.T) {
 			t.Fatalf("Recv after completion %d: %v", i, err)
 		}
 	}
-	if err := stream.Close(); err != nil { t.Fatal(err) }
-	if err := stream.Close(); err != nil { t.Fatal(err) }
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
 	buffer, err := provider.Batch.Synthesize(ctx, testRequest())
-	if err != nil { t.Fatal(err) }
-	if string(buffer.Data) != string([]byte{1,2,3,4,5,6}) || buffer.Format != testRequest().Format {
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(buffer.Data) != string([]byte{1, 2, 3, 4, 5, 6}) || buffer.Format != testRequest().Format {
 		t.Fatalf("batch result mismatch: %#v", buffer)
 	}
 	for i := 0; i < 2; i++ {
-		if err := <-observed; err != nil { t.Fatal(err) }
+		if err := <-observed; err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
 func TestCosyVoiceRequestValidation(t *testing.T) {
 	endpoint := "ws://localhost/api-ws/v1/inference"
 	client, err := New(Config{APIKey: "k", Endpoint: endpoint})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
-		name string
-		request tts.Request
-		code speecherr.Code
+		name     string
+		request  tts.Request
+		code     speecherr.Code
 		sentinel error
 	}{
 		{"empty text", tts.Request{Voice: "longanyang"}, speecherr.CodeInvalidArgument, nil},
@@ -194,19 +256,31 @@ func TestCosyVoiceRequestValidation(t *testing.T) {
 func TestCosyVoiceTaskFailedRetainsCode(t *testing.T) {
 	endpoint := mockTTS(t, func(ws *websocket.Conn, _ *http.Request) {
 		run, err := readTTSCommand(ws, "run-task", "")
-		if err != nil { return }
+		if err != nil {
+			return
+		}
 		id := run["__task_id"].(string)
-		if err := sendTTSControl(ws, "task-started", id, ""); err != nil { return }
-		if _, err := readTTSCommand(ws, "continue-task", id); err != nil { return }
-		if _, err := readTTSCommand(ws, "finish-task", id); err != nil { return }
+		if err := sendTTSControl(ws, "task-started", id, ""); err != nil {
+			return
+		}
+		if _, err := readTTSCommand(ws, "continue-task", id); err != nil {
+			return
+		}
+		if _, err := readTTSCommand(ws, "finish-task", id); err != nil {
+			return
+		}
 		_ = sendTTSControl(ws, "task-failed", id, "Throttling")
 	})
 	client, err := New(Config{APIKey: "k", Endpoint: endpoint})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s, err := client.SynthesizeStream(ctx, testRequest())
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer s.Close()
 	_, first := s.Recv(ctx)
 	if !speecherr.IsCode(first, speecherr.CodeRateLimited) {
@@ -217,33 +291,51 @@ func TestCosyVoiceTaskFailedRetainsCode(t *testing.T) {
 		t.Fatalf("remote error detail lost: %v", first)
 	}
 	_, second := s.Recv(context.Background())
-	if second != first { t.Fatalf("original remote failure changed: %v and %v", first, second) }
+	if second != first {
+		t.Fatalf("original remote failure changed: %v and %v", first, second)
+	}
 }
 
 func TestCosyVoiceCancellationReleasesStream(t *testing.T) {
 	freed := make(chan bool, 1)
 	endpoint := mockTTS(t, func(ws *websocket.Conn, _ *http.Request) {
 		run, err := readTTSCommand(ws, "run-task", "")
-		if err != nil { freed <- false; return }
+		if err != nil {
+			freed <- false
+			return
+		}
 		id := run["__task_id"].(string)
-		if err := sendTTSControl(ws, "task-started", id, ""); err != nil { freed <- false; return }
+		if err := sendTTSControl(ws, "task-started", id, ""); err != nil {
+			freed <- false
+			return
+		}
 		for i := 0; i < 2; i++ {
-			if _, err := ws.ReadMessage(); err != nil { freed <- false; return }
+			if _, _, err := ws.ReadMessage(); err != nil {
+				freed <- false
+				return
+			}
 		}
 		_, _, err = ws.ReadMessage()
 		freed <- err != nil
 	})
 	client, err := New(Config{APIKey: "k", Endpoint: endpoint})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	parent, cancel := context.WithCancel(context.Background())
 	s, err := client.SynthesizeStream(parent, testRequest())
-	if err != nil { cancel(); t.Fatal(err) }
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
 	done := make(chan error, 1)
 	go func() { _, err := s.Recv(context.Background()); done <- err }()
 	cancel()
 	select {
 	case err := <-done:
-		if !errors.Is(err, context.Canceled) { t.Fatalf("cancellation lost: %v", err) }
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancellation lost: %v", err)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Recv not released after parent cancellation")
 	}
@@ -252,7 +344,9 @@ func TestCosyVoiceCancellationReleasesStream(t *testing.T) {
 	}
 	select {
 	case closed := <-freed:
-		if !closed { t.Fatal("server socket was not released") }
+		if !closed {
+			t.Fatal("server socket was not released")
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("server was not released after cancellation")
 	}

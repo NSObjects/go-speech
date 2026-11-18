@@ -25,14 +25,14 @@ import (
 
 const (
 	ModelCosyVoiceV3Flash = "cosyvoice-v3-flash"
-	defaultStartTimeout = 15 * time.Second
-	defaultWriteTimeout = 10 * time.Second
-	maxTextRunes = 20000
-	maxBatchAudio = 64 << 20
+	defaultStartTimeout   = 15 * time.Second
+	defaultWriteTimeout   = 10 * time.Second
+	maxTextRunes          = 20000
+	maxBatchAudio         = 64 << 20
 )
 
 var (
-	_ tts.Synthesizer = (*Client)(nil)
+	_ tts.Synthesizer       = (*Client)(nil)
 	_ tts.StreamSynthesizer = (*Client)(nil)
 )
 
@@ -40,15 +40,15 @@ var (
 // region/workspace-specific wss://.../api-ws/v1/inference endpoint.
 // Models and voice identifiers are supplied by Alibaba Cloud, not remapped.
 type Config struct {
-	APIKey string
-	Endpoint string
-	Model string
-	WorkspaceID string
+	APIKey       string
+	Endpoint     string
+	Model        string
+	WorkspaceID  string
 	StartTimeout time.Duration
-	Dialer *websocket.Dialer
+	Dialer       *websocket.Dialer
 }
 
-type Client struct { cfg Config }
+type Client struct{ cfg Config }
 
 func New(cfg Config) (*Client, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" || strings.TrimSpace(cfg.Endpoint) == "" {
@@ -79,7 +79,9 @@ func New(cfg Config) (*Client, error) {
 }
 
 func loopback(host string) bool {
-	if strings.EqualFold(host, "localhost") { return true }
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }
@@ -93,7 +95,7 @@ func SupportedAudio() audio.Capability {
 			audio.EncodingPCM16LE, audio.EncodingWAV, audio.EncodingMP3,
 		},
 		SampleRates: []int{8000, 16000, 22050, 24000, 44100, 48000},
-		Channels: []int{1},
+		Channels:    []int{1},
 	}
 }
 
@@ -132,24 +134,40 @@ func validateRequest(req tts.Request) (tts.Request, string, error) {
 // returns a stream of the provider's binary audio frames. The session stays
 // alive until task-finished, a terminal error, or cancellation.
 func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Stream, error) {
-	if c == nil { return nil, invalid("nil client") }
-	if err := ctx.Err(); err != nil { return nil, err }
+	if c == nil {
+		return nil, invalid("nil client")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	req, encoding, err := validateRequest(req)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	taskID, err := taskID()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "task_id", Err: err}
 	}
 	dialer := *websocket.DefaultDialer
-	if c.cfg.Dialer != nil { dialer = *c.cfg.Dialer }
-	if dialer.HandshakeTimeout == 0 { dialer.HandshakeTimeout = c.cfg.StartTimeout }
+	if c.cfg.Dialer != nil {
+		dialer = *c.cfg.Dialer
+	}
+	if dialer.HandshakeTimeout == 0 {
+		dialer.HandshakeTimeout = c.cfg.StartTimeout
+	}
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+c.cfg.APIKey)
-	if c.cfg.WorkspaceID != "" { headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID) }
+	if c.cfg.WorkspaceID != "" {
+		headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
+	}
 	conn, response, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
 	if err != nil {
-		if response != nil && response.Body != nil { _ = response.Body.Close() }
-		if ctx.Err() != nil { return nil, ctx.Err() }
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, dialFailure(err, response)
 	}
 	conn.SetReadLimit(8 << 20)
@@ -165,7 +183,9 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 // The 64 MiB cap prevents accidental unbounded memory usage by batch callers.
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
 	s, err := c.SynthesizeStream(ctx, req)
-	if err != nil { return audio.Buffer{}, err }
+	if err != nil {
+		return audio.Buffer{}, err
+	}
 	defer s.Close()
 	var output audio.Buffer
 	for {
@@ -176,21 +196,27 @@ func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer,
 			}
 			return output, nil
 		}
-		if err != nil { return audio.Buffer{}, err }
+		if err != nil {
+			return audio.Buffer{}, err
+		}
 		if len(chunk.Data) > maxBatchAudio-len(output.Data) {
 			return audio.Buffer{}, &speecherr.Error{
 				Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "tts",
 				Err: errors.New("batch audio exceeds 64 MiB; use SynthesizeStream"),
 			}
 		}
-		if output.Format == (audio.Format{}) { output.Format = chunk.Format }
+		if output.Format == (audio.Format{}) {
+			output.Format = chunk.Format
+		}
 		output.Data = append(output.Data, chunk.Data...)
 	}
 }
 
 func taskID() (string, error) {
 	var id [16]byte
-	if _, err := rand.Read(id[:]); err != nil { return "", err }
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", err
+	}
 	id[6] = id[6]&15 | 0x40
 	id[8] = id[8]&63 | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]), nil
@@ -209,9 +235,12 @@ func dialFailure(err error, resp *http.Response) error {
 	code := speecherr.CodeUnavailable
 	if resp != nil {
 		switch resp.StatusCode {
-		case 400: code = speecherr.CodeInvalidArgument
-		case 401, 403: code = speecherr.CodeUnauthorized
-		case 429: code = speecherr.CodeRateLimited
+		case 400:
+			code = speecherr.CodeInvalidArgument
+		case 401, 403:
+			code = speecherr.CodeUnauthorized
+		case 429:
+			code = speecherr.CodeRateLimited
 		}
 		// Only the status code is included; never echo credentials, headers
 		// or the untrusted remote response body.
@@ -241,15 +270,15 @@ func classifyTaskFailure(header serverHeader) error {
 	return &speecherr.Error{
 		Code: code, Provider: "aliyun", Operation: "task", RemoteCode: header.ErrorCode,
 		Retryable: code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout || code == speecherr.CodeUnavailable,
-		Err: fmt.Errorf("remote task %s: %s", header.ErrorCode, header.ErrorMessage),
+		Err:       fmt.Errorf("remote task %s: %s", header.ErrorCode, header.ErrorMessage),
 	}
 }
 
 // Event payload for control messages; binary messages carry raw audio.
 type serverHeader struct {
-	Event string `json:"event"`
-	TaskID string `json:"task_id"`
-	ErrorCode string `json:"error_code"`
+	Event        string `json:"event"`
+	TaskID       string `json:"task_id"`
+	ErrorCode    string `json:"error_code"`
 	ErrorMessage string `json:"error_message"`
 }
 type serverEvent struct {
