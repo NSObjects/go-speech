@@ -2,7 +2,7 @@
 
 [![Go CI](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml)
 
-A vendor-independent ASR and TTS SDK for Go. **ASR adapters: Alibaba Cloud and Volcengine Doubao streaming WebSocket; no TTS adapter yet.**
+A vendor-independent ASR and TTS SDK for Go. **ASR adapters: Alibaba Cloud and Volcengine Doubao streaming WebSocket; TTS adapter: Alibaba Cloud CosyVoice WebSocket.**
 
 面向 Go 应用的多厂商语音识别（ASR）和语音合成（TTS）库。库本身与 Eino、LLM、智能体及具体语音设备无关。
 
@@ -33,7 +33,7 @@ go-speech/
 go get github.com/NSObjects/go-speech@latest
 ```
 
-> ASR 已包含阿里云 Provider（五模型）及火山引擎豆包流式 ASR Provider（V3 bigmodel_async，Seed-ASR 2.0 的 `full`/`single` 模式已通过真实云端识别测试）。TTS 目前仍仅有公共接口。
+> ASR 已包含阿里云五模型及火山引擎豆包流式 ASR Provider。TTS 已新增阿里云 CosyVoice WebSocket Provider（真实云端验证情况以 GitHub Actions 为准）。
 
 ## 主要 API
 
@@ -140,3 +140,9 @@ instead returns `speecherr.CodeInvalidArgument` and preserves
 `audio.ErrInvalidFormat`. Feature incompatibility (for example, a model
 parameter that the vendor does not implement) remains a separate
 `CodeUnsupported` error and does not claim to be an audio-format error.
+
+## Aliyun CosyVoice TTS
+
+`tts/providers/aliyun` implements both batch and streaming TTS against
+CosyVoice WebSocket. It sends complete text once, then emits binary audio
+chunks without implicit conversion. See [TTS Provider README](tts/providers/aliyun/README.md).

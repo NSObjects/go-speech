@@ -1,0 +1,34 @@
+name: Aliyun CosyVoice TTS Integration (automatic, paid)
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-tts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      DASHSCOPE_WS_ENDPOINT: ${{ vars.DASHSCOPE_WS_ENDPOINT }}
+      DASHSCOPE_TTS_MODEL: ${{ vars.DASHSCOPE_TTS_MODEL }}
+      DASHSCOPE_TTS_VOICE: ${{ vars.DASHSCOPE_TTS_VOICE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify TTS credentials and regional endpoint
+        run: |
+          test -n "$DASHSCOPE_API_KEY" || { echo "Missing DASHSCOPE_API_KEY secret" >&2; exit 1; }
+          test -n "$DASHSCOPE_WS_ENDPOINT" || { echo "Missing DASHSCOPE_WS_ENDPOINT variable" >&2; exit 1; }
+          case "$DASHSCOPE_WS_ENDPOINT" in
+            wss://*/api-ws/v1/inference) ;;
+            *) echo "DASHSCOPE_WS_ENDPOINT must be a secure DashScope WebSocket endpoint" >&2; exit 1 ;;
+          esac
+      - name: Real CosyVoice streaming synthesis and EOF
+        run: go test -tags=integration -run '^TestAliyunLiveCosyVoice$' -count=1 -v -timeout 2m ./tts/providers/aliyun
