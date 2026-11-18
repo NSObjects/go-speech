@@ -183,12 +183,14 @@ recorded children, accents, overlapping voices, or background noise.
 
 The billable live workflow streams four Mandarin utterances over **one**
 WebSocket, separated by two-second silences, in both `ResultFull` and
-`ResultSingle` modes. The fourth utterance intentionally repeats the first
-("你好") to verify that a new utterance is **not** mistaken for an old cumulative
-snapshot. The test checks at least four confirmed sentence events, keyword
-order and counts, and stable end-of-stream behavior. An offline test replays
-32 cumulative transcript snapshots to stress deduplication. In an exploratory
-run the separate synthetic phrase "明天见" was transcribed as "民间片" in both
-modes; this highlights an acoustic recognition limitation of the offline
-synthetic fixture and is not counted as a stream-lifecycle failure. This is
-not a multi-hour soak test, concurrency benchmark or children's voice sample.
+`ResultSingle` modes. The test repeats two complete phrases ("今天天气很好" and "我们一起玩游戏")
+on alternating turns, verifying that a new utterance is **not** mistaken for
+an old cumulative snapshot. It checks four confirmed sentence events, correct
+order and counts, and stable EOF. An offline test replays 32 cumulative
+snapshots. Earlier exploratory runs of short synthetic utterances in a
+continuous session had recognition failures: "明天见" was heard as "民间片",
+and later "你好" was not confirmed at the start while the last "你好" became
+"李敖" in both response modes. These are real **unresolved ASR/fixture
+quality observations**; neither the adapter nor the test can guarantee
+the accuracy of very short utterances within a continuous conversation.
+This test is not a multi-hour soak test or a children's-voice benchmark.

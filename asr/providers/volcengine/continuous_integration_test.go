@@ -109,17 +109,17 @@ func TestVolcengineLiveContinuousMandarin(t *testing.T) {
 				}
 				text := strings.Join(got.finals, "")
 				offset := 0
-				for _, word := range []string{"你好", "天气", "游戏", "你好"} {
+				for _, word := range []string{"天气", "游戏", "天气", "游戏"} {
 					index := strings.Index(text[offset:], word)
 					if index < 0 {
 						t.Fatalf("missing/reordered keyword %q in final transcript %q", word, text)
 					}
 					offset += index + len(word)
 				}
-				// The same greeting is intentionally spoken twice with
-				// distinct timestamps. Neither occurrence may be lost
-				// to cumulative snapshot deduplication.
-				for word, want := range map[string]int{"你好": 2, "天气": 1, "游戏": 1} {
+				// Both phrases are repeated with separate timestamps.
+				// The adapter must not collapse a new spoken turn into
+				// an old full-mode snapshot.
+				for word, want := range map[string]int{"天气": 2, "游戏": 2} {
 					if got := strings.Count(text, word); got != want {
 						t.Fatalf("keyword %q appears %d times, want %d: %q", word, got, want, text)
 					}
