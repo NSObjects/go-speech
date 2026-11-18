@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -184,8 +185,9 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 }
 
 // signedURL signs the host + request path + lexically sorted query exactly as
-// required by the Tencent ASR V2 WebSocket protocol. Never log this URL: the
-// signature and SecretID are credentials.
+// required by Tencent. The HMAC input contains UNESCAPED query values (including
+// Chinese hotwords), while the actual request URL percent-encodes those values.
+// Never log the signed URL: it contains SecretID, hotwords and signature.
 func (c *Client) signedURL(now time.Time, nonce uint32, voiceID string) string {
 	return c.signedURLWithHints(now, nonce, voiceID, "")
 }
@@ -220,13 +222,28 @@ func (c *Client) signedURLWithHints(now time.Time, nonce uint32, voiceID, hotwor
 	} else {
 		params.Set("needvad", "0")
 	}
-	// URL query encoding is deterministic and sorts keys by key name.
-	query := params.Encode()
+	// Tencent signs raw parameter values; url.Values.Encode is only for
+	// transmission. Signing the encoded UTF-8 bytes rejects Chinese hotwords.
 	mac := hmac.New(sha1.New, []byte(c.cfg.SecretKey))
-	_, _ = mac.Write([]byte(u.Host + u.Path + "?" + query))
+	_, _ = mac.Write([]byte(u.Host + u.Path + "?" + signatureQuery(params)))
 	params.Set("signature", base64.StdEncoding.EncodeToString(mac.Sum(nil)))
 	u.RawQuery = params.Encode()
 	return u.String()
+}
+
+// signatureQuery implements Tencent's sorted, unescaped key=value canonical
+// string. All of the provider's query parameters are single-valued.
+func signatureQuery(params url.Values) string {
+	keys := make([]string, 0, len(params))
+	for key := range params {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key+"="+params.Get(key))
+	}
+	return strings.Join(parts, "&")
 }
 
 func requestID() (string, error) {
