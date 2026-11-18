@@ -34,10 +34,10 @@ func TestSupportedAudioMatchesOptimizedEndpoint(t *testing.T) {
 
 func TestVolcengineAudioErrorContract(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		format     audio.Format
-		code       speecherr.Code
-		sentinel   error
+		name     string
+		format   audio.Format
+		code     speecherr.Code
+		sentinel error
 	}{
 		{"missing encoding", audio.Format{SampleRate: 16000, Channels: 1}, speecherr.CodeInvalidArgument, audio.ErrInvalidFormat},
 		{"zero sample rate", audio.Format{Encoding: audio.EncodingPCM16LE, Channels: 1}, speecherr.CodeInvalidArgument, audio.ErrInvalidFormat},

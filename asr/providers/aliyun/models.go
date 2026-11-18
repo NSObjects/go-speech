@@ -134,7 +134,7 @@ func unsupported(msg string) error {
 }
 
 // unsupportedAudio preserves the shared audio.ErrUnsupportedFormat sentinel,
- // allowing callers to distinguish format incompatibility from other features.
+// allowing callers to distinguish format incompatibility from other features.
 func unsupportedAudio(err error) error {
 	return &speecherr.Error{
 		Code: speecherr.CodeUnsupported, Provider: "aliyun",
