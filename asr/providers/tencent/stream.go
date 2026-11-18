@@ -31,6 +31,7 @@ type Stream struct {
 	finished    bool
 	terminalErr error
 	finalSeen   map[int]struct{}
+	queue       []asr.Event // readMu; one server message may contain multiple sentences
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -168,11 +169,11 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	if s.sendClosed {
-		return nil
-	}
 	if s.closed() {
 		return s.closeError(ctx)
+	}
+	if s.sendClosed {
+		return nil
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -194,12 +195,24 @@ type response struct {
 	Message string   `json:"message"`
 	VoiceID string   `json:"voice_id"`
 	Final   int      `json:"final"`
-	Result  *segment `json:"result"`
+	Result  *segment      `json:"result"`
+	Sentences *sentenceList `json:"sentences"`
 }
 type segment struct {
 	SliceType int    `json:"slice_type"`
 	Index     int    `json:"index"`
 	Text      string `json:"voice_text_str"`
+}
+
+// Tencent large-model 2.0 WebSocket V2 returns a sentence_list, while
+// traditional real-time ASR returns result.slice_type. Both use /asr/v2.
+type sentenceList struct {
+	SentenceList []sentence `json:"sentence_list"`
+}
+type sentence struct {
+	Text string `json:"sentence"`
+	Type int    `json:"sentence_type"`
+	ID   int    `json:"sentence_id"`
 }
 
 func decodeResponse(raw []byte, expectedID string) (response, error) {
@@ -222,15 +235,15 @@ func decodeResponse(raw []byte, expectedID string) (response, error) {
 func remoteError(r response) error {
 	code := speecherr.CodeInternal
 	switch r.Code {
-	case 4001, 4007:
+	case 4000, 4001, 4007:
 		code = speecherr.CodeInvalidArgument
-	case 4002, 4003, 4005:
+	case 4002, 4003, 4005, 6001:
 		code = speecherr.CodeUnauthorized
 	case 4004, 4006:
 		code = speecherr.CodeRateLimited
 	case 4008:
 		code = speecherr.CodeTimeout
-	case 4009, 5000, 5001:
+	case 4009, 5000, 5001, 5002:
 		code = speecherr.CodeUnavailable
 	case 4010:
 		code = speecherr.CodeProtocol
@@ -286,6 +299,12 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	if s.terminalErr != nil {
 		return asr.Event{}, s.terminalErr
 	}
+	if len(s.queue) > 0 {
+		e := s.queue[0]
+		s.queue[0] = asr.Event{}
+		s.queue = s.queue[1:]
+		return e, nil
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return asr.Event{}, s.fail(err)
@@ -317,35 +336,56 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		if err != nil {
 			return asr.Event{}, s.fail(err)
 		}
-		var next *asr.Event
+		if message.Result != nil && message.Sentences != nil {
+			return asr.Event{}, s.fail(protocolError("conflicting ASR response layouts"))
+		}
 		if r := message.Result; r != nil {
 			switch r.SliceType {
 			case 0:
-				event := asr.Event{Type: asr.EventSpeechStart}
-				next = &event
+				s.queue = append(s.queue, asr.Event{Type: asr.EventSpeechStart})
 			case 1:
 				if r.Text != "" {
-					event := asr.Event{Type: asr.EventPartial, Text: r.Text}
-					next = &event
+					s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: r.Text})
 				}
 			case 2:
 				if _, already := s.finalSeen[r.Index]; !already {
 					s.finalSeen[r.Index] = struct{}{}
 					if r.Text != "" {
-						event := asr.Event{Type: asr.EventFinal, Text: r.Text}
-						next = &event
+						s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: r.Text})
 					}
 				}
 			default:
 				return asr.Event{}, s.fail(protocolError("unknown slice_type"))
 			}
 		}
+		if list := message.Sentences; list != nil {
+			for _, sentence := range list.SentenceList {
+				switch sentence.Type {
+				case 0:
+					if sentence.Text != "" {
+						s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: sentence.Text})
+					}
+				case 1:
+					if _, already := s.finalSeen[sentence.ID]; !already {
+						s.finalSeen[sentence.ID] = struct{}{}
+						if sentence.Text != "" {
+							s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: sentence.Text})
+						}
+					}
+				default:
+					return asr.Event{}, s.fail(protocolError("unknown sentence_type"))
+				}
+			}
+		}
 		if message.Final == 1 {
 			s.finished = true
 			_ = s.Close()
 		}
-		if next != nil {
-			return *next, nil
+		if len(s.queue) > 0 {
+			e := s.queue[0]
+			s.queue[0] = asr.Event{}
+			s.queue = s.queue[1:]
+			return e, nil
 		}
 		if s.finished {
 			return asr.Event{}, io.EOF

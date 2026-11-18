@@ -31,8 +31,13 @@ Opus frame format, not Ogg Opus. The shared `audio.EncodingOpus` refers to
 send Ogg Opus pages while claiming they are Tencent raw Opus frames.
 
 `CloseSend` sends `{"type":"end"}` without closing the WebSocket.
-`Recv` converts non-stable `slice_type=1` to `EventPartial`, stable
-`slice_type=2` to `EventFinal`, and a completed `final=1` to stable EOF.
+`Recv` converts the traditional `result.slice_type=1/2` messages to
+`EventPartial/EventFinal`. For Tencent Cloud 2.0 models ending in `_2.0`,
+the SDK signs `result_mod=1` and also parses `sentences.sentence_list`
+(`sentence_type=0/1`), returning all events from each message without
+dropping results or duplicating confirmed sentence IDs. The shared Event
+currently carries text, not speaker IDs. A completed `final=1` produces
+stable EOF *after* any queued final sentences have been delivered.
 The caller may send and receive concurrently. Explicit Close and context
 cancellation terminate the session; terminal errors remain stable.
 

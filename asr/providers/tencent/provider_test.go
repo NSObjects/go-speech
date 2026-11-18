@@ -98,6 +98,7 @@ func TestTencentSignedURL(t *testing.T) {
 		q.Get("voice_format") != "1" ||
 		q.Get("needvad") != "1" ||
 		q.Get("engine_model_type") != "16k_zh_en_2.0" ||
+		q.Get("result_mod") != "1" ||
 		q.Get("nonce") != "8743357" ||
 		q.Get("voice_id") != "voice-id" {
 		t.Fatalf("incorrect Tencent signed parameters: %v", q)
@@ -232,10 +233,13 @@ func TestTencentRemoteErrors(t *testing.T) {
 		want speecherr.Code
 	}{
 		{"auth", 4002, speecherr.CodeUnauthorized},
+		{"foreign region", 6001, speecherr.CodeUnauthorized},
 		{"quota", 4006, speecherr.CodeRateLimited},
+		{"audio pacing", 4000, speecherr.CodeInvalidArgument},
 		{"decode", 4007, speecherr.CodeInvalidArgument},
 		{"idle timeout", 4008, speecherr.CodeTimeout},
 		{"server overload", 5000, speecherr.CodeUnavailable},
+		{"server overload 5002", 5002, speecherr.CodeUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := testClient(t, func(ws *websocket.Conn, req *http.Request) {
@@ -354,5 +358,134 @@ func TestTencentIndependentVoiceIDs(t *testing.T) {
 	}
 	if len(seen) != 3 {
 		t.Fatalf("unique voice IDs: got %d", len(seen))
+	}
+}
+
+// TestTencentSentenceListV2 verifies the actual Tencent Cloud 2.0 response
+// shape. One server frame may contain multiple results; Recv must return
+// every distinct result, even if final=1 closes the WebSocket immediately.
+func TestTencentSentenceListV2(t *testing.T) {
+	client := testClient(t, func(ws *websocket.Conn, req *http.Request) {
+		id := req.URL.Query().Get("voice_id")
+		if err := sendResponse(ws, id, 0, 0, nil); err != nil {
+			return
+		}
+		if _, _, err := ws.ReadMessage(); err != nil {
+			return
+		}
+		data, err := json.Marshal(map[string]any{
+			"code": 0, "voice_id": id,
+			"sentences": map[string]any{"sentence_list": []map[string]any{
+				{"sentence_id": 0, "sentence_type": 0, "sentence": "你好"},
+				{"sentence_id": 1, "sentence_type": 0, "sentence": "世界"},
+			}},
+		})
+		if err != nil {
+			return
+		}
+		if err := ws.WriteMessage(websocket.TextMessage, data); err != nil {
+			return
+		}
+		if _, _, err := ws.ReadMessage(); err != nil {
+			return
+		}
+		data, err = json.Marshal(map[string]any{
+			"code": 0, "voice_id": id, "final": 1,
+			"sentences": map[string]any{"sentence_list": []map[string]any{
+				{"sentence_id": 0, "sentence_type": 1, "sentence": "你好"},
+				{"sentence_id": 0, "sentence_type": 1, "sentence": "你好"},
+				{"sentence_id": 1, "sentence_type": 1, "sentence": "世界"},
+			}},
+		})
+		if err != nil {
+			return
+		}
+		_ = ws.WriteMessage(websocket.TextMessage, data)
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	s, err := client.OpenStream(ctx, pcmConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.Send(ctx, []byte{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseSend(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []asr.Event{
+		{Type: asr.EventPartial, Text: "你好"},
+		{Type: asr.EventPartial, Text: "世界"},
+		{Type: asr.EventFinal, Text: "你好"},
+		{Type: asr.EventFinal, Text: "世界"},
+	} {
+		got, err := s.Recv(ctx)
+		if err != nil || got != want {
+			t.Fatalf("sentence event %d = %+v, %v; expected %+v", i, got, err, want)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := s.Recv(context.Background()); !errors.Is(err, io.EOF) {
+			t.Fatalf("V2 EOF %d: %v", i, err)
+		}
+	}
+}
+
+func TestTencentSentenceModeSignatureAndLegacyFallback(t *testing.T) {
+	for _, tc := range []struct {
+		model string
+		sentenceMode string
+	}{
+		{"16k_zh", ""},
+		{"16k_zh_en_2.0", "1"},
+		{"16k_zh_en_speaker_2.0", "1"},
+	} {
+		client, err := New(Config{
+			AppID: "1250000000", SecretID: "s", SecretKey: "k", EngineModel: tc.model,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := url.Parse(client.signedURL(time.Unix(1745932688, 0), 123, "voice-id"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := u.Query().Get("result_mod"); got != tc.sentenceMode {
+			t.Fatalf("model %s: result_mod = %q, want %q", tc.model, got, tc.sentenceMode)
+		}
+		if !verifySignature(&http.Request{Host: u.Host, URL: u}, "k") {
+			t.Fatalf("model %s: bad HMAC signature after result_mod", tc.model)
+		}
+	}
+}
+
+func TestTencentCloseSendAfterExplicitClose(t *testing.T) {
+	client := testClient(t, func(ws *websocket.Conn, req *http.Request) {
+		_ = sendResponse(ws, req.URL.Query().Get("voice_id"), 0, 0, nil)
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	s, err := client.OpenStream(ctx, pcmConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Send(ctx, []byte{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseSend(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseSend(context.Background()); !errors.Is(err, asr.ErrStreamClosed) {
+		t.Fatalf("CloseSend after Close must report ErrStreamClosed: %v", err)
 	}
 }
