@@ -44,6 +44,11 @@ type Config struct {
 	Endpoint     string
 	StartTimeout time.Duration
 	NeedVAD      bool
+	// HotwordID selects a Tencent-managed hotword table; empty uses the account default.
+	HotwordID string
+	// InputSampleRate=8000 explicitly accepts 8 kHz PCM for a 16 kHz engine.
+	// Tencent performs the upsampling; the SDK does not convert audio.
+	InputSampleRate int
 	Dialer       *websocket.Dialer
 }
 
@@ -61,6 +66,12 @@ func New(cfg Config) (*Client, error) {
 	}
 	if strings.TrimSpace(cfg.EngineModel) != cfg.EngineModel || strings.ContainsAny(cfg.EngineModel, "&?=/# \t\r\n") {
 		return nil, argumentError("invalid EngineModel")
+	}
+	if cfg.InputSampleRate != 0 && (cfg.InputSampleRate != 8000 || !strings.HasPrefix(cfg.EngineModel, "16k_")) {
+		return nil, argumentError("InputSampleRate supports only 8000 with a 16k_ engine")
+	}
+	if cfg.HotwordID != "" && (len(cfg.HotwordID) > 128 || strings.ContainsAny(cfg.HotwordID, "&?=/# \\t\\r\\n")) {
+		return nil, argumentError("invalid HotwordID")
 	}
 	if cfg.Endpoint == "" {
 		cfg.Endpoint = DefaultEndpoint
@@ -119,7 +130,11 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	if err := req.Format.Validate(); err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "tencent", Operation: "start", Err: err}
 	}
-	if err := SupportedAudio(c.cfg.EngineModel).Validate(req.Format); err != nil {
+	capability := SupportedAudio(c.cfg.EngineModel)
+	if c.cfg.InputSampleRate != 0 {
+		capability.SampleRates = []int{c.cfg.InputSampleRate}
+	}
+	if err := capability.Validate(req.Format); err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "start", Err: err}
 	}
 	if req.Language != "" {
@@ -183,6 +198,12 @@ func (c *Client) signedURL(now time.Time, nonce uint32, voiceID string) string {
 	}
 	params.Set("voice_id", voiceID)
 	params.Set("voice_format", "1")
+	if c.cfg.HotwordID != "" {
+		params.Set("hotword_id", c.cfg.HotwordID)
+	}
+	if c.cfg.InputSampleRate != 0 {
+		params.Set("input_sample_rate", strconv.Itoa(c.cfg.InputSampleRate))
+	}
 	if c.cfg.NeedVAD {
 		params.Set("needvad", "1")
 	} else {
