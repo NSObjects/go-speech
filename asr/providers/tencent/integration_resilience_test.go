@@ -234,3 +234,28 @@ func TestTencentLiveRequestHints(t *testing.T) {
 	}
 	t.Logf("Tencent request hints partials=%d finals=%d", out.partials, len(out.finals))
 }
+
+// TestTencentLiveMinuteStream validates a true >60-second upload without
+// changing the SDK's caller-paced model or auto-reopening a WebSocket.
+// Tencent recommends VAD to split long utterances; the generated fixture
+// contains periodic pauses and uses NeedVAD=true.
+func TestTencentLiveMinuteStream(t *testing.T) {
+	pcm := livePCMFixture(t, "TENCENT_TEST_16K_PCM_FILE")
+	const repetitions = 9 // approximately 62 seconds for the standard CI fixture
+	longPCM := make([]byte, 0, repetitions*len(pcm))
+	for i := 0; i < repetitions; i++ {
+		longPCM = append(longPCM, pcm...)
+	}
+	duration := time.Duration(len(longPCM)) * time.Second / (16000 * 2)
+	if duration < time.Minute {
+		t.Fatalf("expected more than one minute of audio, got %v", duration)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	defer cancel()
+	out, err := liveSession(ctx, DefaultEngineModel, 16000, 0, longPCM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Tencent minute-plus stream duration=%v partials=%d finals=%d",
+		duration, out.partials, len(out.finals))
+}

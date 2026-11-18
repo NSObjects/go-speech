@@ -262,7 +262,10 @@ func remoteError(r response) error {
 	return &speecherr.Error{
 		Code: code, Provider: "tencent", Operation: "recognize",
 		RemoteCode: strconv.Itoa(r.Code),
-		Retryable:  code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout,
+		// Resource exhaustion (4004) needs quota/billing remediation. A new
+		// stream can be attempted for transient overload (500x) or
+		// concurrency throttling (4006), but never replay already sent PCM.
+		Retryable: r.Code != 4004 && (code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout),
 		// Tencent's text is not treated as a stable SDK contract.
 		Err: fmt.Errorf("Tencent ASR error %d: %s", r.Code, r.Message),
 	}
