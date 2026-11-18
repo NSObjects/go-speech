@@ -140,8 +140,12 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	if req.Language != "" {
 		return nil, unsupportedError("language is selected by EngineModel; per-request Language is not supported")
 	}
-	if len(req.Hints) > 0 {
-		return nil, unsupportedError("per-request Hints are not yet supported")
+	if len(req.Hints) > 0 && c.cfg.HotwordID != "" {
+		return nil, requestError("Hints and HotwordID cannot be used together")
+	}
+	hotwords, err := encodeHints(req.Hints)
+	if err != nil {
+		return nil, err
 	}
 	voiceID, err := requestID()
 	if err != nil {
@@ -152,7 +156,7 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "nonce", Err: err}
 	}
 	nonce := 1 + binary.BigEndian.Uint32(entropy[:])%999999999
-	target := c.signedURL(time.Now(), nonce, voiceID)
+	target := c.signedURLWithHints(time.Now(), nonce, voiceID, hotwords)
 	dialer := *websocket.DefaultDialer
 	if c.cfg.Dialer != nil {
 		dialer = *c.cfg.Dialer
@@ -183,6 +187,10 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 // required by the Tencent ASR V2 WebSocket protocol. Never log this URL: the
 // signature and SecretID are credentials.
 func (c *Client) signedURL(now time.Time, nonce uint32, voiceID string) string {
+	return c.signedURLWithHints(now, nonce, voiceID, "")
+}
+
+func (c *Client) signedURLWithHints(now time.Time, nonce uint32, voiceID, hotwords string) string {
 	u, _ := url.Parse(c.cfg.Endpoint) // validated by New
 	u.Path = "/asr/v2/" + c.cfg.AppID
 	params := url.Values{}
@@ -200,6 +208,9 @@ func (c *Client) signedURL(now time.Time, nonce uint32, voiceID string) string {
 	params.Set("voice_format", "1")
 	if c.cfg.HotwordID != "" {
 		params.Set("hotword_id", c.cfg.HotwordID)
+	}
+	if hotwords != "" {
+		params.Set("hotword_list", hotwords)
 	}
 	if c.cfg.InputSampleRate != 0 {
 		params.Set("input_sample_rate", strconv.Itoa(c.cfg.InputSampleRate))
@@ -230,6 +241,9 @@ func requestID() (string, error) {
 
 func argumentError(message string) error {
 	return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "tencent", Operation: "configure", Err: errors.New(message)}
+}
+func requestError(message string) error {
+	return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "tencent", Operation: "start", Err: errors.New(message)}
 }
 func unsupportedError(message string) error {
 	return &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "start", Err: errors.New(message)}
