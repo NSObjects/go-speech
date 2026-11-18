@@ -99,6 +99,11 @@ Large-model 2.0 requires a separate billing entitlement. Set the optional
 GitHub Actions variable `TENCENT_V2_ASR_MODEL` to `16k_zh_en_2.0` (or an
 entitled `_2.0` engine) to enable its **real-cloud** CI gate. An unset
 variable **skips** this gate and does not prove 2.0 interoperability.
+A 2026-11-18 live probe of `16k_zh_en_2.0` returned Tencent error
+`4001: result_mod=1 not support for appid ... engine:16k_zh_en_2.0`
+during the initial handshake; the account/model's sentence-mode access needs
+to be confirmed with Tencent. This does **not** demonstrate a successful
+2.0 recognition, and the SDK must not silently fall back to legacy results.
 The mock-WebSocket sentence-list tests run regardless of cloud entitlement.
 
 Do not equate synthesized test utterances with recognition-accuracy
