@@ -65,11 +65,7 @@ jobs:
       - name: Real Tencent Cloud sustained PCM and stable EOF
         run: go test -tags=integration -run TestTencentLiveSustainedPCM -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud minute-plus streamed PCM
-        run: go test -tags=integration -run '^TestTencentLiveMinuteStream
-      - name: Real Tencent Cloud large-model 2.0 (opt-in; requires entitlement)
-        if: env.TENCENT_V2_ASR_MODEL != ''
-        run: go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent
- -count=1 -v -timeout 3m ./asr/providers/tencent
+        run: go test -tags=integration -run TestTencentLiveMinuteStream -count=1 -v -timeout 3m ./asr/providers/tencent
       - name: Real Tencent Cloud 8k PCM input to 16k engine
         run: go test -tags=integration -run TestTencentLiveEightKInputToSixteenKEngine -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud large-model 2.0 (opt-in; requires entitlement)
