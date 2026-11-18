@@ -108,16 +108,16 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if len(data) == 0 {
-		return argumentError("audio chunk cannot be empty")
-	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if s.closed() {
+		return s.closedError(ctx)
+	}
 	if s.sendClosed {
 		return asr.ErrInputClosed
 	}
-	if s.closed() {
-		return s.closedError(ctx)
+	if len(data) == 0 {
+		return argumentError("audio chunk cannot be empty")
 	}
 	frame, err := encodeFrame(messageAudioRequest, 0, 0, data)
 	if err != nil {
