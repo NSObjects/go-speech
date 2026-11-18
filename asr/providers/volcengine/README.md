@@ -264,3 +264,39 @@ voice claim follows from these synthetic fixtures.
 An offline unit test verifies that test-harness Ogg page splitting preserves
 exact bytes, granule positions, and rejects incomplete or malformed pages.
 This is a test helper, not a new SDK transcoding/remuxing path.
+
+## Raw device-style Opus packet ingestion
+
+If the device supplies **complete raw Opus codec packets** (not RTP headers,
+MQTT byte fragments, or arbitrary raw byte slices), the caller can use
+`audio/codec/opus.OggMuxer` to construct one valid continuous Ogg stream:
+
+```go
+mux, err := opus.NewOggMuxer(opus.OggConfig{
+    Channels: 1, InputSampleRate: 16000,
+    PreSkip: encoderLookahead48k, // get this from the encoder
+})
+if err != nil { return err }
+headers, err := mux.Headers()
+if err != nil { return err }
+if err := stream.Send(ctx, headers); err != nil { return err }
+for _, rawPacket := range deviceOpusPackets {
+    page, err := mux.WritePacket(rawPacket)
+    if err != nil { return err }
+    if err := stream.Send(ctx, page); err != nil { return err }
+}
+eos, err := mux.Close()
+if err != nil { return err }
+if err := stream.Send(ctx, eos); err != nil { return err }
+return stream.CloseSend(ctx)
+```
+
+The muxer adds only OpusHead, OpusTags, Ogg page framing/CRC and EOS; it does
+not decode or re-encode speech. `PreSkip` uses the 48kHz Opus timeline and
+must reflect the real device encoder. A fresh muxer is needed per ASR session.
+
+CI tests a simulation of this route: extracting real codec packets from an
+FFmpeg-encoded Mandarin fixture, remuxing them with the project's Go muxer,
+and sending the newly generated Ogg pages to real Seed-ASR 2.0 while
+recognition continues. This does **not** prove that any physical device's
+encoder, RTP transport or microphone has been validated.
