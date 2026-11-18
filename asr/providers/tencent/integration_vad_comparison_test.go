@@ -22,6 +22,7 @@ type vadComparisonResult struct {
 	threshold    time.Duration
 	partials     int
 	finalOffsets []time.Duration
+	finalTexts   []string
 	wallElapsed  time.Duration
 }
 
@@ -97,6 +98,7 @@ func runTencentVADComparison(ctx context.Context, pcm []byte, threshold time.Dur
 	type recvResult struct {
 		partials int
 		finals   []time.Duration
+		texts    []string
 		err      error
 	}
 	received := make(chan recvResult, 1)
@@ -120,6 +122,7 @@ func runTencentVADComparison(ctx context.Context, pcm []byte, threshold time.Dur
 			case asr.EventFinal:
 				if event.Text != "" {
 					result.finals = append(result.finals, time.Since(started))
+					result.texts = append(result.texts, event.Text)
 				}
 			}
 		}
@@ -157,6 +160,7 @@ func runTencentVADComparison(ctx context.Context, pcm []byte, threshold time.Dur
 		}
 		out.partials = result.partials
 		out.finalOffsets = result.finals
+		out.finalTexts = result.texts
 		out.wallElapsed = time.Since(started)
 		if _, err := stream.Recv(context.Background()); !errors.Is(err, io.EOF) {
 			return out, fmt.Errorf("VAD %s failed stable terminal EOF: %v", threshold, err)
