@@ -65,6 +65,12 @@ type Event struct {
 // ErrInputClosed. Context cancellation preserves context.Canceled /
 // context.DeadlineExceeded rather than becoming a retryable provider failure.
 //
+// Once CloseSend succeeds, Send returns ErrInputClosed while the session
+// remains open for Recv. An explicit Close takes precedence over the half-close
+// state: subsequent Send, including an empty Send, returns ErrStreamClosed.
+// A canceled Recv terminates its session and subsequent Recv calls retain the
+// original context.Canceled or context.DeadlineExceeded cause.
+//
 // A stream supports one concurrent sender and one concurrent receiver.
 // Concurrent Send calls or concurrent Recv calls are not guaranteed safe.
 type Stream interface {

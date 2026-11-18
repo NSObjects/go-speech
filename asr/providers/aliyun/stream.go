@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -96,13 +97,18 @@ func (s *Stream) Send(ctx context.Context, chunk []byte) error {
 	if s == nil {
 		return ErrClosed
 	}
-	if len(chunk) == 0 {
-		return badArgument("empty audio chunk")
-	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	// A fully closed session must report ErrStreamClosed even if its
+	// audio input was previously half-closed (or this chunk is empty).
+	if s.closed() {
+		return s.closeError(ctx)
+	}
 	if s.sendClosed {
 		return ErrSendClosed
+	}
+	if len(chunk) == 0 {
+		return badArgument("empty audio chunk")
 	}
 	if err := s.write(ctx, websocket.BinaryMessage, chunk); err != nil {
 		result := s.transportError(ctx, "send", err)
@@ -145,16 +151,16 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		return asr.Event{}, s.terminalErr
 	}
 	if s.closed() {
-		return asr.Event{}, s.closeError(ctx)
+		return asr.Event{}, s.fail(s.closeError(ctx))
 	}
 	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
 	defer stop()
 	for {
 		if err := ctx.Err(); err != nil {
-			return asr.Event{}, err
+			return asr.Event{}, s.fail(err)
 		}
 		if err := s.parent.Err(); err != nil {
-			return asr.Event{}, err
+			return asr.Event{}, s.fail(err)
 		}
 		if d, ok := ctx.Deadline(); ok {
 			if err := s.conn.SetReadDeadline(d); err != nil {
@@ -229,6 +235,14 @@ func (s *Stream) transportError(ctx context.Context, op string, err error) error
 	}
 	if e := s.parent.Err(); e != nil {
 		return e
+	}
+	// The socket can time out at the exact deadline before the context
+	// cancellation goroutine runs. Do not turn that caller deadline into
+	// a retryable provider error.
+	var timeout net.Error
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) &&
+		errors.As(err, &timeout) && timeout.Timeout() {
+		return context.DeadlineExceeded
 	}
 	if s.closed() || errors.Is(err, ErrClosed) {
 		return ErrClosed

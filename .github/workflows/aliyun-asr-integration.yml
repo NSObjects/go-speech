@@ -48,8 +48,14 @@ jobs:
 
       - name: Install speech fixture tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y espeak-ng ffmpeg
+          # Avoid unconditional apt index refresh: the Ubuntu runner normally
+          # has package metadata, while mirror refreshes can stall paid CI.
+          if ! command -v espeak-ng >/dev/null 2>&1 || ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get install -y espeak-ng ffmpeg || {
+              sudo apt-get update -qq
+              sudo apt-get install -y espeak-ng ffmpeg
+            }
+          fi
 
       - name: Generate synthetic speech fixtures
         run: |
