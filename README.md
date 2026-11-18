@@ -146,3 +146,15 @@ parameter that the vendor does not implement) remains a separate
 `tts/providers/aliyun` implements both batch and streaming TTS against
 CosyVoice WebSocket. It sends complete text once, then emits binary audio
 chunks without implicit conversion. See [TTS Provider README](tts/providers/aliyun/README.md).
+
+## Tencent Cloud real-time ASR
+
+`asr/providers/tencent` implements Tencent Cloud real-time ASR
+WebSocket V2 with HMAC-SHA1 URL signing, PCM16LE mono streaming and
+partial/final transcript events using the existing `asr.Stream` interface.
+Tencent's proprietary Opus frame format is **not** compatible with
+`audio.EncodingOpus` (Ogg Opus), so no implicit conversion is attempted.
+See [Tencent ASR guide](asr/providers/tencent/README.md). A real cloud
+integration test requires `TENCENT_APP_ID`, `TENCENT_SECRET_ID`, and
+`TENCENT_SECRET_KEY` in GitHub Actions. Tencent TTS is a separate
+future provider, not part of this change.

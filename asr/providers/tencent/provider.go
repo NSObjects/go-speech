@@ -59,8 +59,7 @@ func New(cfg Config) (*Client, error) {
 	if cfg.EngineModel == "" {
 		cfg.EngineModel = DefaultEngineModel
 	}
-	if strings.TrimSpace(cfg.EngineModel) != cfg.EngineModel || strings.ContainsAny(cfg.EngineModel, "&?=/# 	
-") {
+	if strings.TrimSpace(cfg.EngineModel) != cfg.EngineModel || strings.ContainsAny(cfg.EngineModel, "&?=/# \\t\\r\\n") {
 		return nil, argumentError("invalid EngineModel")
 	}
 	if cfg.Endpoint == "" {
