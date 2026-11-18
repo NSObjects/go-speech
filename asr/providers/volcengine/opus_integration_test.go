@@ -3,11 +3,8 @@
 package volcengine
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -17,45 +14,6 @@ import (
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
 )
-
-// oggPage is a complete, consecutive Ogg page from one logical Opus stream.
-// Opus granule positions use a 48kHz timeline even when the input is 16kHz.
-type oggPage struct {
-	data    []byte
-	granule uint64
-}
-
-// Split pages for transport without assuming a constant encoded byte rate.
-// Sending arbitrary raw Opus packets as format=ogg is not valid.
-func splitOggPages(data []byte) ([]oggPage, error) {
-	var pages []oggPage
-	for offset := 0; offset < len(data); {
-		if len(data)-offset < 27 || !bytes.Equal(data[offset:offset+4], []byte("OggS")) ||
-			data[offset+4] != 0 {
-			return nil, fmt.Errorf("invalid Ogg page header at byte %d", offset)
-		}
-		segments := int(data[offset+26])
-		if len(data)-offset < 27+segments {
-			return nil, fmt.Errorf("truncated Ogg segment table at byte %d", offset)
-		}
-		size := 27 + segments
-		for _, segmentLen := range data[offset+27 : offset+27+segments] {
-			size += int(segmentLen)
-		}
-		if len(data)-offset < size {
-			return nil, fmt.Errorf("truncated Ogg payload at byte %d", offset)
-		}
-		pages = append(pages, oggPage{
-			data:    data[offset : offset+size],
-			granule: binary.LittleEndian.Uint64(data[offset+6 : offset+14]),
-		})
-		offset += size
-	}
-	if len(pages) < 3 || !bytes.Contains(pages[0].data, []byte("OpusHead")) {
-		return nil, errors.New("Ogg Opus stream is missing codec headers or audio pages")
-	}
-	return pages, nil
-}
 
 // TestVolcengineLiveOggOpus validates an actual billable optimized streaming
 // ASR session using Ogg Opus, rather than a PCM test or a mock encoding header.
