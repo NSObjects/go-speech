@@ -47,6 +47,8 @@ the SDK signs `result_mod=1` and also parses `sentences.sentence_list`
 dropping results or duplicating confirmed sentence IDs. The shared Event
 currently carries text, not speaker IDs. A completed `final=1` produces
 stable EOF *after* any queued final sentences have been delivered.
+A late provisional sentence update for an already finalized sentence ID
+is discarded, preventing downstream callers from reverting committed text.
 The caller may send and receive concurrently. Explicit Close and context
 cancellation terminate the session; terminal errors remain stable.
 
@@ -84,10 +86,23 @@ signature rules, early authentication failures, actual binary/text frames,
 Partial/Final conversion, duplicate segment suppression, stable EOF and
 the shared `asr.Stream` cancellation/half-close contract.
 
-Automatic billable Tencent cloud CI runs on every push. It **requires**
-the Tencent credentials above and uses the open-source `espeak-ng` and
-`ffmpeg` tools to generate a small Mandarin PCM test fixture. Until the
-secrets are configured and the workflow finishes green, real Tencent
-compatibility must be treated as **unverified**.
+Automatic billable Tencent cloud CI runs on every push using
+`TENCENT_APP_ID` (GitHub Actions variable), `TENCENT_SECRET_ID` and
+`TENCENT_SECRET_KEY` (secrets). It uses `espeak-ng` and `ffmpeg` to
+create short Mandarin PCM fixtures. Cloud gates cover:
+- a configured-engine smoke stream with finalized text and stable EOF;
+- three concurrent 16 kHz streams;
+- a sustained ~20-second 16 kHz session;
+- 8 kHz PCM sent unchanged to a 16 kHz engine with `input_sample_rate=8000`.
+
+Large-model 2.0 requires a separate billing entitlement. Set the optional
+GitHub Actions variable `TENCENT_V2_ASR_MODEL` to `16k_zh_en_2.0` (or an
+entitled `_2.0` engine) to enable its **real-cloud** CI gate. An unset
+variable **skips** this gate and does not prove 2.0 interoperability.
+The mock-WebSocket sentence-list tests run regardless of cloud entitlement.
+
+Do not equate synthesized test utterances with recognition-accuracy
+benchmarks; these tests verify transport, lifecycle, and final-result
+delivery.
 
 Official protocol: https://cloud.tencent.com/document/product/1093/48982
