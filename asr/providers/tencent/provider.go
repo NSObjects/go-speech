@@ -70,7 +70,7 @@ func New(cfg Config) (*Client, error) {
 	if cfg.InputSampleRate != 0 && (cfg.InputSampleRate != 8000 || !strings.HasPrefix(cfg.EngineModel, "16k_")) {
 		return nil, argumentError("InputSampleRate supports only 8000 with a 16k_ engine")
 	}
-	if cfg.HotwordID != "" && (len(cfg.HotwordID) > 128 || strings.ContainsAny(cfg.HotwordID, "&?=/# \\t\\r\\n")) {
+	if cfg.HotwordID != "" && (len(cfg.HotwordID) > 128 || strings.ContainsAny(cfg.HotwordID, "&?=/# \t\r\n")) {
 		return nil, argumentError("invalid HotwordID")
 	}
 	if cfg.Endpoint == "" {
