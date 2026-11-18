@@ -38,12 +38,12 @@ func livePCMFixture(t *testing.T, envName string) []byte {
 func liveSession(ctx context.Context, engine string, rate, inputRate int, pcm []byte) (liveResult, error) {
 	var empty liveResult
 	client, err := New(Config{
-		AppID: os.Getenv("TENCENT_APP_ID"),
-		SecretID: os.Getenv("TENCENT_SECRET_ID"),
-		SecretKey: os.Getenv("TENCENT_SECRET_KEY"),
-		EngineModel: engine,
+		AppID:           os.Getenv("TENCENT_APP_ID"),
+		SecretID:        os.Getenv("TENCENT_SECRET_ID"),
+		SecretKey:       os.Getenv("TENCENT_SECRET_KEY"),
+		EngineModel:     engine,
 		InputSampleRate: inputRate,
-		NeedVAD: true,
+		NeedVAD:         true,
 	})
 	if err != nil {
 		return empty, err
