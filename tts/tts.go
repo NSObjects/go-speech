@@ -30,8 +30,8 @@ type StreamSynthesizer interface {
 }
 
 // Stream yields consecutive bytes of a single synthesized audio bitstream
-// until io.EOF. An individual encoded MP3/WAV chunk is not necessarily a
-// standalone decodable file: concatenate the chunks or use a streaming
+// until io.EOF. An individual encoded MP3/WAV/Ogg Opus chunk is not
+// necessarily a standalone decodable file: concatenate the chunks or use a streaming
 // decoder. Chunk.Format describes the combined output stream.
 // One caller owns Recv; concurrent Recv calls are not supported. Close is
 // idempotent and releases resources. The SynthesizeStream context controls

@@ -38,5 +38,5 @@ jobs:
               sudo apt-get install -y ffmpeg
             }
           fi
-      - name: Real CosyVoice streaming PCM, MP3/WAV and batch format checks
-        run: go test -tags=integration -run '^TestAliyunLiveCosyVoice(EncodedFormats)?$' -count=1 -v -timeout 4m ./tts/providers/aliyun
+      - name: Real CosyVoice PCM MP3 WAV Ogg Opus streaming and batch checks
+        run: go test -tags=integration -run '^TestAliyunLiveCosyVoice(EncodedFormats|Opus)?$' -count=1 -v -timeout 4m ./tts/providers/aliyun

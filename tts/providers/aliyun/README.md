@@ -16,10 +16,11 @@ CosyVoice WebSocket task protocol.
   on `task-finished`.
 - `Synthesize` uses the same stream and collects into one `audio.Buffer`
   (64 MiB in-memory limit).
-- Current verified code paths accept PCM16LE, MP3, WAV, mono at
+- Supported formats are PCM16LE, MP3, WAV and **Ogg Opus**, mono at
   8/16/22.05/24/44.1/48 kHz. Default output is MP3 22050 Hz mono.
-  `opus` is intentionally excluded until the output container has its own
-  cloud integration tests. No transcoding is performed.
+  `audio.EncodingOpus` means Ogg-encapsulated Opus, not raw Opus packets.
+  The actual codec, framing and decoding for the 24 kHz Ogg Opus path
+  are checked in the paid live cloud CI. No transcoding is performed.
 - A fresh WebSocket is created per synthesis. Multi-turn persistent
   connection reuse and incremental text input are **not** implemented.
 - Audio does not go to the user's speaker and is not tied to devices or agents.
@@ -81,3 +82,22 @@ early task failure.
 The live fixture validates only the selected V3 Flash model and voice in
 one region at one sample rate. Do not infer from these tests that every
 listed rate, voice or model has been verified.
+
+## Ogg Opus output
+
+To request compressed audio, set:
+```go
+req.Format = audio.Format{
+    Encoding: audio.EncodingOpus, SampleRate: 24000, Channels: 1,
+}
+```
+The provider requests `format: "opus"` from CosyVoice and forwards all
+WebSocket binary audio bytes unchanged. The output is **Ogg Opus**, not
+bare Opus packets. Concatenate `Chunk.Data` in order to obtain one complete
+Ogg bitstream, or feed the successive chunks to an incremental Ogg decoder.
+Do not assume a WebSocket chunk is a standalone Ogg page or a playable file.
+
+Opus decoders use a 48 kHz decoding/granule timeline even if the synthesis
+request was for 24 kHz. In the integration test `ffprobe` checks the actual
+`opus` codec and mono channel count; `ffmpeg` checks that the complete
+stream decodes correctly. Opus is not re-encoded or remuxed by the SDK.
