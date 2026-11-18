@@ -40,6 +40,10 @@ func liveSession(ctx context.Context, engine string, rate, inputRate int, pcm []
 }
 
 func liveSessionWithHints(ctx context.Context, engine string, rate, inputRate int, pcm []byte, hints []string) (liveResult, error) {
+	return liveSessionWithSegmentation(ctx, engine, rate, inputRate, pcm, hints, 0, 0)
+}
+
+func liveSessionWithSegmentation(ctx context.Context, engine string, rate, inputRate int, pcm []byte, hints []string, vadSilenceTime, maxSpeakTime time.Duration) (liveResult, error) {
 	var empty liveResult
 	client, err := New(Config{
 		AppID:           os.Getenv("TENCENT_APP_ID"),
@@ -48,6 +52,8 @@ func liveSessionWithHints(ctx context.Context, engine string, rate, inputRate in
 		EngineModel:     engine,
 		InputSampleRate: inputRate,
 		NeedVAD:         true,
+		VADSilenceTime:  vadSilenceTime,
+		MaxSpeakTime:    maxSpeakTime,
 	})
 	if err != nil {
 		return empty, err
@@ -258,4 +264,23 @@ func TestTencentLiveMinuteStream(t *testing.T) {
 	}
 	t.Logf("Tencent minute-plus stream duration=%v partials=%d finals=%d",
 		duration, out.partials, len(out.finals))
+}
+
+// TestTencentLiveSegmentationOptions verifies Tencent accepts the signed
+// legacy-engine VAD/forced-segmentation options in a real streamed request.
+// The generated fixture is for protocol validation, not turn-boundary quality.
+func TestTencentLiveSegmentationOptions(t *testing.T) {
+	pcm := livePCMFixture(t, "TENCENT_TEST_16K_PCM_FILE")
+	continuous := make([]byte, 0, 3*len(pcm))
+	for i := 0; i < 3; i++ {
+		continuous = append(continuous, pcm...)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+	out, err := liveSessionWithSegmentation(ctx, DefaultEngineModel, 16000, 0,
+		continuous, nil, 700*time.Millisecond, 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Tencent signed VAD700ms/maxSpeak10s partials=%d finals=%d", out.partials, len(out.finals))
 }
