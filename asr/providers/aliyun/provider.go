@@ -173,7 +173,7 @@ func mapAudioFormat(f audio.Format) (string, error) {
 		return "", &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "aliyun", Operation: "start", Err: err}
 	}
 	if f.Channels != 1 {
-		return "", unsupported("mono audio required")
+		return "", unsupportedAudio(fmt.Errorf("%w: mono audio required", audio.ErrUnsupportedFormat))
 	}
 	switch f.Encoding {
 	case audio.EncodingPCM16LE:
@@ -191,7 +191,7 @@ func mapAudioFormat(f audio.Format) (string, error) {
 	case audio.EncodingAMR:
 		return "amr", nil // AMR-NB only.
 	default:
-		return "", unsupported(fmt.Sprintf("unsupported encoding %q", f.Encoding))
+		return "", unsupportedAudio(fmt.Errorf("%w: encoding %q", audio.ErrUnsupportedFormat, f.Encoding))
 	}
 }
 func dialError(err error, resp *http.Response) error {

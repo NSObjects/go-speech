@@ -125,3 +125,18 @@ replaying audio is safe. See [docs/DESIGN.md](docs/DESIGN.md).
 V3 `bigmodel_async` WebSocket 二进制协议、PCM16/WAV/MP3/Ogg Opus 原样传输、
 流式部分/最终结果、Context 取消和统一错误。详细接入方式见
 [火山引擎 Provider 文档](asr/providers/volcengine/README.md)。
+
+## ASR format compatibility and errors
+
+Validate the actual input format before opening a stream:
+`aliyun.SupportedAudio(model)` for a specific Alibaba model, or
+`volcengine.SupportedAudio()` for Seed-ASR 2.0's optimized streaming
+endpoint. Both return `audio.Capability`, whose `Validate` method checks
+supported encoding, sample rate, and channel count without transcoding.
+
+Unsupported input formats return `speecherr.CodeUnsupported`, and
+`errors.Is(err, audio.ErrUnsupportedFormat)` is true. Invalid format metadata
+instead returns `speecherr.CodeInvalidArgument` and preserves
+`audio.ErrInvalidFormat`. Feature incompatibility (for example, a model
+parameter that the vendor does not implement) remains a separate
+`CodeUnsupported` error and does not claim to be an audio-format error.
