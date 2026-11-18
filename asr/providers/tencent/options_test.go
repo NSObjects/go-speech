@@ -86,9 +86,9 @@ func TestTencentOptionalPCMInputRateAndHotwordID(t *testing.T) {
 func TestTencentInputRateAndHotwordValidation(t *testing.T) {
 	base := Config{AppID: "1250000000", SecretID: "secret-id", SecretKey: "secret-key", EngineModel: "16k_zh"}
 	cases := []struct {
-		name string
-		rate int
-		model string
+		name    string
+		rate    int
+		model   string
 		hotword string
 	}{
 		{"reject16kOverride", 16000, "16k_zh", ""},
