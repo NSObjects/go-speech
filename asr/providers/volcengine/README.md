@@ -176,7 +176,14 @@ and the sentence "今天天气很好". These are recognized in real time through
 Seed-ASR 2.0 using its default language handling: `asr.Config.Language` must
 remain unset on this endpoint because language selection is not supported.
 The real cloud assertions require confirmed Chinese transcript content, not
-just a successful handshake. These machine-generated samples do **not** validate
+just a successful handshake. The longer Mandarin sentence must match the
+expected "天气" keyword in both response modes. The ultra-short synthetic
+"你好" sample is a **transport smoke test only**: it must produce a confirmed
+Chinese result, but a mismatch is logged as a quality diagnostic rather than
+failing the entire SDK CI. Seed-ASR 2.0 has actually returned "离" for this
+synthetic sample in an otherwise healthy run, while previous runs returned
+"你好". This variability is an unresolved short-speech accuracy concern,
+not a claimed fix. These machine-generated samples do **not** validate
 recorded children, accents, overlapping voices, or background noise.
 
 ## Continuous-session regression
