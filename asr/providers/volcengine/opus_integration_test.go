@@ -46,7 +46,7 @@ func splitOggPages(data []byte) ([]oggPage, error) {
 			return nil, fmt.Errorf("truncated Ogg payload at byte %d", offset)
 		}
 		pages = append(pages, oggPage{
-			data: data[offset : offset+size],
+			data:    data[offset : offset+size],
 			granule: binary.LittleEndian.Uint64(data[offset+6 : offset+14]),
 		})
 		offset += size
@@ -99,7 +99,7 @@ func TestVolcengineLiveOggOpus(t *testing.T) {
 	defer stream.Close()
 
 	type outcome struct {
-		finals    []string
+		finals   []string
 		partials int
 		err      error
 	}
