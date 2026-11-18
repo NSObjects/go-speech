@@ -108,16 +108,21 @@ func TestVolcengineLiveContinuousMandarin(t *testing.T) {
 					t.Fatalf("expected four independently finalized phrases, got %d: %q", len(got.finals), got.finals)
 				}
 				text := strings.Join(got.finals, "")
-				prev := -1
-				for _, word := range []string{"你好", "天气", "游戏", "明天"} {
-					index := strings.Index(text, word)
-					if index <= prev {
+				offset := 0
+				for _, word := range []string{"你好", "天气", "游戏", "你好"} {
+					index := strings.Index(text[offset:], word)
+					if index < 0 {
 						t.Fatalf("missing/reordered keyword %q in final transcript %q", word, text)
 					}
-					if strings.Count(text, word) != 1 {
-						t.Fatalf("duplicate or missing keyword %q in final transcript %q", word, text)
+					offset += index + len(word)
+				}
+				// The same greeting is intentionally spoken twice with
+				// distinct timestamps. Neither occurrence may be lost
+				// to cumulative snapshot deduplication.
+				for word, want := range map[string]int{"你好": 2, "天气": 1, "游戏": 1} {
+					if got := strings.Count(text, word); got != want {
+						t.Fatalf("keyword %q appears %d times, want %d: %q", word, got, want, text)
 					}
-					prev = index
 				}
 				for i := 0; i < 2; i++ {
 					if _, err := stream.Recv(context.Background()); !errors.Is(err, io.EOF) {

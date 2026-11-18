@@ -83,11 +83,11 @@ jobs:
           test -s "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE"
       - name: Generate continuous Mandarin conversation PCM fixture
         run: |
-          # Four separate utterances and three 2s silences on ONE stream.
+          # Four utterances (the last repeats the first) and three 2s silences.
           espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn1.wav" "你好。"
           espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn2.wav" "今天天气很好。"
           espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn3.wav" "我们一起玩游戏。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn4.wav" "明天见。"
+          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn4.wav" "你好。"
           for part in turn1 turn2 turn3 turn4; do
             ffmpeg -hide_banner -loglevel error -y \
               -i "${RUNNER_TEMP}/${part}.wav" -ac 1 -ar 16000 \

@@ -181,10 +181,14 @@ recorded children, accents, overlapping voices, or background noise.
 
 ## Continuous-session regression
 
-The billable live workflow also streams four distinct Mandarin utterances over
-**one** WebSocket connection, separated by two-second silences, in both
-`ResultFull` and `ResultSingle` modes. The test verifies at least four
-confirmed sentence events, keyword order, no cumulative duplicates, and stable
-end-of-stream behavior. An offline test replays 32 cumulative transcript
-snapshots to stress deduplication. This is a multi-utterance integration test,
+The billable live workflow streams four Mandarin utterances over **one**
+WebSocket, separated by two-second silences, in both `ResultFull` and
+`ResultSingle` modes. The fourth utterance intentionally repeats the first
+("你好") to verify that a new utterance is **not** mistaken for an old cumulative
+snapshot. The test checks at least four confirmed sentence events, keyword
+order and counts, and stable end-of-stream behavior. An offline test replays
+32 cumulative transcript snapshots to stress deduplication. In an exploratory
+run the separate synthetic phrase "明天见" was transcribed as "民间片" in both
+modes; this highlights an acoustic recognition limitation of the offline
+synthetic fixture and is not counted as a stream-lifecycle failure. This is
 not a multi-hour soak test, concurrency benchmark or children's voice sample.
