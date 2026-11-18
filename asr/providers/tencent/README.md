@@ -191,6 +191,30 @@ to be confirmed with Tencent. This does **not** demonstrate a successful
 2.0 recognition, and the SDK must not silently fall back to legacy results.
 The mock-WebSocket sentence-list tests run regardless of cloud entitlement.
 
+### VAD threshold comparison (synthetic diagnostic)
+
+The automatic paid Tencent CI also tests **700ms**, **1000ms**, and **1500ms**
+`VADSilenceTime` using three separate, sequential `16k_zh` sessions. Each
+session receives *identical* espeak-ng PCM: one short speech fixture, a
+deliberate 1200ms silent pause, the same speech fixture again, and a
+2400ms trailing pause. The fixture trims synthesized trailing padding to
+approximately locate the first speech end, without changing voiced audio.
+
+GitHub Actions writes `VAD_COMPARE` log records to the workflow's job summary:
+- `first_final_relative_to_fixture_end_ms`: wall-clock offset between the
+  first emitted Final and the estimated end of the first synthetic phrase
+  (may be negative if the engine finalized an earlier internal pause);
+- `finals_before_second_speech`: count of final events delivered before
+  the second phrase begins in the caller's approximately real-time pacing;
+- `finals_total`, `partials`, and `stream_wall_ms`: session diagnostics.
+
+These are **not** reliable estimates of natural-speech finalization latency,
+premature segmentation rate, WER/CER, or missing utterances. Real conversation
+evaluation requires multiple labeled recordings with speech-end timestamps,
+transcript references, noise/overlap cases and repeated trials before choosing
+a production VAD threshold. The comparison only asserts successful cloud
+streaming, at least one nonempty Final and clean EOF for all three settings.
+
 Do not equate synthesized test utterances with recognition-accuracy
 benchmarks; these tests verify transport, lifecycle, and final-result
 delivery.
