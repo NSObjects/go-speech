@@ -314,7 +314,7 @@ func TestTencentValidationAndAudioCapabilities(t *testing.T) {
 			Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 2,
 		}}, speecherr.CodeUnsupported, audio.ErrUnsupportedFormat},
 		{"language", asr.Config{Format: pcmConfig().Format, Language: "en-US"}, speecherr.CodeUnsupported, nil},
-		{"hints", asr.Config{Format: pcmConfig().Format, Hints: []string{"hello"}}, speecherr.CodeUnsupported, nil},
+		{"invalid hints", asr.Config{Format: pcmConfig().Format, Hints: []string{"bad|100"}}, speecherr.CodeInvalidArgument, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := client.OpenStream(context.Background(), tc.config)
