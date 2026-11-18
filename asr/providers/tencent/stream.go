@@ -191,11 +191,11 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 }
 
 type response struct {
-	Code    int      `json:"code"`
-	Message string   `json:"message"`
-	VoiceID string   `json:"voice_id"`
-	Final   int      `json:"final"`
-	Result  *segment      `json:"result"`
+	Code      int           `json:"code"`
+	Message   string        `json:"message"`
+	VoiceID   string        `json:"voice_id"`
+	Final     int           `json:"final"`
+	Result    *segment      `json:"result"`
 	Sentences *sentenceList `json:"sentences"`
 }
 type segment struct {
@@ -293,17 +293,17 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
-	if s.finished {
-		return asr.Event{}, io.EOF
-	}
-	if s.terminalErr != nil {
-		return asr.Event{}, s.terminalErr
-	}
 	if len(s.queue) > 0 {
 		e := s.queue[0]
 		s.queue[0] = asr.Event{}
 		s.queue = s.queue[1:]
 		return e, nil
+	}
+	if s.finished {
+		return asr.Event{}, io.EOF
+	}
+	if s.terminalErr != nil {
+		return asr.Event{}, s.terminalErr
 	}
 	for {
 		if err := ctx.Err(); err != nil {

@@ -435,7 +435,7 @@ func TestTencentSentenceListV2(t *testing.T) {
 
 func TestTencentSentenceModeSignatureAndLegacyFallback(t *testing.T) {
 	for _, tc := range []struct {
-		model string
+		model        string
 		sentenceMode string
 	}{
 		{"16k_zh", ""},
