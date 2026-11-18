@@ -22,6 +22,7 @@ jobs:
       VOLCENGINE_CONTINUOUS_PCM_FILE: /tmp/volcengine-continuous.pcm
       VOLCENGINE_MINUTE_PCM_FILE: /tmp/volcengine-minute.pcm
       VOLCENGINE_OGG_OPUS_FILE: /tmp/volcengine-ogg-opus.ogg
+      VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE: /tmp/volcengine-continuous.ogg
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -137,8 +138,19 @@ jobs:
           test -s "$VOLCENGINE_OGG_OPUS_FILE"
           ffprobe -v error -show_entries stream=codec_name \
             -of default=noprint_wrappers=1 "$VOLCENGINE_OGG_OPUS_FILE" | grep -q 'codec_name=opus'
-      - name: Gate real cloud transport (PCM, Mandarin, minute session, Ogg Opus)
-        run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin|TestVolcengineLiveMinuteSession|TestVolcengineLiveOggOpus)$' -count=1 -v -timeout 7m ./asr/providers/volcengine
+      - name: Generate continuous Ogg Opus conversation fixture
+        run: |
+          # A single Ogg logical bitstream, never concatenated Ogg files.
+          ffmpeg -hide_banner -loglevel error -y -f s16le -ar 16000 -ac 1 \
+            -i "$VOLCENGINE_CONTINUOUS_PCM_FILE" -c:a libopus \
+            -application voip -b:a 24000 -ar 16000 -ac 1 \
+            -frame_duration 20 -page_duration 200000 -f ogg \
+            "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE"
+          test -s "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE"
+          ffprobe -v error -show_entries stream=codec_name \
+            -of default=noprint_wrappers=1 "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE" | grep -q 'codec_name=opus'
+      - name: Gate real streaming ASR (PCM, Mandarin, minute session, live Ogg Opus)
+        run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin|TestVolcengineLiveMinuteSession|TestVolcengineLiveOggOpus|TestVolcengineLiveContinuousOggOpus)$' -count=1 -v -timeout 8m ./asr/providers/volcengine
       - name: Diagnose ultra-short synthetic English speech recognition
         id: short_phrase
         continue-on-error: true

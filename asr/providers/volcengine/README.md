@@ -247,3 +247,20 @@ cloud checks remain **gating**: they must pass in order for the workflow to
 succeed. A green workflow therefore **does not** claim that ultra-short speech
 is reliably recognized. Real recorded voice datasets are required for
 acoustic-quality acceptance before production deployment.
+
+## Live continuous Ogg Opus incremental results
+
+The billable GitHub Actions flow now also encodes the four-sentence Mandarin
+conversation as **one** valid Ogg Opus logical stream, with complete Ogg pages
+sent in granule-time order on one WebSocket, in `ResultSingle` and `ResultFull`.
+The test records first provisional and confirmed result arrival, confirms at
+least one **EventFinal arrives before CloseSend** (audio still streaming),
+and checks that repeated sentence text is not dropped or duplicated.
+`EventPartial` count is reported independently: partial hypotheses can be
+absent for some model/voice samples and therefore a zero count is **not**
+interpreted as an SDK failure. No production p95 latency or real-device
+voice claim follows from these synthetic fixtures.
+
+An offline unit test verifies that test-harness Ogg page splitting preserves
+exact bytes, granule positions, and rejects incomplete or malformed pages.
+This is a test helper, not a new SDK transcoding/remuxing path.
