@@ -17,7 +17,7 @@ import (
 
 type injectedWriteConn struct {
 	net.Conn
-	blocked *atomic.Bool
+	blocked  *atomic.Bool
 	injected error
 }
 
