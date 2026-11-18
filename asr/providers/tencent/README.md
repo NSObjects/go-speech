@@ -61,7 +61,18 @@ stable EOF *after* any queued final sentences have been delivered.
 A late provisional sentence update for an already finalized sentence ID
 is discarded, preventing downstream callers from reverting committed text.
 The caller may send and receive concurrently. Explicit Close and context
-cancellation terminate the session; terminal errors remain stable.
+cancellation terminate the session; terminal errors remain stable, including
+when `Send` or `CloseSend` fails during a WebSocket write. Subsequent `Recv`
+returns the **original** terminal failure rather than a cleanup-induced
+`ErrStreamClosed`.
+
+An optional `Config.ReadIdleTimeout` limits how long a single `Recv` blocks
+without a server message. It defaults to zero (**disabled**) for backward
+compatibility; set it explicitly if the caller may use `context.Background()`
+and needs protection against a half-open peer. An idle timeout returns a
+retryable `speecherr.CodeTimeout` and terminates the session. A caller context
+deadline takes precedence if it expires first. This is a socket-read watchdog,
+not a VAD silence threshold and not an automatic reconnect mechanism.
 
 Per-request `Language` is unsupported rather than silently ignored:
 choose the engine in `Config`. Per-request `Hints` use Tencent temporary
@@ -77,6 +88,7 @@ client, err := tencent.New(tencent.Config{
     SecretKey: os.Getenv("TENCENT_SECRET_KEY"),
     EngineModel: "16k_zh",
     NeedVAD: true,
+    ReadIdleTimeout: 30 * time.Second, // Optional: zero disables the watchdog.
 })
 if err != nil { return err }
 s, err := client.OpenStream(ctx, asr.Config{
@@ -96,8 +108,9 @@ defer s.Close()
 
 Offline mock WebSocket tests validate fresh voice IDs, deterministic HMAC
 signature rules, early authentication failures, actual binary/text frames,
-Partial/Final conversion, duplicate segment suppression, stable EOF and
-the shared `asr.Stream` cancellation/half-close contract.
+Partial/Final conversion, duplicate segment suppression, stable EOF,
+Send/CloseSend failure preservation, idle-read timeout, and the shared
+`asr.Stream` cancellation/half-close contract.
 
 Automatic billable Tencent cloud CI runs on every push using
 `TENCENT_APP_ID` (GitHub Actions variable), `TENCENT_SECRET_ID` and

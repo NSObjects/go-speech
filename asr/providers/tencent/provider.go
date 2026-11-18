@@ -44,7 +44,10 @@ type Config struct {
 	EngineModel  string
 	Endpoint     string
 	StartTimeout time.Duration
-	NeedVAD      bool
+	// ReadIdleTimeout bounds a single Recv wait without a message.
+	// Zero (default) disables the SDK idle timeout; the caller's context still applies.
+	ReadIdleTimeout time.Duration
+	NeedVAD         bool
 	// HotwordID selects a Tencent-managed hotword table; empty uses the account default.
 	HotwordID string
 	// InputSampleRate=8000 explicitly accepts 8 kHz PCM for a 16 kHz engine.
@@ -79,6 +82,9 @@ func New(cfg Config) (*Client, error) {
 	}
 	if cfg.StartTimeout < 0 {
 		return nil, argumentError("StartTimeout must be nonnegative")
+	}
+	if cfg.ReadIdleTimeout < 0 {
+		return nil, argumentError("ReadIdleTimeout must be nonnegative")
 	}
 	if cfg.StartTimeout == 0 {
 		cfg.StartTimeout = defaultStartTimeout
@@ -177,6 +183,7 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	}
 	conn.SetReadLimit(1 << 20)
 	s := newStream(conn, ctx, voiceID)
+	s.readIdleTimeout = c.cfg.ReadIdleTimeout
 	if err := s.awaitHandshake(ctx, c.cfg.StartTimeout); err != nil {
 		_ = s.Close()
 		return nil, err
