@@ -59,10 +59,10 @@ func TestVolcengineLiveMinuteSession(t *testing.T) {
 	defer stream.Close()
 
 	type result struct {
-		finals      []string
-		partials    int
-		firstFinal  time.Duration
-		err         error
+		finals     []string
+		partials   int
+		firstFinal time.Duration
+		err        error
 	}
 	done := make(chan result, 1)
 	started := time.Now()
