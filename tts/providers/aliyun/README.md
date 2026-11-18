@@ -62,3 +62,22 @@ Official documentation:
 - https://help.aliyun.com/en/model-studio/cosyvoice-websocket-api
 - https://help.aliyun.com/en/model-studio/cosyvoice-client-events
 - https://help.aliyun.com/en/model-studio/cosyvoice-server-events
+
+## Streaming encoded output verification
+
+The automatic, billable integration test now checks **PCM, streaming MP3,
+streaming WAV and batch MP3**. For encoded streams, the provider returns
+successive slices of ONE media bitstream: a single `Recv` chunk is not
+necessarily a standalone playable MP3/WAV file. Concatenate `Chunk.Data`
+in receive order for a file or pass the stream to an incremental decoder.
+
+The live CI test uses `ffprobe` on concatenated bytes to inspect the
+**actual** codec, sample rate (22,050 Hz) and mono channel count rather than
+trusting only `Chunk.Format`. WAV must start with RIFF/WAVE. No conversion
+is performed by the SDK. Native mock tests also cover batch empty-output,
+parent/per-call cancellation, idempotent close, task-ID mismatches, and
+early task failure.
+
+The live fixture validates only the selected V3 Flash model and voice in
+one region at one sample rate. Do not infer from these tests that every
+listed rate, voice or model has been verified.

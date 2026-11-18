@@ -29,9 +29,13 @@ type StreamSynthesizer interface {
 	SynthesizeStream(ctx context.Context, req Request) (Stream, error)
 }
 
-// Stream yields chunks until io.EOF. One caller owns Recv; concurrent Recv
-// calls are not supported. Close is idempotent and releases resources. The
-// context passed to SynthesizeStream controls the session lifetime.
+// Stream yields consecutive bytes of a single synthesized audio bitstream
+// until io.EOF. An individual encoded MP3/WAV chunk is not necessarily a
+// standalone decodable file: concatenate the chunks or use a streaming
+// decoder. Chunk.Format describes the combined output stream.
+// One caller owns Recv; concurrent Recv calls are not supported. Close is
+// idempotent and releases resources. The SynthesizeStream context controls
+// the session lifetime.
 type Stream interface {
 	Recv(ctx context.Context) (audio.Chunk, error)
 	Close() error
