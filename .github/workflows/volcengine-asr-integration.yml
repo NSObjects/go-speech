@@ -149,8 +149,8 @@ jobs:
           test -s "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE"
           ffprobe -v error -show_entries stream=codec_name \
             -of default=noprint_wrappers=1 "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE" | grep -q 'codec_name=opus'
-      - name: Gate real streaming ASR (PCM, Mandarin, minute session, live Ogg Opus)
-        run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin|TestVolcengineLiveMinuteSession|TestVolcengineLiveOggOpus|TestVolcengineLiveContinuousOggOpus)$' -count=1 -v -timeout 8m ./asr/providers/volcengine
+      - name: Gate real streaming ASR (PCM, Ogg Opus, Go raw-packet remux)
+        run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin|TestVolcengineLiveMinuteSession|TestVolcengineLiveOggOpus|TestVolcengineLiveContinuousOggOpus|TestVolcengineLiveRawOpusRemux)$' -count=1 -v -timeout 8m ./asr/providers/volcengine
       - name: Diagnose ultra-short synthetic English speech recognition
         id: short_phrase
         continue-on-error: true
