@@ -19,11 +19,20 @@ Tencent's large-model 2.0 engines require the appropriate billing entitlement.
 
 ## Audio compatibility and lifecycle
 
-The first implementation accepts only mono PCM16LE at the engine's rate:
-16 kHz for `16k_...` engines, 8 kHz for `8k_...`. The caller controls
-approximately real-time audio pacing (Tencent recommends 200 ms chunks per
-200 ms). No resampling, codec conversion, VAD engine, device integration
-or background goroutine sending is added by the SDK.
+The provider accepts mono PCM16LE at the engine's native rate:
+16 kHz for `16k_...` engines, 8 kHz for `8k_...`. For explicit 8 kHz
+PCM input to a 16 kHz engine, set `Config.InputSampleRate = 8000` and pass
+`audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 8000, Channels: 1}`.
+The signed URL includes Tencent's `input_sample_rate=8000`; Tencent handles
+upsampling. **The SDK does not resample or convert the bytes.**
+
+`Config.HotwordID` optionally selects a Tencent-managed hotword table.
+Leave it empty to use the account default. Per-request `asr.Config.Hints`
+are still unsupported and will return a typed error rather than be ignored.
+The caller controls approximately real-time audio pacing (Tencent recommends
+200 ms chunks per 200 ms for the general realtime protocol and 40 ms chunks
+for the separate V2 sentence protocol). No device integration, SDK-managed
+VAD, or background audio-sending goroutine is added.
 
 **Important**: Tencent `voice_format=10` is a proprietary length-prefixed
 Opus frame format, not Ogg Opus. The shared `audio.EncodingOpus` refers to
