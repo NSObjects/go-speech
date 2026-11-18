@@ -66,6 +66,17 @@ jobs:
         run: go test -tags=integration -run TestTencentLiveSustainedPCM -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud minute-plus streamed PCM
         run: go test -tags=integration -run TestTencentLiveMinuteStream -count=1 -v -timeout 3m ./asr/providers/tencent
+      - name: Compare Tencent Cloud VAD thresholds on synthesized speech
+        run: |
+          set -o pipefail
+          go test -tags=integration -run TestTencentLiveVADComparison -count=1 -v -timeout 3m ./asr/providers/tencent | tee "${RUNNER_TEMP}/tencent-vad-comparison.log"
+          {
+            echo "### Tencent VAD synthetic-speech comparison"
+            echo "Diagnostic only: eSpeak-NG audio is not natural conversational speech. Negative first-final offset can occur if the model splits before the estimated fixture end."
+            echo '~~~'
+            grep 'VAD_COMPARE' "${RUNNER_TEMP}/tencent-vad-comparison.log" || true
+            echo '~~~'
+          } >> "${GITHUB_STEP_SUMMARY}"
       - name: Real Tencent Cloud customized VAD segmentation
         run: go test -tags=integration -run TestTencentLiveSegmentationOptions -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud 8k PCM input to 16k engine
