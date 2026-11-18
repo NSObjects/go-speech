@@ -53,8 +53,9 @@ func syntheticOggPage(data []byte, granule uint64) []byte {
 	}
 	page := make([]byte, 28+len(data))
 	copy(page[:4], "OggS")
-	page[4] = 0 // Ogg bitstream version
-	page[26] = 1 // single lacing segment
+	// Ogg bitstream version and one lacing segment.
+	page[4] = 0
+	page[26] = 1
 	page[27] = byte(len(data))
 	binary.LittleEndian.PutUint64(page[6:14], granule)
 	copy(page[28:], data)

@@ -71,10 +71,10 @@ func TestVolcengineLiveContinuousOggOpus(t *testing.T) {
 				received time.Time
 			}
 			type outcome struct {
-				finals   []observation
-				partials int
+				finals       []observation
+				partials     int
 				firstPartial time.Time
-				err      error
+				err          error
 			}
 			done := make(chan outcome, 1)
 			started := time.Now()
