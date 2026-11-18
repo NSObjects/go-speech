@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
