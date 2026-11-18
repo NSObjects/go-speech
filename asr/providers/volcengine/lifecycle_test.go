@@ -56,7 +56,7 @@ func TestRecvDeadlineStopsSessionAndRetainsError(t *testing.T) {
 // A single Client may be shared by multiple independent connections. The
 // response belonging to one socket must never be delivered to another caller.
 func TestConcurrentIndependentStreams(t *testing.T) {
-	const sessions = 4
+	const sessions = 32
 	requestIDs := make(chan string, sessions)
 	endpoint := mockEndpoint(t, func(ws *websocket.Conn, r *http.Request) {
 		requestIDs <- r.Header.Get("X-Api-Request-Id")
@@ -102,7 +102,7 @@ func TestConcurrentIndependentStreams(t *testing.T) {
 	outcomes := make(chan error, sessions)
 	for i := 1; i <= sessions; i++ {
 		go func(value int) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 			defer cancel()
 			stream, err := client.OpenStream(ctx, asr.Config{
 				Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
@@ -139,7 +139,7 @@ func TestConcurrentIndependentStreams(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-		case <-time.After(7 * time.Second):
+		case <-time.After(15 * time.Second):
 			t.Fatal("concurrent sessions did not terminate")
 		}
 	}

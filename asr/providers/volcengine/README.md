@@ -201,3 +201,16 @@ and later "你好" was not confirmed at the start while the last "你好" became
 quality observations**; neither the adapter nor the test can guarantee
 the accuracy of very short utterances within a continuous conversation.
 This test is not a multi-hour soak test or a children's-voice benchmark.
+
+## Bounded duration and concurrency regression
+
+The automatic billable Volcengine workflow includes a separate one-connection
+Mandarin test with **at least 60 seconds of PCM**, 12 alternating full
+utterances and 4-second silent gaps. It requires 12 ordered confirmed results,
+six occurrences each of the two keywords, and stable EOF. It logs partial
+count and time to first confirmed result, without imposing arbitrary accuracy
+or latency targets. The offline local WebSocket test concurrently runs **32
+independent sessions** on one shared Client, checking unique request IDs,
+per-session final transcript isolation and terminal EOF under `go test -race`.
+Neither test is a multi-hour soak nor a real-provider 32-connection load test,
+and neither validates recorded children's speech.
