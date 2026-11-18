@@ -26,6 +26,35 @@ PCM input to a 16 kHz engine, set `Config.InputSampleRate = 8000` and pass
 The signed URL includes Tencent's `input_sample_rate=8000`; Tencent handles
 upsampling. **The SDK does not resample or convert the bytes.**
 
+## Optional Tencent-side sentence segmentation
+
+On supported legacy real-time engines, configure `VADSilenceTime` and
+`MaxSpeakTime` as `time.Duration` values. These change **Tencent's server-side
+sentence boundaries**, not PCM capture, SDK timing, or local VAD:
+
+```go
+client, err := tencent.New(tencent.Config{
+    AppID: appID, SecretID: secretID, SecretKey: secretKey,
+    EngineModel: "16k_zh",
+    NeedVAD: true,
+    VADSilenceTime: 700 * time.Millisecond, // 500–2000ms; Tencent default 1000ms.
+    MaxSpeakTime: 10 * time.Second,         // 5–90s; Tencent default 60s.
+})
+```
+
+Both fields default to zero, which **omits** the query parameters and
+preserves Tencent's default behavior. `VADSilenceTime` requires `NeedVAD=true`
+and is available for `8k_zh`, `8k_zh_finance`, `16k_zh`, `16k_zh_en`,
+`8k_zh_large`, `16k_en`, and `16k_en_large`. `MaxSpeakTime` is available
+for `8k_zh`, `16k_zh`, `16k_zh_en`, and `8k_zh_large`. Both are
+intentionally rejected for `*_2.0` engines because their separate published
+protocol does not document these knobs. Whole-millisecond values outside
+the vendor ranges return `CodeInvalidArgument` **before** connecting.
+Tuning sentence boundaries may reduce recognition accuracy; benchmark against
+the defaults for each application.
+
+Official legacy protocol: https://cloud.tencent.com/document/product/1093/48982
+
 `Config.HotwordID` optionally selects a Tencent-managed hotword table.
 Leave it empty to use the account default. Alternatively, callers can supply
 `asr.Config.Hints` for one recognition session: the SDK validates up to 128
@@ -148,6 +177,7 @@ create short Mandarin PCM fixtures. Cloud gates cover:
 - three concurrent 16 kHz streams;
 - a sustained ~20-second 16 kHz session;
 - a minute-plus 16 kHz stream to check long-running PCM delivery and stable EOF;
+- a real `16k_zh` session signed with 700ms VAD silence and 10s forced segmentation;
 - 8 kHz PCM sent unchanged to a 16 kHz engine with `input_sample_rate=8000`.
 
 Large-model 2.0 requires a separate billing entitlement. Set the optional

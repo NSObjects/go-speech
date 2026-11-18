@@ -48,6 +48,12 @@ type Config struct {
 	// Zero (default) disables the SDK idle timeout; the caller's context still applies.
 	ReadIdleTimeout time.Duration
 	NeedVAD         bool
+	// VADSilenceTime optionally overrides server-side silence segmentation.
+	// Requires NeedVAD. Zero uses Tencent's default (1000ms).
+	VADSilenceTime time.Duration
+	// MaxSpeakTime optionally forces final sentence segmentation during
+	// continuous speech. Zero uses Tencent's default (60000ms).
+	MaxSpeakTime time.Duration
 	// HotwordID selects a Tencent-managed hotword table; empty uses the account default.
 	HotwordID string
 	// InputSampleRate=8000 explicitly accepts 8 kHz PCM for a 16 kHz engine.
@@ -76,6 +82,32 @@ func New(cfg Config) (*Client, error) {
 	}
 	if cfg.HotwordID != "" && (len(cfg.HotwordID) > 128 || strings.ContainsAny(cfg.HotwordID, "&?=/# \t\r\n")) {
 		return nil, argumentError("invalid HotwordID")
+	}
+	if cfg.VADSilenceTime != 0 {
+		if !cfg.NeedVAD {
+			return nil, argumentError("VADSilenceTime requires NeedVAD")
+		}
+		if cfg.VADSilenceTime < 500*time.Millisecond || cfg.VADSilenceTime > 2*time.Second ||
+			cfg.VADSilenceTime%time.Millisecond != 0 {
+			return nil, argumentError("VADSilenceTime must be a whole number of milliseconds between 500 and 2000")
+		}
+		switch cfg.EngineModel {
+		case "8k_zh", "8k_zh_finance", "16k_zh", "16k_zh_en",
+			"8k_zh_large", "16k_en", "16k_en_large":
+		default:
+			return nil, argumentError("VADSilenceTime is unsupported by EngineModel")
+		}
+	}
+	if cfg.MaxSpeakTime != 0 {
+		if cfg.MaxSpeakTime < 5*time.Second || cfg.MaxSpeakTime > 90*time.Second ||
+			cfg.MaxSpeakTime%time.Millisecond != 0 {
+			return nil, argumentError("MaxSpeakTime must be a whole number of milliseconds between 5000 and 90000")
+		}
+		switch cfg.EngineModel {
+		case "8k_zh", "16k_zh", "16k_zh_en", "8k_zh_large":
+		default:
+			return nil, argumentError("MaxSpeakTime is unsupported by EngineModel")
+		}
 	}
 	if cfg.Endpoint == "" {
 		cfg.Endpoint = DefaultEndpoint
@@ -228,6 +260,12 @@ func (c *Client) signedURLWithHints(now time.Time, nonce uint32, voiceID, hotwor
 		params.Set("needvad", "1")
 	} else {
 		params.Set("needvad", "0")
+	}
+	if c.cfg.VADSilenceTime != 0 {
+		params.Set("vad_silence_time", strconv.FormatInt(c.cfg.VADSilenceTime.Milliseconds(), 10))
+	}
+	if c.cfg.MaxSpeakTime != 0 {
+		params.Set("max_speak_time", strconv.FormatInt(c.cfg.MaxSpeakTime.Milliseconds(), 10))
 	}
 	// Tencent signs raw parameter values; url.Values.Encode is only for
 	// transmission. Signing the encoded UTF-8 bytes rejects Chinese hotwords.
