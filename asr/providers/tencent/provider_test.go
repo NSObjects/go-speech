@@ -482,6 +482,13 @@ func TestTencentV2ModelSignatureOmitsUnsupportedResultMode(t *testing.T) {
 			if q.Get("engine_model_type") != model || q.Get("voice_format") != "1" {
 				t.Fatalf("model %s: incorrect engine or PCM encoding", model)
 			}
+			if model == "16k_zh_en_speaker_2.0" {
+				if q.Get("speaker_diarization") != "1" {
+					t.Fatalf("model %s must enable speaker_diarization=1", model)
+				}
+			} else if q.Has("speaker_diarization") {
+				t.Fatalf("model %s must not send speaker_diarization", model)
+			}
 			if !verifySignature(&http.Request{Host: u.Host, URL: u}, "k") {
 				t.Fatalf("model %s: incorrect HMAC signature", model)
 			}

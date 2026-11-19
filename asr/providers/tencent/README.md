@@ -96,6 +96,10 @@ or as stable IDs between independent WebSocket sessions. The standard
 `16k_zh_en_speaker_2.0` (with appropriate Tencent entitlement) for that.
 Legacy Tencent and other providers leave this new field `nil`.
 
+The speaker-enabled 2.0 engine also sends the signed
+`speaker_diarization=1` parameter, matching Tencent's meeting diarization
+SDK example. Ordinary 2.0 and legacy engines omit it.
+
 For a real speaker-engine smoke test, optionally configure the GitHub
 Actions repository variable `TENCENT_V2_SPEAKER_MODEL` to
 `16k_zh_en_speaker_2.0`. The extra paid gate then confirms at least one
