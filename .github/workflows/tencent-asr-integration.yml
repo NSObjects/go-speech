@@ -91,8 +91,7 @@ jobs:
           TENCENT_V2_ASR_MODEL: 16k_zh_en_2.0
         run: |
           set +e
-          go test -tags=integration -run '^TestTencentLiveLargeModelV2
- -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-probe.log" 2>&1
+          go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-probe.log" 2>&1
           result=$?
           cat "${RUNNER_TEMP}/tencent-v2-probe.log"
           {
@@ -113,5 +112,4 @@ jobs:
       # other ASR integration gates; this step must NOT continue-on-error.
       - name: Real Tencent Cloud 2.0 (strict for configured model)
         if: env.TENCENT_V2_ASR_MODEL != ''
-        run: go test -tags=integration -run '^TestTencentLiveLargeModelV2
- -count=1 -v -timeout 2m ./asr/providers/tencent
+        run: go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent
