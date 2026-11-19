@@ -158,3 +158,35 @@ jobs:
             } >> "${GITHUB_STEP_SUMMARY}"
             exit 1
           fi
+
+  # Temporary, branch-only fast probe: downloads Tencent's official public
+  # PCM fixture. Avoids apt/FFmpeg/eSpeak setup while debugging this SKU.
+  speaker-fast-probe:
+    if: github.ref == 'refs/heads/test/tencent-v2-speaker-cloud-entitlement'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      TENCENT_APP_ID: ${{ vars.TENCENT_APP_ID }}
+      TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+      TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+      TENCENT_V2_SPEAKER_MODEL: 16k_zh_en_speaker_2.0
+      TENCENT_TEST_16K_PCM_FILE: /tmp/tencent-official-speech.pcm
+      TENCENT_TEST_SPEAKER_PCM_FILE: /tmp/tencent-official-speaker-extended.pcm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare Tencent official public PCM (no codec packages)
+        run: |
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 45 \
+            "https://raw.githubusercontent.com/TencentCloud/tencentcloud-speech-sdk-go/257f9f56bcd592bff1faea9b4ce0f1ef90cea803/examples/speakerexample/test.pcm" \
+            -o "$TENCENT_TEST_16K_PCM_FILE"
+          test "$(git hash-object "$TENCENT_TEST_16K_PCM_FILE")" = "48e5f31375a9e7bad4ad21cd104cdd5714670d25"
+          for i in $(seq 1 12); do cat "$TENCENT_TEST_16K_PCM_FILE"; done > "$TENCENT_TEST_SPEAKER_PCM_FILE"
+          test -s "$TENCENT_TEST_SPEAKER_PCM_FILE"
+      - name: Probe speaker sentence mode with public audio
+        continue-on-error: true
+        run: |
+          go test -tags=integration -run TestTencentLiveV2SpeakerEngine -count=1 -v -timeout 2m ./asr/providers/tencent
