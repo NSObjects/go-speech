@@ -20,6 +20,7 @@ jobs:
       TENCENT_TEST_PCM_FILE: /tmp/tencent-speech-test.pcm
       TENCENT_TEST_16K_PCM_FILE: /tmp/tencent-speech-test-16k.pcm
       TENCENT_TEST_8K_PCM_FILE: /tmp/tencent-speech-test-8k.pcm
+      TENCENT_TEST_SPEAKER_PCM_FILE: /tmp/tencent-speech-speaker-16k.pcm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -56,6 +57,13 @@ jobs:
           test -s "$TENCENT_TEST_16K_PCM_FILE"
           test -s "$TENCENT_TEST_8K_PCM_FILE"
           test -s "$TENCENT_TEST_PCM_FILE"
+      - name: Generate distinct-voice speaker fixture (synthetic)
+        run: |
+          espeak-ng -v zh+f3 -s 125 -w "${RUNNER_TEMP}/tencent-speech-voice-b.wav" "你好，我是另一位说话人。今天我们一起讨论学习计划。"
+          ffmpeg -hide_banner -loglevel error -y -i "${RUNNER_TEMP}/tencent-speech-voice-b.wav" -ac 1 -ar 16000 -c:a pcm_s16le -f s16le "${RUNNER_TEMP}/tencent-speech-voice-b.pcm"
+          head -c 32000 /dev/zero > "${RUNNER_TEMP}/tencent-speech-silence.pcm"
+          cat "$TENCENT_TEST_16K_PCM_FILE" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "${RUNNER_TEMP}/tencent-speech-voice-b.pcm" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "$TENCENT_TEST_16K_PCM_FILE" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "${RUNNER_TEMP}/tencent-speech-voice-b.pcm" > "$TENCENT_TEST_SPEAKER_PCM_FILE"
+          test -s "$TENCENT_TEST_SPEAKER_PCM_FILE"
       # One real, billable speaker-engine entitlement probe on this branch.
       # Non-gating until the account and speaker_id response are verified.
       # This step sends synthesized single-speaker PCM, not private recordings.
@@ -70,7 +78,7 @@ jobs:
           cat "${RUNNER_TEMP}/tencent-v2-speaker.log"
           {
             echo "### Tencent Cloud V2 speaker-enabled real-cloud probe"
-            echo "Engine: 16k_zh_en_speaker_2.0 (real, potentially billable, one synthesized voice)."
+            echo "Engine: 16k_zh_en_speaker_2.0 (real, potentially billable, alternating synthesized voices)."
             if [ "$result" -eq 0 ]; then
               echo "Result: **PASS** — speaker metadata fields received from Tencent Cloud."
               grep 'Tencent speaker engine=' "${RUNNER_TEMP}/tencent-v2-speaker.log" || true
@@ -80,7 +88,7 @@ jobs:
               grep -E 'Tencent ASR error [0-9]+|WebSocket handshake HTTP [0-9]+|returned no speaker_id|--- FAIL: TestTencentLiveV2SpeakerEngine' "${RUNNER_TEMP}/tencent-v2-speaker.log" | tail -n 6 || true
               echo '~~~'
             fi
-            echo "A single voice does not establish multi-person diarization accuracy."
+            echo "Synthesized distinct voices do not establish natural multi-person diarization accuracy."
           } >> "${GITHUB_STEP_SUMMARY}"
           exit "$result"
       - name: Real Tencent Cloud PCM streaming ASR and terminal EOF

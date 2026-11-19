@@ -20,8 +20,12 @@ func TestTencentLiveV2SpeakerEngine(t *testing.T) {
 	if model != "16k_zh_en_speaker_2.0" {
 		t.Fatalf("unsupported speaker test engine %q; require 16k_zh_en_speaker_2.0", model)
 	}
-	pcm := livePCMFixture(t, "TENCENT_TEST_16K_PCM_FILE")
-	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
+	fixture := "TENCENT_TEST_SPEAKER_PCM_FILE"
+	if os.Getenv(fixture) == "" {
+		fixture = "TENCENT_TEST_16K_PCM_FILE"
+	}
+	pcm := livePCMFixture(t, fixture)
+	ctx, cancel := context.WithTimeout(context.Background(), 95*time.Second)
 	defer cancel()
 	result, err := liveSession(ctx, model, 16000, 0, pcm)
 	if err != nil {
@@ -39,6 +43,9 @@ func TestTencentLiveV2SpeakerEngine(t *testing.T) {
 		} else {
 			t.Fatalf("Tencent speaker engine returned out-of-range speaker_id=%d", id)
 		}
+	}
+	if assigned == 0 {
+		t.Fatal("speaker engine returned only pending speaker_id=-1; no assigned speaker ID verified")
 	}
 	t.Logf("Tencent speaker engine=%s speaker_events=%d pending=%d assigned=%d finals=%d",
 		model, len(result.speakerIDs), unknown, assigned, len(result.finals))
