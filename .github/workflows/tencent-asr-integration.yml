@@ -59,7 +59,7 @@ jobs:
           test -s "$TENCENT_TEST_PCM_FILE"
       - name: Generate distinct-voice speaker fixture (synthetic)
         run: |
-          espeak-ng -v zh+f3 -s 125 -w "${RUNNER_TEMP}/tencent-speech-voice-b.wav" "你好，我是另一位说话人。今天我们一起讨论学习计划。"
+          espeak-ng -v en-us -s 125 -w "${RUNNER_TEMP}/tencent-speech-voice-b.wav" "Hello, I am the second speaker. Today we will discuss our learning plans together."
           ffmpeg -hide_banner -loglevel error -y -i "${RUNNER_TEMP}/tencent-speech-voice-b.wav" -ac 1 -ar 16000 -c:a pcm_s16le -f s16le "${RUNNER_TEMP}/tencent-speech-voice-b.pcm"
           head -c 32000 /dev/zero > "${RUNNER_TEMP}/tencent-speech-silence.pcm"
           cat "$TENCENT_TEST_16K_PCM_FILE" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "${RUNNER_TEMP}/tencent-speech-voice-b.pcm" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "$TENCENT_TEST_16K_PCM_FILE" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "${RUNNER_TEMP}/tencent-speech-voice-b.pcm" > "$TENCENT_TEST_SPEAKER_PCM_FILE"
