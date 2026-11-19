@@ -35,6 +35,73 @@ go get github.com/NSObjects/go-speech@latest
 
 > ASR 已包含阿里云五模型及火山引擎豆包流式 ASR Provider。TTS 已新增阿里云 CosyVoice WebSocket Provider（真实云端验证情况以 GitHub Actions 为准）。
 
+## 快速开始：使用统一的 ASR 入口
+
+`speech.NewASR` 使用 **配置类型** 选择厂商，并返回
+`asr.StreamRecognizer`。业务代码无需导入 `asr/providers/*`，
+也不需要 SDK 读取 YAML、环境变量或设置全局 Provider。
+
+```go
+import (
+    speech "github.com/NSObjects/go-speech"
+    "github.com/NSObjects/go-speech/asr"
+    "github.com/NSObjects/go-speech/audio"
+)
+
+// 只需提供当前使用的厂商配置：
+recognizer, err := speech.NewASR(speech.TencentASR{
+    AppID: appID, SecretID: secretID, SecretKey: secretKey,
+    EngineModel: "16k_zh_en_2.0", NeedVAD: true,
+})
+if err != nil { return err }
+
+stream, err := recognizer.OpenStream(ctx, asr.Config{
+    Format: audio.Format{
+        Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1,
+    },
+})
+if err != nil { return err }
+defer stream.Close()
+// One sender calls Send then CloseSend; a concurrent receiver calls Recv
+// until io.EOF. EventPartial is tentative; EventFinal is confirmed text.
+```
+
+**按变量切换**：调用方决定变量的来源，并选择相应的强类型配置。
+`NewASR` 本身只创建 Client，不打开远程连接。
+
+```go
+configs := map[string]speech.ASRConfig{
+    "tencent": speech.TencentASR{
+        AppID: appID, SecretID: secretID, SecretKey: secretKey,
+        EngineModel: "16k_zh_en_2.0",
+    },
+    "aliyun": speech.AliyunASR{
+        APIKey: dashscopeKey,
+        Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+    },
+    "volcengine": speech.VolcengineASR{
+        APIKey: volcengineKey,
+    },
+}
+cfg, ok := configs[providerName]
+if !ok { return fmt.Errorf("unknown ASR provider %q", providerName) }
+recognizer, err := speech.NewASR(cfg)
+```
+
+也支持传入 `*speech.TencentASR` 等指针配置。配置类型直接复用
+现有 Provider 的字段定义，不维护另一套配置参数。三个 Provider 的
+音频格式、模型能力和 VAD 设置仍各自生效；Factory 不进行隐式转码、
+自动重试或失败自动切换。需要自行扩展其他 Provider 时，仍可使用
+`asr.Registry` 或实现 `asr.StreamRecognizer`。
+
+**完整可运行的 PCM 流式例子：** [examples/asr-switch](examples/asr-switch)。
+设置 `ASR_PROVIDER=tencent` / `aliyun` / `volcengine` 和对应鉴权
+环境变量，准备原始 16 kHz mono PCM16LE 文件，然后运行：
+
+```sh
+go run ./examples/asr-switch speech.pcm
+```
+
 ## 主要 API
 
 ```go
