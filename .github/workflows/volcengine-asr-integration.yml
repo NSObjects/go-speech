@@ -122,7 +122,7 @@ jobs:
               if [ "$n" -lt 12 ]; then
                 cat "${RUNNER_TEMP}/minute-gap.pcm"
               else
-                cat "${RUNNER_TEMP}/tail.pcm"
+                cat "${RUNNER_TEMP}/mandarin-tail.pcm"
               fi
             done
           ) > "$VOLCENGINE_MINUTE_PCM_FILE"
