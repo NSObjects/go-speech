@@ -1,0 +1,66 @@
+name: Build ASR CI Toolchain Image
+
+# Stage 1: validate the image independently before migrating existing CI.
+# Once published from main, jobs can use this GHCR image instead of apt.
+on:
+  pull_request:
+    paths:
+      - ci/Dockerfile
+      - .github/workflows/ci-image.yml
+  push:
+    branches: [main]
+    paths:
+      - ci/Dockerfile
+      - .github/workflows/ci-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-toolchain-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to GHCR (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and cache toolchain layers
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./ci/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          load: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
+          tags: |
+            ghcr.io/nsobjects/go-speech-ci:ubuntu24-v1
+            ghcr.io/nsobjects/go-speech-ci:sha-${{ github.sha }}
+          cache-from: type=gha,scope=go-speech-ci-ubuntu24-v1
+          cache-to: type=gha,mode=max,scope=go-speech-ci-ubuntu24-v1
+
+      - name: Verify FFmpeg, speech synthesizer and native headers
+        run: |
+          docker run --rm ghcr.io/nsobjects/go-speech-ci:ubuntu24-v1 \
+            bash -euo pipefail -c '
+              command -v ffmpeg
+              command -v ffprobe
+              command -v espeak-ng
+              command -v python3
+              command -v gcc
+              command -v git
+              command -v zstd
+              pkg-config --exists opus opencore-amrnb
+              ffmpeg -hide_banner -encoders 2>/dev/null | grep libopus >/dev/null
+              echo "ASR CI toolchain verified"
+            '
