@@ -36,7 +36,6 @@ jobs:
       - name: Prepare pinned Tencent PCM fixtures (16k and 8k)
         run: |
           set -euo pipefail
-          command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg missing from hosted runner" >&2; exit 1; }
           source_pcm="${RUNNER_TEMP}/tencent-official-source.pcm"
           curl -fsSL --retry 3 --connect-timeout 15 --max-time 45 \
             "https://raw.githubusercontent.com/TencentCloud/tencentcloud-speech-sdk-go/257f9f56bcd592bff1faea9b4ce0f1ef90cea803/examples/speakerexample/test.pcm" \
@@ -46,9 +45,29 @@ jobs:
           for i in 1 2 3; do cat "$source_pcm" >> "$TENCENT_TEST_16K_PCM_FILE"; done
           # 9 repetitions in the minute-stream test must remain over 60 seconds.
           test "$(wc -c < "$TENCENT_TEST_16K_PCM_FILE")" -gt 213334
-          ffmpeg -hide_banner -loglevel error -y \
-            -f s16le -ar 16000 -ac 1 -i "$TENCENT_TEST_16K_PCM_FILE" \
-            -ar 8000 -ac 1 -c:a pcm_s16le -f s16le "$TENCENT_TEST_8K_PCM_FILE"
+          # Exact 2:1 rate conversion for protocol coverage, using Python stdlib.
+          # Adjacent-sample averaging avoids external codec/package dependencies.
+          python3 - <<'PY'
+          from array import array
+          from pathlib import Path
+          import os
+          import sys
+
+          raw = Path(os.environ["TENCENT_TEST_16K_PCM_FILE"]).read_bytes()
+          if len(raw) % 4:
+              raise SystemExit("16k PCM must have an even number of 16-bit samples")
+          samples = array("h")
+          samples.frombytes(raw)
+          if sys.byteorder != "little":
+              samples.byteswap()
+          reduced = array("h", (
+              (int(samples[i]) + int(samples[i + 1])) // 2
+              for i in range(0, len(samples), 2)
+          ))
+          if sys.byteorder != "little":
+              reduced.byteswap()
+          Path(os.environ["TENCENT_TEST_8K_PCM_FILE"]).write_bytes(reduced.tobytes())
+          PY
           if [[ "$TENCENT_ASR_MODEL" == 8k_* ]]; then
             cp "$TENCENT_TEST_8K_PCM_FILE" "$TENCENT_TEST_PCM_FILE"
           else
