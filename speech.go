@@ -49,23 +49,50 @@ func (VolcengineASR) isASRConfig() {}
 func NewASR(cfg ASRConfig) (asr.StreamRecognizer, error) {
 	switch c := cfg.(type) {
 	case TencentASR:
-		return tencent.New(tencent.Config(c))
+		return newTencentASR(tencent.Config(c))
 	case *TencentASR:
 		if c != nil {
-			return tencent.New(tencent.Config(*c))
+			return newTencentASR(tencent.Config(*c))
 		}
 	case AliyunASR:
-		return aliyun.New(aliyun.Config(c))
+		return newAliyunASR(aliyun.Config(c))
 	case *AliyunASR:
 		if c != nil {
-			return aliyun.New(aliyun.Config(*c))
+			return newAliyunASR(aliyun.Config(*c))
 		}
 	case VolcengineASR:
-		return volcengine.New(volcengine.Config(c))
+		return newVolcengineASR(volcengine.Config(c))
 	case *VolcengineASR:
 		if c != nil {
-			return volcengine.New(volcengine.Config(*c))
+			return newVolcengineASR(volcengine.Config(*c))
 		}
 	}
 	return nil, ErrInvalidASRConfig
+}
+
+// Each provider New returns *Client, whose nil pointer becomes non-nil when
+ // implicitly converted to asr.StreamRecognizer. Normalize errors before
+ // conversion so NewASR always returns a genuinely nil interface on failure.
+func newTencentASR(cfg tencent.Config) (asr.StreamRecognizer, error) {
+	client, err := tencent.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func newAliyunASR(cfg aliyun.Config) (asr.StreamRecognizer, error) {
+	client, err := aliyun.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func newVolcengineASR(cfg volcengine.Config) (asr.StreamRecognizer, error) {
+	client, err := volcengine.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
 }
