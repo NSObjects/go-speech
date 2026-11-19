@@ -1,0 +1,53 @@
+name: Volcengine FLEURS Mandarin Corpus Canary (automatic, paid)
+
+# Distinct naturally spoken Chinese phrases, with ground-truth transcripts.
+# Strict candidate qualification only; do not weaken the existing live gates.
+on:
+  push:
+    paths:
+      - "asr/providers/volcengine/integration_fleurs_mandarin_canary_test.go"
+      - ".github/workflows/volcengine-fleurs-mandarin-canary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  live-fleurs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    container:
+      image: ghcr.io/nsobjects/go-speech-ci:sha-97c09deafd7c79bcf75e85e9bd3147d7f0299f87
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
+      VOLCENGINE_RESOURCE_ID: ${{ vars.VOLCENGINE_RESOURCE_ID }}
+      VOLCENGINE_WS_ENDPOINT: ${{ vars.VOLCENGINE_WS_ENDPOINT }}
+      VOLCENGINE_FLEURS_ZH_SHORT_PCM_FILE: /tmp/fleurs-zh-short.pcm
+      VOLCENGINE_FLEURS_ZH_1906_PCM_FILE: /tmp/fleurs-zh-1906.pcm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify live API credentials
+        run: test -n "$VOLCENGINE_API_KEY"
+      - name: Fetch pinned FLEURS Chinese recordings (CC BY 4.0)
+        run: |
+          set -eu
+          base="https://raw.githubusercontent.com/handy-computer/transcribe.cpp/adfc50210a3f026a655a3e19937d90ef2bf0728c/samples"
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 "$base/zh-short.wav" -o /tmp/fleurs-zh-short.wav
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 "$base/fleurs-zh.wav" -o /tmp/fleurs-zh-1906.wav
+          test "$(git hash-object /tmp/fleurs-zh-short.wav)" = d21d2aea863f71e94d3e55eda53190a931da9318
+          test "$(git hash-object /tmp/fleurs-zh-1906.wav)" = 8f0660a5fd620ab2f3f005e8d29641619086a2b8
+          # Repository fixtures are WAV; the ASR SDK receives raw PCM16LE only.
+          ffmpeg -hide_banner -loglevel error -y -i /tmp/fleurs-zh-short.wav -ac 1 -ar 16000 -c:a pcm_s16le -f s16le "$VOLCENGINE_FLEURS_ZH_SHORT_PCM_FILE"
+          ffmpeg -hide_banner -loglevel error -y -i /tmp/fleurs-zh-1906.wav -ac 1 -ar 16000 -c:a pcm_s16le -f s16le "$VOLCENGINE_FLEURS_ZH_1906_PCM_FILE"
+          test -s "$VOLCENGINE_FLEURS_ZH_SHORT_PCM_FILE"
+          test -s "$VOLCENGINE_FLEURS_ZH_1906_PCM_FILE"
+      - name: Strict Volcengine natural Mandarin candidate recognition
+        run: go test -tags=integration -run '^TestVolcengineLiveFLEURSMandarinCanary$' -count=1 -v -timeout 4m ./asr/providers/volcengine
