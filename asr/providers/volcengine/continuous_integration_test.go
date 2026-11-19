@@ -15,7 +15,7 @@ import (
 	"github.com/NSObjects/go-speech/audio"
 )
 
-// TestVolcengineLiveContinuousMandarin streams four distinct synthetic
+// TestVolcengineLiveContinuousMandarin streams four separate natural
 // Mandarin utterances over one connection. The silence gaps test provider
 // sentence finalization without closing and reopening the WebSocket.
 func TestVolcengineLiveContinuousMandarin(t *testing.T) {
@@ -107,9 +107,14 @@ func TestVolcengineLiveContinuousMandarin(t *testing.T) {
 				if len(got.finals) < 4 {
 					t.Fatalf("expected four independently finalized phrases, got %d: %q", len(got.finals), got.finals)
 				}
+				for i, sentence := range got.finals {
+					if !strings.Contains(sentence, "腾讯云") {
+						t.Fatalf("final %d missing natural Mandarin phrase: %q", i+1, sentence)
+					}
+				}
 				text := strings.Join(got.finals, "")
 				offset := 0
-				for _, word := range []string{"天气", "游戏", "天气", "游戏"} {
+				for _, word := range []string{"腾讯云", "腾讯云", "腾讯云", "腾讯云"} {
 					index := strings.Index(text[offset:], word)
 					if index < 0 {
 						t.Fatalf("missing/reordered keyword %q in final transcript %q", word, text)
@@ -119,7 +124,7 @@ func TestVolcengineLiveContinuousMandarin(t *testing.T) {
 				// Both phrases are repeated with separate timestamps.
 				// The adapter must not collapse a new spoken turn into
 				// an old full-mode snapshot.
-				for word, want := range map[string]int{"天气": 2, "游戏": 2} {
+				for word, want := range map[string]int{"腾讯云": 4} {
 					if got := strings.Count(text, word); got != want {
 						t.Fatalf("keyword %q appears %d times, want %d: %q", word, got, want, text)
 					}

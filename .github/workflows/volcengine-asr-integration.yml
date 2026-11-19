@@ -6,10 +6,16 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   live-asr:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nsobjects/go-speech-ci:sha-97c09deafd7c79bcf75e85e9bd3147d7f0299f87
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 10
     env:
       VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
@@ -35,12 +41,11 @@ jobs:
             echo "::error title=Missing API key::Set VOLCENGINE_API_KEY to the new-console APP Key in Repository secrets."
             exit 1
           fi
-      - name: Install speech fixture tools
+      - name: Verify preinstalled audio fixture tools
         run: |
-          sudo apt-get install -y espeak-ng ffmpeg || {
-            sudo apt-get update -qq
-            sudo apt-get install -y espeak-ng ffmpeg
-          }
+          command -v espeak-ng
+          command -v ffmpeg
+          command -v ffprobe
       - name: Generate two-utterance real spoken-audio PCM fixture
         run: |
           # Two distinct utterances separated by 2s of PCM silence. A trailing
@@ -69,46 +74,42 @@ jobs:
           head -c 32000 /dev/zero > "${RUNNER_TEMP}/short-tail.pcm"
           cat "${RUNNER_TEMP}/short-voice.pcm" "${RUNNER_TEMP}/short-tail.pcm" > "$VOLCENGINE_SHORT_PCM_FILE"
           test -s "$VOLCENGINE_SHORT_PCM_FILE"
-      - name: Generate Mandarin spoken-audio fixtures
+      - name: Prepare pinned natural Mandarin PCM fixture
         run: |
-          # eSpeak NG's Mandarin voice supplies offline synthetic test inputs.
-          # Keep fixtures separate from the SDK, which does not implement TTS.
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/mandarin.wav" "今天天气很好。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/mandarin-short.wav" "你好。"
-          for part in mandarin mandarin-short; do
-            ffmpeg -hide_banner -loglevel error -y \
-              -i "${RUNNER_TEMP}/${part}.wav" -ac 1 -ar 16000 \
-              -c:a pcm_s16le -f s16le "${RUNNER_TEMP}/${part}.pcm"
-          done
-          # Flush final recognition without introducing another utterance.
-          head -c 32000 /dev/zero > "${RUNNER_TEMP}/mandarin-tail.pcm"
-          cat "${RUNNER_TEMP}/mandarin.pcm" "${RUNNER_TEMP}/mandarin-tail.pcm" > "$VOLCENGINE_MANDARIN_PCM_FILE"
-          cat "${RUNNER_TEMP}/mandarin-short.pcm" "${RUNNER_TEMP}/mandarin-tail.pcm" > "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE"
+          # Independently recognized as 腾讯云智能语音欢迎您 by both
+          # Tencent and Volcengine (single/full) live ASR suites.
+          # Use the upstream source at a fixed commit and verify its git blob
+          # SHA; do not synthesize Mandarin with eSpeak NG (issue #45).
+          natural="${RUNNER_TEMP}/mandarin-natural.pcm"
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 45 \
+            "https://raw.githubusercontent.com/TencentCloud/tencentcloud-speech-sdk-go/257f9f56bcd592bff1faea9b4ce0f1ef90cea803/examples/speakerexample/test.pcm" \
+            -o "$natural"
+          test "$(wc -c < "$natural")" -eq 76360
+          test "$(git hash-object "$natural")" = 48e5f31375a9e7bad4ad21cd104cdd5714670d25
+          # 1.5s of silence gives VAD time to finalize the last phrase.
+          head -c 48000 /dev/zero > "${RUNNER_TEMP}/mandarin-tail.pcm"
+          cat "$natural" "${RUNNER_TEMP}/mandarin-tail.pcm" > "$VOLCENGINE_MANDARIN_PCM_FILE"
+          cp "$VOLCENGINE_MANDARIN_PCM_FILE" "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE"
           test -s "$VOLCENGINE_MANDARIN_PCM_FILE"
           test -s "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE"
-      - name: Generate continuous Mandarin conversation PCM fixture
+      - name: Generate continuous natural Mandarin conversation fixture
         run: |
-          # Four turns: repeat two full phrases; three 2s silences.
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn1.wav" "今天天气很好。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn2.wav" "我们一起玩游戏。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn3.wav" "今天天气很好。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn4.wav" "我们一起玩游戏。"
-          for part in turn1 turn2 turn3 turn4; do
-            ffmpeg -hide_banner -loglevel error -y \
-              -i "${RUNNER_TEMP}/${part}.wav" -ac 1 -ar 16000 \
-              -c:a pcm_s16le -f s16le "${RUNNER_TEMP}/${part}.pcm"
+          # Four independent utterances from a verifiable natural recording,
+          # separated by 2s of PCM silence. The same words repeat but each
+          # turn must be independently finalized on the same WebSocket.
+          for n in 1 2 3 4; do
+            cp "${RUNNER_TEMP}/mandarin-natural.pcm" "${RUNNER_TEMP}/turn${n}.pcm"
           done
           head -c 64000 /dev/zero > "${RUNNER_TEMP}/gap.pcm"
-          head -c 32000 /dev/zero > "${RUNNER_TEMP}/tail.pcm"
           cat "${RUNNER_TEMP}/turn1.pcm" "${RUNNER_TEMP}/gap.pcm" \
             "${RUNNER_TEMP}/turn2.pcm" "${RUNNER_TEMP}/gap.pcm" \
             "${RUNNER_TEMP}/turn3.pcm" "${RUNNER_TEMP}/gap.pcm" \
-            "${RUNNER_TEMP}/turn4.pcm" "${RUNNER_TEMP}/tail.pcm" \
+            "${RUNNER_TEMP}/turn4.pcm" "${RUNNER_TEMP}/mandarin-tail.pcm" \
             > "$VOLCENGINE_CONTINUOUS_PCM_FILE"
           test -s "$VOLCENGINE_CONTINUOUS_PCM_FILE"
       - name: Generate minute-long continuous Mandarin fixture
         run: |
-          # Twelve whole phrases on a single stream, 4s apart. Keep fixture
+          # Twelve natural Mandarin utterances on one stream, 4s apart. Keep fixture
           # construction out of the SDK; no implicit audio transcoding.
           head -c 128000 /dev/zero > "${RUNNER_TEMP}/minute-gap.pcm"
           (
@@ -121,7 +122,7 @@ jobs:
               if [ "$n" -lt 12 ]; then
                 cat "${RUNNER_TEMP}/minute-gap.pcm"
               else
-                cat "${RUNNER_TEMP}/tail.pcm"
+                cat "${RUNNER_TEMP}/mandarin-tail.pcm"
               fi
             done
           ) > "$VOLCENGINE_MINUTE_PCM_FILE"
