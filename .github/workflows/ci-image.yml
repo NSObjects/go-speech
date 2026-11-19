@@ -61,6 +61,6 @@ jobs:
               command -v git
               command -v zstd
               pkg-config --exists opus opencore-amrnb
-              ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libopus
+              ffmpeg -hide_banner -encoders 2>/dev/null | grep libopus >/dev/null
               echo "ASR CI toolchain verified"
             '
