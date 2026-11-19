@@ -81,6 +81,37 @@ jobs:
         run: go test -tags=integration -run TestTencentLiveSegmentationOptions -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud 8k PCM input to 16k engine
         run: go test -tags=integration -run TestTencentLiveEightKInputToSixteenKEngine -count=1 -v -timeout 2m ./asr/providers/tencent
-      - name: Real Tencent Cloud large-model 2.0 (opt-in; requires entitlement)
+      # When the repository variable is unset, perform a real 2.0 probe
+      # with the existing Tencent credentials. Account entitlement may be
+      # missing, so this diagnostic must never block working legacy engines.
+      - name: Probe Tencent Cloud 2.0 (automatic, non-gating)
+        if: env.TENCENT_V2_ASR_MODEL == ''
+        continue-on-error: true
+        env:
+          TENCENT_V2_ASR_MODEL: 16k_zh_en_2.0
+        run: |
+          set +e
+          go test -tags=integration -run '^TestTencentLiveLargeModelV2
+ -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-probe.log" 2>&1
+          result=$?
+          cat "${RUNNER_TEMP}/tencent-v2-probe.log"
+          {
+            echo "### Tencent Cloud 2.0 live diagnostic"
+            echo "Model: \`16k_zh_en_2.0\`. This is a real, potentially billable Tencent Cloud request."
+            if [ "$result" -eq 0 ]; then
+              echo "Result: **PASS** — real V2 recognition returned nonempty Final text and stable EOF."
+            else
+              echo "Result: **NOT VERIFIED** — probe failed, but legacy ASR CI remains gated separately."
+              echo '~~~'
+              grep -E 'Tencent ASR error [0-9]+|WebSocket handshake HTTP [0-9]+|--- FAIL: TestTencentLiveLargeModelV2' "${RUNNER_TEMP}/tencent-v2-probe.log" | tail -n 5 || true
+              echo '~~~'
+            fi
+            echo "Configure repository variable \`TENCENT_V2_ASR_MODEL\` to enforce a strict, blocking 2.0 gate."
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "$result"
+      # An explicitly configured, entitled 2.0 model must pass like all
+      # other ASR integration gates; this step must NOT continue-on-error.
+      - name: Real Tencent Cloud 2.0 (strict for configured model)
         if: env.TENCENT_V2_ASR_MODEL != ''
-        run: go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent
+        run: go test -tags=integration -run '^TestTencentLiveLargeModelV2
+ -count=1 -v -timeout 2m ./asr/providers/tencent

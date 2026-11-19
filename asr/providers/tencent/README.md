@@ -182,10 +182,17 @@ create short Mandarin PCM fixtures. Cloud gates cover:
 - a real `16k_zh` session signed with 700ms VAD silence and 10s forced segmentation;
 - 8 kHz PCM sent unchanged to a 16 kHz engine with `input_sample_rate=8000`.
 
-Large-model 2.0 requires a separate billing entitlement. Set the optional
-GitHub Actions variable `TENCENT_V2_ASR_MODEL` to `16k_zh_en_2.0` (or an
-entitled `_2.0` engine) to enable its **real-cloud** CI gate. An unset
-variable **skips** this gate and does not prove 2.0 interoperability.
+Large-model 2.0 requires a separate billing entitlement. CI now
+**automatically probes** `16k_zh_en_2.0` using the existing Tencent
+credentials when `TENCENT_V2_ASR_MODEL` is **unset**. This is a real,
+potentially billable cloud request, not a mock. The diagnostic uses
+`continue-on-error`: a missing 2.0 entitlement cannot make the otherwise
+healthy legacy ASR gate fail. The probe result and Tencent error code
+(if any) appear in the workflow job summary; a green overall workflow
+does **not** imply 2.0 support. To require a **blocking, strict** live
+2.0 test instead, set the repository variable `TENCENT_V2_ASR_MODEL`
+to an entitled engine, such as `16k_zh_en_2.0`. The strict gate does
+not mask failures.
 A 2026-11-18 live probe of `16k_zh_en_2.0` returned Tencent error
 `4001: result_mod=1 not support for appid ... engine:16k_zh_en_2.0`.
 The SDK no longer sends that unsupported query parameter (see official
