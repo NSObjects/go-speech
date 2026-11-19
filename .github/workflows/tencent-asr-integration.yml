@@ -85,7 +85,7 @@ jobs:
       # with the existing Tencent credentials. Account entitlement may be
       # missing, so this diagnostic must never block working legacy engines.
       - name: Probe Tencent Cloud 2.0 (automatic, non-gating)
-        if: env.TENCENT_V2_ASR_MODEL == ''
+        if: ${{ !vars.TENCENT_V2_ASR_MODEL }}
         continue-on-error: true
         env:
           TENCENT_V2_ASR_MODEL: 16k_zh_en_2.0
@@ -111,5 +111,5 @@ jobs:
       # An explicitly configured, entitled 2.0 model must pass like all
       # other ASR integration gates; this step must NOT continue-on-error.
       - name: Real Tencent Cloud 2.0 (strict for configured model)
-        if: env.TENCENT_V2_ASR_MODEL != ''
+        if: ${{ vars.TENCENT_V2_ASR_MODEL }}
         run: go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent
