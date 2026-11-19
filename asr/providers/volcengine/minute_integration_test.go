@@ -16,7 +16,7 @@ import (
 )
 
 // TestVolcengineLiveMinuteSession streams at least 60 seconds of real-time
-// synthetic Mandarin on one WebSocket. This is a bounded connection endurance
+// natural Mandarin on one WebSocket. This is a bounded connection endurance
 // check, NOT a production load test or a recorded child-voice accuracy test.
 func TestVolcengineLiveMinuteSession(t *testing.T) {
 	apiKey := os.Getenv("VOLCENGINE_API_KEY")
@@ -120,23 +120,23 @@ func TestVolcengineLiveMinuteSession(t *testing.T) {
 		if len(got.finals) < 12 {
 			t.Fatalf("expected at least 12 independently finalized phrases, got %d: %q", len(got.finals), got.finals)
 		}
+		for i, sentence := range got.finals {
+			if !strings.Contains(sentence, "腾讯云") {
+				t.Fatalf("minute-session final %d missing natural Mandarin phrase: %q", i+1, sentence)
+			}
+		}
 		joined := strings.Join(got.finals, "")
 		offset := 0
 		for i := 0; i < 12; i++ {
-			word := "天气"
-			if i%2 == 1 {
-				word = "游戏"
-			}
+			word := "腾讯云"
 			at := strings.Index(joined[offset:], word)
 			if at < 0 {
 				t.Fatalf("missing or reordered phrase %d (%q): %q", i+1, word, joined)
 			}
 			offset += at + len(word)
 		}
-		for _, word := range []string{"天气", "游戏"} {
-			if n := strings.Count(joined, word); n != 6 {
-				t.Fatalf("phrase %q repeated %d times, expected 6: %q", word, n, joined)
-			}
+		if n := strings.Count(joined, "腾讯云"); n != 12 {
+			t.Fatalf("natural Mandarin phrase repeated %d times, expected 12: %q", n, joined)
 		}
 		for i := 0; i < 2; i++ {
 			if _, err := stream.Recv(context.Background()); !errors.Is(err, io.EOF) {

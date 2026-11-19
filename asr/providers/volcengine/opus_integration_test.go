@@ -17,7 +17,7 @@ import (
 
 // TestVolcengineLiveOggOpus validates an actual billable optimized streaming
 // ASR session using Ogg Opus, rather than a PCM test or a mock encoding header.
-// The waveform is synthetic Mandarin; real device captures remain untested.
+// The waveform is integrity-pinned natural Mandarin; device captures remain untested.
 func TestVolcengineLiveOggOpus(t *testing.T) {
 	key := os.Getenv("VOLCENGINE_API_KEY")
 	path := os.Getenv("VOLCENGINE_OGG_OPUS_FILE")
@@ -117,10 +117,10 @@ func TestVolcengineLiveOggOpus(t *testing.T) {
 		text := strings.Join(got.finals, "")
 		t.Logf("Ogg Opus pages=%d bytes=%d wall=%.2fs finals=%q partials=%d",
 			len(pages), len(ogg), time.Since(started).Seconds(), got.finals, got.partials)
-		if !strings.Contains(text, "天气") {
-			t.Fatalf("expected confirmed Mandarin '天气' from real Ogg Opus, got %q", text)
+		if !strings.Contains(text, "腾讯云") {
+			t.Fatalf("expected confirmed Mandarin '腾讯云' from real Ogg Opus, got %q", text)
 		}
-		if strings.Count(text, "天气") != 1 {
+		if strings.Count(text, "腾讯云") != 1 {
 			t.Fatalf("unexpected duplicate Ogg Opus transcript %q", text)
 		}
 		for i := 0; i < 2; i++ {

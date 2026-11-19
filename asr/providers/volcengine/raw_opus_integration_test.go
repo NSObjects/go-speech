@@ -17,7 +17,7 @@ import (
 )
 
 // Tests the SDK's Go OggMuxer fed complete raw Opus packets, not FFmpeg Ogg
-// pages directly. The audio is synthesized; physical hardware is untested.
+// pages directly. The audio is a natural recording; hardware is untested.
 func TestVolcengineLiveRawOpusRemux(t *testing.T) {
 	key, path := os.Getenv("VOLCENGINE_API_KEY"), os.Getenv("VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE")
 	if key == "" || path == "" {
@@ -157,15 +157,15 @@ func TestVolcengineLiveRawOpusRemux(t *testing.T) {
 			t.Fatalf("incomplete streaming result: early=%d texts=%q", early, texts)
 		}
 		offset := 0
-		for _, word := range []string{"天气", "游戏", "天气", "游戏"} {
+		for _, word := range []string{"腾讯云", "腾讯云", "腾讯云", "腾讯云"} {
 			at := strings.Index(joined[offset:], word)
 			if at < 0 {
 				t.Fatalf("missing or reordered keyword %q in %q", word, joined)
 			}
 			offset += at + len(word)
 		}
-		for _, word := range []string{"天气", "游戏"} {
-			if strings.Count(joined, word) != 2 {
+		for _, word := range []string{"腾讯云"} {
+			if strings.Count(joined, word) != 4 {
 				t.Fatalf("unexpected count for %q in %q", word, joined)
 			}
 		}
