@@ -13,10 +13,10 @@ type v2CorpusManifest struct {
 }
 
 type v2CorpusCase struct {
-	ID             string              `json:"id"`
-	Condition      string              `json:"condition"`
-	PCMFile        string              `json:"pcm_file"`
-	ReferenceText  string              `json:"reference_text"`
+	ID              string              `json:"id"`
+	Condition       string              `json:"condition"`
+	PCMFile         string              `json:"pcm_file"`
+	ReferenceText   string              `json:"reference_text"`
 	SpeechIntervals []vadSpeechInterval `json:"speech_intervals"`
 }
 
