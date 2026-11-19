@@ -1,0 +1,55 @@
+name: Volcengine Distinct Mandarin Turns (automatic, paid)
+
+# Strict follow-up to issue #49: lexical diversity and turn order in one
+# uninterrupted ASR WebSocket. Existing 4/12-turn suites are untouched.
+on:
+  push:
+    paths:
+      - "asr/providers/volcengine/integration_distinct_mandarin_turns_test.go"
+      - ".github/workflows/volcengine-distinct-mandarin-turns.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  distinct-mandarin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    container:
+      image: ghcr.io/nsobjects/go-speech-ci:sha-97c09deafd7c79bcf75e85e9bd3147d7f0299f87
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
+      VOLCENGINE_RESOURCE_ID: ${{ vars.VOLCENGINE_RESOURCE_ID }}
+      VOLCENGINE_WS_ENDPOINT: ${{ vars.VOLCENGINE_WS_ENDPOINT }}
+      VOLCENGINE_OFFICIAL_MANDARIN_PCM_FILE: /tmp/distinct-official-mandarin.pcm
+      VOLCENGINE_FLEURS_ZH_SHORT_PCM_FILE: /tmp/distinct-fleurs-short.pcm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify Volcengine credentials
+        run: test -n "$VOLCENGINE_API_KEY"
+      - name: Fetch SHA-pinned natural Mandarin samples and prepare raw PCM
+        run: |
+          set -eu
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 45 \
+            "https://raw.githubusercontent.com/TencentCloud/tencentcloud-speech-sdk-go/257f9f56bcd592bff1faea9b4ce0f1ef90cea803/examples/speakerexample/test.pcm" \
+            -o "$VOLCENGINE_OFFICIAL_MANDARIN_PCM_FILE"
+          test "$(git hash-object "$VOLCENGINE_OFFICIAL_MANDARIN_PCM_FILE")" = 48e5f31375a9e7bad4ad21cd104cdd5714670d25
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 \
+            "https://raw.githubusercontent.com/handy-computer/transcribe.cpp/adfc50210a3f026a655a3e19937d90ef2bf0728c/samples/zh-short.wav" \
+            -o /tmp/distinct-fleurs-short.wav
+          test "$(git hash-object /tmp/distinct-fleurs-short.wav)" = d21d2aea863f71e94d3e55eda53190a931da9318
+          ffmpeg -hide_banner -loglevel error -y -i /tmp/distinct-fleurs-short.wav \
+            -ac 1 -ar 16000 -c:a pcm_s16le -f s16le "$VOLCENGINE_FLEURS_ZH_SHORT_PCM_FILE"
+          test -s "$VOLCENGINE_OFFICIAL_MANDARIN_PCM_FILE"
+          test -s "$VOLCENGINE_FLEURS_ZH_SHORT_PCM_FILE"
+      - name: Strict real-time 4-turn alternating natural Mandarin ASR
+        run: go test -tags=integration -run '^TestVolcengineLiveDistinctMandarinTurns$' -count=1 -v -timeout 4m ./asr/providers/volcengine
