@@ -81,65 +81,16 @@ jobs:
         run: go test -tags=integration -run TestTencentLiveSegmentationOptions -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud 8k PCM input to 16k engine
         run: go test -tags=integration -run TestTencentLiveEightKInputToSixteenKEngine -count=1 -v -timeout 2m ./asr/providers/tencent
-      # V2 uses 40ms PCM frames. The two new strict gates cover independent
-      # concurrent sessions and a continuous 60s+ connection; both also
-      # require nonempty Final segments and stable io.EOF.
+      # V2 uses caller-paced 40ms PCM frames. These strict, billable gates
+      # check independent concurrent streams and a continuous 60s+ session.
       - name: Real Tencent Cloud 2.0 concurrent streams (strict)
         env:
           TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
-        run: go test -tags=integration -run '^TestTencentLiveV2ConcurrentSessions
-      # Run a strict, paid gate on every push so entitlement/protocol regressions
-      # cannot silently pass. Repository variable optionally overrides engine.
-      - name: Real Tencent Cloud large-model 2.0 (automatic, strict)
-        env:
-          TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
-        run: |
-          if go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-live.log" 2>&1; then
-            cat "${RUNNER_TEMP}/tencent-v2-live.log"
-            {
-              echo "### Tencent Cloud ASR 2.0"
-              echo "Model: ${TENCENT_V2_ASR_MODEL}"
-              echo "Result: **PASS** — nonempty Final and stable EOF returned by real cloud."
-              grep 'Tencent large model 2.0' "${RUNNER_TEMP}/tencent-v2-live.log" || true
-            } >> "${GITHUB_STEP_SUMMARY}"
-          else
-            cat "${RUNNER_TEMP}/tencent-v2-live.log"
-            {
-              echo "### Tencent Cloud ASR 2.0"
-              echo "Model: ${TENCENT_V2_ASR_MODEL}"
-              echo "Result: **FAIL** — automatic strict cloud gate failed; see test logs."
-            } >> "${GITHUB_STEP_SUMMARY}"
-            exit 1
-          fi
- -count=1 -v -timeout 2m ./asr/providers/tencent
+        run: go test -tags=integration -run TestTencentLiveV2ConcurrentSessions -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud 2.0 minute-plus stream (strict)
         env:
           TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
-        run: go test -tags=integration -run '^TestTencentLiveV2MinuteStream
-      # Run a strict, paid gate on every push so entitlement/protocol regressions
-      # cannot silently pass. Repository variable optionally overrides engine.
-      - name: Real Tencent Cloud large-model 2.0 (automatic, strict)
-        env:
-          TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
-        run: |
-          if go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-live.log" 2>&1; then
-            cat "${RUNNER_TEMP}/tencent-v2-live.log"
-            {
-              echo "### Tencent Cloud ASR 2.0"
-              echo "Model: ${TENCENT_V2_ASR_MODEL}"
-              echo "Result: **PASS** — nonempty Final and stable EOF returned by real cloud."
-              grep 'Tencent large model 2.0' "${RUNNER_TEMP}/tencent-v2-live.log" || true
-            } >> "${GITHUB_STEP_SUMMARY}"
-          else
-            cat "${RUNNER_TEMP}/tencent-v2-live.log"
-            {
-              echo "### Tencent Cloud ASR 2.0"
-              echo "Model: ${TENCENT_V2_ASR_MODEL}"
-              echo "Result: **FAIL** — automatic strict cloud gate failed; see test logs."
-            } >> "${GITHUB_STEP_SUMMARY}"
-            exit 1
-          fi
- -count=1 -v -timeout 3m ./asr/providers/tencent
+        run: go test -tags=integration -run TestTencentLiveV2MinuteStream -count=1 -v -timeout 3m ./asr/providers/tencent
       # Real 2.0 PCM recognition succeeded on this account (2026-11-19).
       # Run a strict, paid gate on every push so entitlement/protocol regressions
       # cannot silently pass. Repository variable optionally overrides engine.
