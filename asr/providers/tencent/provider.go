@@ -240,14 +240,14 @@ func (c *Client) signedURLWithHints(now time.Time, nonce uint32, voiceID, hotwor
 	params.Set("expired", strconv.FormatInt(now.Add(time.Hour).Unix(), 10))
 	params.Set("nonce", strconv.FormatUint(uint64(nonce), 10))
 	params.Set("engine_model_type", c.cfg.EngineModel)
-	// Tencent's speaker-enabled 2.0 engine requires the diarization switch.
-	// Keep it off for plain 2.0 and traditional engines.
+	// Tencent's official SpeakerRecognizer sends sentence-mode and
+	// diarization flags for the speaker-enabled engine. The plain 2.0
+	// engine rejects result_mod=1, so never send these flags on other engines.
 	if c.cfg.EngineModel == "16k_zh_en_speaker_2.0" {
+		params.Set("result_mod", "1")
+		params.Set("sentence_strategy", "1")
 		params.Set("speaker_diarization", "1")
 	}
-	// The V2 sentence-list layout is selected by engine_model_type, not
-	// a result_mod query parameter. Tencent's V2 WebSocket API does not
-	// document result_mod, and the server rejects result_mod=1 for 2.0.
 	params.Set("voice_id", voiceID)
 	params.Set("voice_format", "1")
 	if c.cfg.HotwordID != "" {

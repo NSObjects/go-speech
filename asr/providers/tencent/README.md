@@ -96,9 +96,14 @@ or as stable IDs between independent WebSocket sessions. The standard
 `16k_zh_en_speaker_2.0` (with appropriate Tencent entitlement) for that.
 Legacy Tencent and other providers leave this new field `nil`.
 
-The speaker-enabled 2.0 engine also sends the signed
-`speaker_diarization=1` parameter, matching Tencent's meeting diarization
-SDK example. Ordinary 2.0 and legacy engines omit it.
+The speaker-enabled 2.0 engine sends the official Tencent Go
+`SpeakerRecognizer` sentence-mode query parameters
+`result_mod=1`, `sentence_strategy=1`, and `speaker_diarization=1`,
+all included in the HMAC signature. **Only** the speaker-enabled engine
+sends these parameters: the plain `16k_zh_en_2.0` cloud engine previously
+rejected `result_mod=1`. This speaker-specific query combination needs
+to pass the real-cloud speaker probe; a green legacy 2.0 gate alone is
+not sufficient.
 
 For a real speaker-engine smoke test, optionally configure the GitHub
 Actions repository variable `TENCENT_V2_SPEAKER_MODEL` to

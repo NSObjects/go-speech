@@ -476,18 +476,23 @@ func TestTencentV2ModelSignatureOmitsUnsupportedResultMode(t *testing.T) {
 				t.Fatal(err)
 			}
 			q := u.Query()
-			if q.Has("result_mod") {
-				t.Fatalf("model %s: undocumented result_mod must not be sent", model)
-			}
 			if q.Get("engine_model_type") != model || q.Get("voice_format") != "1" {
 				t.Fatalf("model %s: incorrect engine or PCM encoding", model)
 			}
 			if model == "16k_zh_en_speaker_2.0" {
-				if q.Get("speaker_diarization") != "1" {
-					t.Fatalf("model %s must enable speaker_diarization=1", model)
+				for key, want := range map[string]string{
+					"result_mod": "1", "sentence_strategy": "1", "speaker_diarization": "1",
+				} {
+					if got := q.Get(key); got != want {
+						t.Fatalf("speaker model %s: %s=%q, want %q", model, key, got, want)
+					}
 				}
-			} else if q.Has("speaker_diarization") {
-				t.Fatalf("model %s must not send speaker_diarization", model)
+			} else {
+				for _, key := range []string{"result_mod", "sentence_strategy", "speaker_diarization"} {
+					if q.Has(key) {
+						t.Fatalf("model %s must not send speaker sentence-mode flag %s", model, key)
+					}
+				}
 			}
 			if !verifySignature(&http.Request{Host: u.Host, URL: u}, "k") {
 				t.Fatalf("model %s: incorrect HMAC signature", model)
