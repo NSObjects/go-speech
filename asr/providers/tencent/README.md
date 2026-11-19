@@ -344,6 +344,109 @@ explicit skip, so ordinary CI cannot be cited as a natural-speech accuracy
 measurement. For production evaluation use multiple speakers, noisy and
 quiet settings, and distinct child/adult samples with appropriate consent.
 
+### Opt-in multi-recording V2 corpus evaluation (local only)
+
+For repeatable evaluation across multiple acoustic conditions, use the **local**
+`TestTencentLiveV2Corpus` integration test. It extends the single-recording
+V2 benchmark without changing the public SDK. Example `v2-corpus.json`:
+
+```json
+{
+  "cases": [
+    {
+      "id": "sample-01",
+      "condition": "quiet",
+      "pcm_file": "samples/01.pcm",
+      "reference_text": "你好今天玩什么游戏",
+      "speech_intervals": [{"start_ms": 200, "end_ms": 2200}]
+    },
+    {
+      "id": "sample-02",
+      "condition": "noisy",
+      "pcm_file": "samples/02.pcm",
+      "reference_text": "我想玩猜谜语",
+      "speech_intervals": [{"start_ms": 300, "end_ms": 1700}]
+    }
+  ]
+}
+```
+
+Use files containing **mono, 16 kHz PCM16LE** and privately corrected
+reference transcripts, with speech intervals in milliseconds. IDs must be
+unique, conditions nonempty; 1–200 clips, at most 32 MiB each and 200 MiB
+total. All files are checked **before** the first cloud request. Audio and
+reference text stay local and are never submitted to GitHub. They **will**
+be streamed to Tencent Cloud, potentially incurring recognition charges.
+
+```sh
+TENCENT_V2_CORPUS_MANIFEST=/absolute/path/to/v2-corpus.json \
+  go test -tags=integration -run '^TestTencentLiveV2Corpus
+
+For a meaningful follow-up, record one or more naturally spoken, **mono
+16kHz PCM16LE** clips and annotate both a whole-recording reference transcript
+and speech-only start/end intervals. Keep the audio and labels on your own
+machine; no files, transcripts, or speaker data are committed to GitHub.
+Tencent Cloud ASR will still receive the PCM bytes during the test.
+
+For example, create a local `vad-eval.json` next to a `conversation.pcm`:
+
+```json
+{
+  "pcm_file": "conversation.pcm",
+  "reference_text": "你好今天的天气怎么样",
+  "speech_intervals": [
+    {"start_ms": 200, "end_ms": 2600}
+  ]
+}
+```
+
+The reference is the **full** manually corrected transcript in chronological
+order. Annotate speech onset/end in milliseconds relative to the first PCM
+sample. Non-overlapping intervals must lie within the recording duration;
+do not include silence as speech. Reference and audio contents are never
+printed in CI logs. Set the usual Tencent credentials locally, then run:
+
+```sh
+TENCENT_VAD_EVAL_MANIFEST=/absolute/path/to/vad-eval.json \
+  go test -tags=integration -run TestTencentLiveLabeledVAD \
+    -count=1 -v -timeout 10m ./asr/providers/tencent
+```
+
+The command evaluates **700/1000/1500ms** in three fresh Tencent sessions
+using identical, approximately real-time-paced audio. It reports
+`VAD_LABELED` summaries: normalized character error rate (CER; ignoring
+punctuation/spacing/case), Final/Partial counts, Finals delivered while
+an annotated speech interval is underway, and last-Final wall-time
+relative to the last annotated speech end. **No transcripts are logged.**
+
+The timing is approximate: network latency and client scheduling affect
+wall-clock arrival, and a Final occurring during an annotation may represent
+an *earlier* phrase. It is not an exact premature-cut metric. A single
+recording also cannot establish production performance; evaluate multiple
+speakers, noisy conditions, long pauses and interruptions. If the manifest
+is unset, this test explicitly **skips**; passing standard CI does not
+demonstrate natural-speech accuracy. No automatic VAD default changes are made.
+
+Do not equate synthesized test utterances with recognition-accuracy
+benchmarks; these tests verify transport, lifecycle, and final-result
+delivery.
+
+Official protocol: https://cloud.tencent.com/document/product/1093/48982
+ \
+    -count=1 -v -timeout 45m ./asr/providers/tencent
+```
+
+Logs contain case indices and numeric CER/Final/Partial counts only.
+`V2_CORPUS_TOTAL` reports **character-weighted CER**:
+`sum(edit_distance) / sum(reference_characters)`, not the average of clip
+CERs. `V2_CORPUS_GROUP` reports the same metric by numbered group; group
+indices correspond to locally sorted condition labels, which are deliberately
+not printed. Keep a stable corpus and annotate age group, microphone distance,
+background noise and overlapping speech in your *private* dataset. This is
+whole-recording transcription scoring, **not** endpoint-delay or speaker
+diarization scoring. An unset manifest explicitly skips the paid benchmark;
+automatic CI success does **not** establish real-world accuracy.
+
 ### Opt-in natural-recording evaluation (local only)
 
 For a meaningful follow-up, record one or more naturally spoken, **mono
