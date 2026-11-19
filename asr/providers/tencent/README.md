@@ -196,7 +196,13 @@ to `16k_zh_en_2.0`. Set the optional GitHub Actions repository variable
 `16k_zh_en_speaker_2.0`). Both the legacy and 2.0 real-cloud gates must
 pass; the 2.0 result and counts are reported in the job summary.
 The SDK still parses `sentences.sentence_list`; it does not send
-`result_mod`. Official V2 WebSocket protocol:
+`result_mod`. In addition to the short recognition smoke test, strict paid
+CI also validates three simultaneous real 2.0 connections and a 60-second-plus
+single connection with 40ms caller-paced PCM frames, real Final results and
+stable EOF. Passing these tests shows transport/session reliability for
+synthetic Mandarin audio, **not** speaker identification or natural-speech
+accuracy. The official V2 API allows 50 concurrent sessions per account by
+default; this CI deliberately uses only three. Official V2 WebSocket protocol:
 https://cloud.tencent.com/document/product/1093/131127
 
 ### VAD threshold comparison (synthetic diagnostic)

@@ -81,6 +81,16 @@ jobs:
         run: go test -tags=integration -run TestTencentLiveSegmentationOptions -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud 8k PCM input to 16k engine
         run: go test -tags=integration -run TestTencentLiveEightKInputToSixteenKEngine -count=1 -v -timeout 2m ./asr/providers/tencent
+      # V2 uses caller-paced 40ms PCM frames. These strict, billable gates
+      # check independent concurrent streams and a continuous 60s+ session.
+      - name: Real Tencent Cloud 2.0 concurrent streams (strict)
+        env:
+          TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
+        run: go test -tags=integration -run TestTencentLiveV2ConcurrentSessions -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud 2.0 minute-plus stream (strict)
+        env:
+          TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
+        run: go test -tags=integration -run TestTencentLiveV2MinuteStream -count=1 -v -timeout 3m ./asr/providers/tencent
       # Real 2.0 PCM recognition succeeded on this account (2026-11-19).
       # Run a strict, paid gate on every push so entitlement/protocol regressions
       # cannot silently pass. Repository variable optionally overrides engine.
