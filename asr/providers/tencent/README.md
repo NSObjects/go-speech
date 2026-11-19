@@ -105,17 +105,22 @@ rejected `result_mod=1`. This speaker-specific query combination needs
 to pass the real-cloud speaker probe; a green legacy 2.0 gate alone is
 not sufficient.
 
-For a real speaker-engine smoke test, optionally configure the GitHub
-Actions repository variable `TENCENT_V2_SPEAKER_MODEL` to
-`16k_zh_en_speaker_2.0`. The extra paid gate then confirms at least one
-`speaker_id` reaches the SDK on a synthetic single-speaker clip, without
-requiring the 2.0 speaker SKU on accounts that do not have it. This test
-**does not** establish real multi-speaker diarization accuracy. The CI
-speaker probe uses alternating Mandarin/English synthesized voices with
-silent gaps to elicit assigned speaker IDs and distinguish them from pending -1
-labels. Real recordings from at least two different people are still
-required for any diarization-accuracy claim. The standard 2.0
-stream, concurrency and minute-plus gates still run independently.
+The Tencent Cloud 2.0 speaker-enabled engine is now an **automatic,
+strict, potentially billable** CI gate. It uses the existing Tencent credentials
+and a public 16kHz PCM example pinned to the official Tencent Go SDK commit
+`257f9f56bcd592bff1faea9b4ce0f1ef90cea803`, verified against Git blob
+`48e5f31375a9e7bad4ad21cd104cdd5714670d25` before repeating it into a
+roughly 29-second speaker test clip. No speech-generation package install is
+needed in this independent gate. It requires at least one confirmed speaker ID
+(0–9), nonempty Final and stable EOF; a failure makes CI red.
+
+A **2026-11-19 real-cloud run** succeeded for
+`16k_zh_en_speaker_2.0` with 49 events containing `speaker_id`, including
+48 pending (-1) and one assigned speaker, and one Final over 30.55s.
+This demonstrates that the current account accepts the speaker-enabled
+sentence-mode request and the SDK can expose a speaker label. It does **not**
+establish multi-speaker diarization accuracy. Accurate speaker switching
+must be evaluated with time-annotated recordings from multiple people.
 
 A completed `final=1` produces stable EOF *after* any queued
 final sentences have been delivered.

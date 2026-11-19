@@ -20,7 +20,6 @@ jobs:
       TENCENT_TEST_PCM_FILE: /tmp/tencent-speech-test.pcm
       TENCENT_TEST_16K_PCM_FILE: /tmp/tencent-speech-test-16k.pcm
       TENCENT_TEST_8K_PCM_FILE: /tmp/tencent-speech-test-8k.pcm
-      TENCENT_TEST_SPEAKER_PCM_FILE: /tmp/tencent-speech-speaker-16k.pcm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -57,40 +56,6 @@ jobs:
           test -s "$TENCENT_TEST_16K_PCM_FILE"
           test -s "$TENCENT_TEST_8K_PCM_FILE"
           test -s "$TENCENT_TEST_PCM_FILE"
-      - name: Generate distinct-voice speaker fixture (synthetic)
-        run: |
-          espeak-ng -v en-us -s 125 -w "${RUNNER_TEMP}/tencent-speech-voice-b.wav" "Hello, I am the second speaker. Today we will discuss our learning plans together."
-          ffmpeg -hide_banner -loglevel error -y -i "${RUNNER_TEMP}/tencent-speech-voice-b.wav" -ac 1 -ar 16000 -c:a pcm_s16le -f s16le "${RUNNER_TEMP}/tencent-speech-voice-b.pcm"
-          head -c 32000 /dev/zero > "${RUNNER_TEMP}/tencent-speech-silence.pcm"
-          cat "$TENCENT_TEST_16K_PCM_FILE" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "${RUNNER_TEMP}/tencent-speech-voice-b.pcm" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "$TENCENT_TEST_16K_PCM_FILE" "${RUNNER_TEMP}/tencent-speech-silence.pcm" "${RUNNER_TEMP}/tencent-speech-voice-b.pcm" > "$TENCENT_TEST_SPEAKER_PCM_FILE"
-          test -s "$TENCENT_TEST_SPEAKER_PCM_FILE"
-      # One real, billable speaker-engine entitlement probe on this branch.
-      # Non-gating until the account and speaker_id response are verified.
-      # This step sends synthesized single-speaker PCM, not private recordings.
-      - name: Probe Tencent Cloud V2 speaker metadata (non-gating)
-        continue-on-error: true
-        env:
-          TENCENT_V2_SPEAKER_MODEL: 16k_zh_en_speaker_2.0
-        run: |
-          set +e
-          go test -tags=integration -run TestTencentLiveV2SpeakerEngine -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-speaker.log" 2>&1
-          result=$?
-          cat "${RUNNER_TEMP}/tencent-v2-speaker.log"
-          {
-            echo "### Tencent Cloud V2 speaker-enabled real-cloud probe"
-            echo "Engine: 16k_zh_en_speaker_2.0 (real, potentially billable, alternating synthesized voices)."
-            if [ "$result" -eq 0 ]; then
-              echo "Result: **PASS** — speaker metadata fields received from Tencent Cloud."
-              grep 'Tencent speaker engine=' "${RUNNER_TEMP}/tencent-v2-speaker.log" || true
-            else
-              echo "Result: **NOT VERIFIED** — account entitlement or returned speaker metadata needs investigation."
-              echo '~~~'
-              grep -E 'Tencent ASR error [0-9]+|WebSocket handshake HTTP [0-9]+|returned no speaker_id|--- FAIL: TestTencentLiveV2SpeakerEngine' "${RUNNER_TEMP}/tencent-v2-speaker.log" | tail -n 6 || true
-              echo '~~~'
-            fi
-            echo "Synthesized distinct voices do not establish natural multi-person diarization accuracy."
-          } >> "${GITHUB_STEP_SUMMARY}"
-          exit "$result"
       - name: Real Tencent Cloud PCM streaming ASR and terminal EOF
         run: go test -tags=integration -run TestTencentLivePCMASR -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud per-request hotword hints
@@ -126,14 +91,6 @@ jobs:
         env:
           TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
         run: go test -tags=integration -run TestTencentLiveV2MinuteStream -count=1 -v -timeout 3m ./asr/providers/tencent
-      # The speaker-enabled engine has separate entitlement and is not
-      # available on every account. Enable explicitly via repository vars.
-      # A single synthesized voice checks metadata plumbing, not diarization quality.
-      - name: Real Tencent Cloud V2 speaker metadata (opt-in)
-        if: ${{ vars.TENCENT_V2_SPEAKER_MODEL != '' }}
-        env:
-          TENCENT_V2_SPEAKER_MODEL: ${{ vars.TENCENT_V2_SPEAKER_MODEL }}
-        run: go test -tags=integration -run TestTencentLiveV2SpeakerEngine -count=1 -v -timeout 2m ./asr/providers/tencent
       # Real 2.0 PCM recognition succeeded on this account (2026-11-19).
       # Run a strict, paid gate on every push so entitlement/protocol regressions
       # cannot silently pass. Repository variable optionally overrides engine.
@@ -159,10 +116,10 @@ jobs:
             exit 1
           fi
 
-  # Temporary, branch-only fast probe: downloads Tencent's official public
-  # PCM fixture. Avoids apt/FFmpeg/eSpeak setup while debugging this SKU.
-  speaker-fast-probe:
-    if: github.ref == 'refs/heads/test/tencent-v2-speaker-cloud-entitlement'
+  # Strict, paid speaker-enabled V2 ASR gate. A pinned 16kHz sample from the
+  # official Tencent Go SDK eliminates dependency on apt-based fixture tools.
+  # It proves speech and speaker-ID transport, not diarization accuracy.
+  speaker-live:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -186,7 +143,6 @@ jobs:
           test "$(git hash-object "$TENCENT_TEST_16K_PCM_FILE")" = "48e5f31375a9e7bad4ad21cd104cdd5714670d25"
           for i in $(seq 1 12); do cat "$TENCENT_TEST_16K_PCM_FILE"; done > "$TENCENT_TEST_SPEAKER_PCM_FILE"
           test -s "$TENCENT_TEST_SPEAKER_PCM_FILE"
-      - name: Probe speaker sentence mode with public audio
-        continue-on-error: true
+      - name: Real Tencent Cloud V2 speaker model and speaker ID (strict)
         run: |
           go test -tags=integration -run TestTencentLiveV2SpeakerEngine -count=1 -v -timeout 2m ./asr/providers/tencent
