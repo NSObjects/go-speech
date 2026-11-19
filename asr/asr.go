@@ -45,11 +45,17 @@ const (
 	EventSpeechEnd   EventType = "speech_end"
 )
 
-// Event is emitted from Stream. Providers may omit language and endpoint events.
+// Event is emitted from Stream. Providers may omit language, speaker IDs,
+// and endpoint events.
 type Event struct {
-	Type     EventType
-	Text     string
-	Language string
+	Type      EventType
+	Text      string
+	Language  string
+	// SpeakerID is optional provider-reported, session-local speaker metadata.
+	// nil means the provider did not supply an ID; -1 means unknown/pending;
+	// 0 and positive values are valid speaker labels, not durable identities.
+	// Tencent's speaker-enabled V2 engine emits values -1 or 0..9.
+	SpeakerID *int
 }
 
 // Stream is a bidirectional recognition session. A caller may Send and Recv

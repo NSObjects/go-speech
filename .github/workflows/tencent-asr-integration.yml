@@ -91,6 +91,14 @@ jobs:
         env:
           TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
         run: go test -tags=integration -run TestTencentLiveV2MinuteStream -count=1 -v -timeout 3m ./asr/providers/tencent
+      # The speaker-enabled engine has separate entitlement and is not
+      # available on every account. Enable explicitly via repository vars.
+      # A single synthesized voice checks metadata plumbing, not diarization quality.
+      - name: Real Tencent Cloud V2 speaker metadata (opt-in)
+        if: ${{ vars.TENCENT_V2_SPEAKER_MODEL != '' }}
+        env:
+          TENCENT_V2_SPEAKER_MODEL: ${{ vars.TENCENT_V2_SPEAKER_MODEL }}
+        run: go test -tags=integration -run TestTencentLiveV2SpeakerEngine -count=1 -v -timeout 2m ./asr/providers/tencent
       # Real 2.0 PCM recognition succeeded on this account (2026-11-19).
       # Run a strict, paid gate on every push so entitlement/protocol regressions
       # cannot silently pass. Repository variable optionally overrides engine.

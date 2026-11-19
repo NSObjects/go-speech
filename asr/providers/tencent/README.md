@@ -86,9 +86,26 @@ the SDK uses the V2 `engine_model_type` parameter and parses
 `sentences.sentence_list` (`sentence_type=0/1`). It deliberately does
 **not** send the undocumented `result_mod` option; Tencent previously
 rejected `result_mod=1` with error 4001. All events are returned without
-dropping results or duplicating confirmed sentence IDs. The shared Event
-currently carries text, not speaker IDs. A completed `final=1` produces
-stable EOF *after* any queued final sentences have been delivered.
+dropping results or duplicating confirmed sentence IDs. The shared `asr.Event` exposes optional `SpeakerID *int`
+on V2 sentence events, including partial hypotheses. `nil` means Tencent
+did not supply a speaker field; `-1` means the speaker is still unknown;
+`0` through `9` are the provider's speaker labels. Never use `0` as
+a sentinel for “missing,” and do not treat these labels as a person's identity
+or as stable IDs between independent WebSocket sessions. The standard
+`16k_zh_en_2.0` engine does **not** enable diarization: use
+`16k_zh_en_speaker_2.0` (with appropriate Tencent entitlement) for that.
+Legacy Tencent and other providers leave this new field `nil`.
+
+For a real speaker-engine smoke test, optionally configure the GitHub
+Actions repository variable `TENCENT_V2_SPEAKER_MODEL` to
+`16k_zh_en_speaker_2.0`. The extra paid gate then confirms at least one
+`speaker_id` reaches the SDK on a synthetic single-speaker clip, without
+requiring the 2.0 speaker SKU on accounts that do not have it. This test
+**does not** demonstrate separating two real people. The standard 2.0
+stream, concurrency and minute-plus gates still run independently.
+
+A completed `final=1` produces stable EOF *after* any queued
+final sentences have been delivered.
 A late provisional sentence update for an already finalized sentence ID
 is discarded, preventing downstream callers from reverting committed text.
 The caller may send and receive concurrently. Explicit Close and context
