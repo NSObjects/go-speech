@@ -240,11 +240,9 @@ func (c *Client) signedURLWithHints(now time.Time, nonce uint32, voiceID, hotwor
 	params.Set("expired", strconv.FormatInt(now.Add(time.Hour).Unix(), 10))
 	params.Set("nonce", strconv.FormatUint(uint64(nonce), 10))
 	params.Set("engine_model_type", c.cfg.EngineModel)
-	// Tencent's large-model 2.0 sentence protocol requires sentence-mode
-	// replies. Legacy engines keep their result.slice_type representation.
-	if strings.HasSuffix(c.cfg.EngineModel, "_2.0") {
-		params.Set("result_mod", "1")
-	}
+	// The V2 sentence-list layout is selected by engine_model_type, not
+	// a result_mod query parameter. Tencent's V2 WebSocket API does not
+	// document result_mod, and the server rejects result_mod=1 for 2.0.
 	params.Set("voice_id", voiceID)
 	params.Set("voice_format", "1")
 	if c.cfg.HotwordID != "" {

@@ -110,7 +110,7 @@ func TestTencentSignedURL(t *testing.T) {
 		q.Get("voice_format") != "1" ||
 		q.Get("needvad") != "1" ||
 		q.Get("engine_model_type") != "16k_zh_en_2.0" ||
-		q.Get("result_mod") != "1" ||
+		q.Has("result_mod") ||
 		q.Get("nonce") != "8743357" ||
 		q.Get("voice_id") != "voice-id" {
 		t.Fatalf("incorrect Tencent signed parameters: %v", q)
@@ -378,6 +378,15 @@ func TestTencentIndependentVoiceIDs(t *testing.T) {
 // every distinct result, even if final=1 closes the WebSocket immediately.
 func TestTencentSentenceListV2(t *testing.T) {
 	client := testClient(t, func(ws *websocket.Conn, req *http.Request) {
+		if got := req.URL.Query().Get("engine_model_type"); got != "16k_zh_en_2.0" {
+			t.Errorf("expected 2.0 engine, got %q", got)
+		}
+		if req.URL.Query().Has("result_mod") {
+			t.Error("Tencent V2 does not accept result_mod=1")
+		}
+		if !verifySignature(req, "secret-key") {
+			t.Error("Tencent V2 request signature mismatch")
+		}
 		id := req.URL.Query().Get("voice_id")
 		if err := sendResponse(ws, id, 0, 0, nil); err != nil {
 			return
@@ -414,6 +423,7 @@ func TestTencentSentenceListV2(t *testing.T) {
 		}
 		_ = ws.WriteMessage(websocket.TextMessage, data)
 	})
+	client.cfg.EngineModel = "16k_zh_en_2.0"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	s, err := client.OpenStream(ctx, pcmConfig())
@@ -445,31 +455,37 @@ func TestTencentSentenceListV2(t *testing.T) {
 	}
 }
 
-func TestTencentSentenceModeSignatureAndLegacyFallback(t *testing.T) {
-	for _, tc := range []struct {
-		model        string
-		sentenceMode string
-	}{
-		{"16k_zh", ""},
-		{"16k_zh_en_2.0", "1"},
-		{"16k_zh_en_speaker_2.0", "1"},
+// Tencent's published 2.0 handshake selects sentence-list replies by engine,
+// with no result_mod argument. Verify the emitted query is fully signed and
+// excludes undocumented parameters for both legacy and 2.0 models.
+func TestTencentV2ModelSignatureOmitsUnsupportedResultMode(t *testing.T) {
+	for _, model := range []string{
+		"16k_zh",
+		"16k_zh_en_2.0",
+		"16k_zh_en_speaker_2.0",
 	} {
-		client, err := New(Config{
-			AppID: "1250000000", SecretID: "s", SecretKey: "k", EngineModel: tc.model,
+		t.Run(model, func(t *testing.T) {
+			client, err := New(Config{
+				AppID: "1250000000", SecretID: "s", SecretKey: "k", EngineModel: model,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, err := url.Parse(client.signedURL(time.Unix(1745932688, 0), 123, "voice-id"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			q := u.Query()
+			if q.Has("result_mod") {
+				t.Fatalf("model %s: undocumented result_mod must not be sent", model)
+			}
+			if q.Get("engine_model_type") != model || q.Get("voice_format") != "1" {
+				t.Fatalf("model %s: incorrect engine or PCM encoding", model)
+			}
+			if !verifySignature(&http.Request{Host: u.Host, URL: u}, "k") {
+				t.Fatalf("model %s: incorrect HMAC signature", model)
+			}
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		u, err := url.Parse(client.signedURL(time.Unix(1745932688, 0), 123, "voice-id"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := u.Query().Get("result_mod"); got != tc.sentenceMode {
-			t.Fatalf("model %s: result_mod = %q, want %q", tc.model, got, tc.sentenceMode)
-		}
-		if !verifySignature(&http.Request{Host: u.Host, URL: u}, "k") {
-			t.Fatalf("model %s: bad HMAC signature after result_mod", tc.model)
-		}
 	}
 }
 
