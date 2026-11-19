@@ -221,9 +221,9 @@ type sentenceList struct {
 	SentenceList []sentence `json:"sentence_list"`
 }
 type sentence struct {
-	Text      string `json:"sentence"`
-	Type      int    `json:"sentence_type"`
-	ID        int    `json:"sentence_id"`
+	Text string `json:"sentence"`
+	Type int    `json:"sentence_type"`
+	ID   int    `json:"sentence_id"`
 	// Pointer preserves absent speaker_id vs Tencent's -1 (pending) and 0.
 	SpeakerID *int `json:"speaker_id"`
 }
