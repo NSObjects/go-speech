@@ -5,7 +5,7 @@ package tencent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"sort"
 	"os"
 	"path/filepath"
 	"testing"
@@ -102,10 +102,16 @@ func TestTencentLiveV2Corpus(t *testing.T) {
 			score.ReferenceCharacters, len(result.finals), result.partials)
 	}
 	t.Logf("V2_CORPUS_TOTAL files=%d edits=%d chars=%d weighted_cer=%.4f", all.Files, all.Edits, all.Characters, all.CER())
-	// No condition names in logs: conditions may encode participant details.
-	// This preserves grouping for future local analysis without revealing labels.
-	if len(byCondition) == 0 {
-		t.Fatal(fmt.Errorf("no corpus groups"))
+	// Group indices map to lexically sorted condition labels from the local
+	// manifest; no participant details or arbitrary labels enter cloud logs.
+	labels := make([]string, 0, len(byCondition))
+	for label := range byCondition {
+		labels = append(labels, label)
 	}
-	t.Logf("V2_CORPUS_GROUP_COUNT groups=%d", len(byCondition))
+	sort.Strings(labels)
+	for idx, label := range labels {
+		group := byCondition[label]
+		t.Logf("V2_CORPUS_GROUP index=%d files=%d weighted_cer=%.4f edits=%d chars=%d",
+			idx, group.Files, group.CER(), group.Edits, group.Characters)
+	}
 }
