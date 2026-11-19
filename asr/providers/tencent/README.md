@@ -82,8 +82,10 @@ send Ogg Opus pages while claiming they are Tencent raw Opus frames.
 `CloseSend` sends `{"type":"end"}` without closing the WebSocket.
 `Recv` converts the traditional `result.slice_type=1/2` messages to
 `EventPartial/EventFinal`. For Tencent Cloud 2.0 models ending in `_2.0`,
-the SDK signs `result_mod=1` and also parses `sentences.sentence_list`
-(`sentence_type=0/1`), returning all events from each message without
+the SDK uses the V2 `engine_model_type` parameter and parses
+`sentences.sentence_list` (`sentence_type=0/1`). It deliberately does
+**not** send the undocumented `result_mod` option; Tencent previously
+rejected `result_mod=1` with error 4001. All events are returned without
 dropping results or duplicating confirmed sentence IDs. The shared Event
 currently carries text, not speaker IDs. A completed `final=1` produces
 stable EOF *after* any queued final sentences have been delivered.
@@ -185,11 +187,13 @@ GitHub Actions variable `TENCENT_V2_ASR_MODEL` to `16k_zh_en_2.0` (or an
 entitled `_2.0` engine) to enable its **real-cloud** CI gate. An unset
 variable **skips** this gate and does not prove 2.0 interoperability.
 A 2026-11-18 live probe of `16k_zh_en_2.0` returned Tencent error
-`4001: result_mod=1 not support for appid ... engine:16k_zh_en_2.0`
-during the initial handshake; the account/model's sentence-mode access needs
-to be confirmed with Tencent. This does **not** demonstrate a successful
-2.0 recognition, and the SDK must not silently fall back to legacy results.
-The mock-WebSocket sentence-list tests run regardless of cloud entitlement.
+`4001: result_mod=1 not support for appid ... engine:16k_zh_en_2.0`.
+The SDK no longer sends that unsupported query parameter (see official
+V2 WebSocket protocol: https://cloud.tencent.com/document/product/1093/131127).
+This repairs a known request incompatibility, **not** proof of successful
+2.0 cloud recognition or proof of account entitlement. The opt-in live
+2.0 integration gate still requires `TENCENT_V2_ASR_MODEL`; the mock
+WebSocket sentence-list tests run regardless of entitlement.
 
 ### VAD threshold comparison (synthetic diagnostic)
 
