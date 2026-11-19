@@ -32,9 +32,10 @@ type Stream struct {
 	once        sync.Once
 	writeMu     sync.Mutex
 	readMu      sync.Mutex
+	terminalMu  sync.Mutex
 	sendClosed  bool  // writeMu
 	finished    bool  // readMu
-	terminalErr error // readMu: first terminal failure remains observable
+	terminalErr error // terminalMu: first terminal failure remains observable
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -111,9 +112,8 @@ func (s *Stream) Send(ctx context.Context, chunk []byte) error {
 		return badArgument("empty audio chunk")
 	}
 	if err := s.write(ctx, websocket.BinaryMessage, chunk); err != nil {
-		result := s.transportError(ctx, "send", err)
-		_ = s.Close() // A failed WebSocket write cannot safely be retried on this session.
-		return result
+		// Preserve the original write failure for an in-flight Recv, too.
+		return s.fail(s.transportError(ctx, "send", err))
 	}
 	return nil
 }
@@ -123,17 +123,15 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if s.closed() {
+		return s.closeError(ctx)
+	}
 	if s.sendClosed {
 		return nil
 	}
-	if s.closed() {
-		return ErrClosed
-	}
 	cmd := taskMessage{Header: commandHeader{Action: "finish-task", TaskID: s.taskID, Streaming: "duplex"}, Payload: taskPayload{Input: map[string]any{}}}
 	if err := s.writeJSON(ctx, cmd); err != nil {
-		result := s.transportError(ctx, "finish-task", err)
-		_ = s.Close()
-		return result
+		return s.fail(s.transportError(ctx, "finish-task", err))
 	}
 	s.sendClosed = true
 	return nil
@@ -147,8 +145,8 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	if s.finished {
 		return asr.Event{}, io.EOF
 	}
-	if s.terminalErr != nil {
-		return asr.Event{}, s.terminalErr
+	if err := s.terminalFailure(); err != nil {
+		return asr.Event{}, err
 	}
 	if s.closed() {
 		return asr.Event{}, s.fail(s.closeError(ctx))
@@ -215,15 +213,24 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	}
 }
 
-// fail remembers the first terminal receive failure. Caller holds readMu.
-// A subsequent Recv reports the original remote/protocol/transport error,
-// instead of replacing it with an unhelpful "stream closed" error.
+// terminalFailure reads a first terminal error shared by the sender and receiver.
+func (s *Stream) terminalFailure() error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	return s.terminalErr
+}
+
+// fail retains the first Send, CloseSend or Recv failure. It must not require
+// readMu or writeMu: a sender can fail while a receiver blocks on the socket.
 func (s *Stream) fail(err error) error {
+	s.terminalMu.Lock()
 	if s.terminalErr == nil {
 		s.terminalErr = err
 	}
+	first := s.terminalErr
+	s.terminalMu.Unlock()
 	_ = s.Close()
-	return s.terminalErr
+	return first
 }
 
 // transportError preserves cancellation and deliberate stream closure.

@@ -29,11 +29,12 @@ type Stream struct {
 
 	writeMu    sync.Mutex
 	readMu     sync.Mutex
+	terminalMu sync.Mutex
 	sendClosed bool
 	sentAudio  bool
 
 	finished      bool                // readMu
-	terminalErr   error               // readMu
+	terminalErr   error               // terminalMu
 	queue         []asr.Event         // readMu
 	resultType    string              // immutable
 	pendingText   string              // readMu: latest unconfirmed utterance
@@ -124,9 +125,7 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 		return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "volcengine", Operation: "send", Err: err}
 	}
 	if err := s.writeFrame(ctx, frame); err != nil {
-		result := s.transportError(ctx, "send", err)
-		_ = s.Close()
-		return result
+		return s.fail(s.transportError(ctx, "send", err))
 	}
 	s.sentAudio = true
 	return nil
@@ -141,11 +140,11 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	if s.sendClosed {
-		return nil
-	}
 	if s.closed() {
 		return s.closedError(ctx)
+	}
+	if s.sendClosed {
+		return nil
 	}
 	if !s.sentAudio {
 		return argumentError("cannot finish an empty audio stream")
@@ -157,9 +156,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return err
 	}
 	if err := s.writeFrame(ctx, frame); err != nil {
-		result := s.transportError(ctx, "finish", err)
-		_ = s.Close()
-		return result
+		return s.fail(s.transportError(ctx, "finish", err))
 	}
 	s.sendClosed = true
 	return nil
@@ -172,6 +169,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
 	for {
+		if err := s.terminalFailure(); err != nil {
+			return asr.Event{}, err
+		}
 		if len(s.queue) > 0 {
 			e := s.queue[0]
 			s.queue[0] = asr.Event{}
@@ -180,9 +180,6 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		if s.finished {
 			return asr.Event{}, io.EOF
-		}
-		if s.terminalErr != nil {
-			return asr.Event{}, s.terminalErr
 		}
 		// A completed stream stays at EOF (or its original terminal error)
 		// even when a later caller supplies a canceled context.
@@ -301,14 +298,25 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 	}
 }
 
-// fail retains the original reason even if Close subsequently tears down the
-// WebSocket. Caller holds readMu.
+// terminalFailure reads the first terminal error, shared by Send,
+// CloseSend and Recv without holding the potentially blocked read lock.
+func (s *Stream) terminalFailure() error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	return s.terminalErr
+}
+
+// fail saves the first terminal failure before closing the connection. It
+// cannot acquire readMu or writeMu, since Recv may be blocked on ReadMessage.
 func (s *Stream) fail(err error) error {
+	s.terminalMu.Lock()
 	if s.terminalErr == nil {
 		s.terminalErr = err
 	}
+	first := s.terminalErr
+	s.terminalMu.Unlock()
 	_ = s.Close()
-	return s.terminalErr
+	return first
 }
 
 func (s *Stream) closedError(ctx context.Context) error {
