@@ -31,24 +31,25 @@ jobs:
           test -n "$TENCENT_APP_ID" || { echo "TENCENT_APP_ID repository variable is required" >&2; exit 1; }
           test -n "$TENCENT_SECRET_ID" || { echo "TENCENT_SECRET_ID repository secret is required" >&2; exit 1; }
           test -n "$TENCENT_SECRET_KEY" || { echo "TENCENT_SECRET_KEY repository secret is required" >&2; exit 1; }
-      - name: Install Mandarin speech fixture tools
+      # Use the same SHA-verified public Tencent speech sample as speaker-live.
+      # Avoid apt package installation and eSpeak voice/package drift.
+      - name: Prepare pinned Tencent PCM fixtures (16k and 8k)
         run: |
-          if ! command -v espeak-ng >/dev/null 2>&1 || ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get install -y espeak-ng ffmpeg || {
-              sudo apt-get update -qq
-              sudo apt-get install -y espeak-ng ffmpeg
-            }
-          fi
-      - name: Generate mono PCM16LE fixtures for 16k, 8k and configured engine
-        run: |
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/tencent-speech.wav" "你好，今天天气很好。我们一起玩游戏。"
-          ffmpeg -hide_banner -loglevel error -y -i "${RUNNER_TEMP}/tencent-speech.wav" -ac 1 -ar 16000 -c:a pcm_s16le -f s16le "$TENCENT_TEST_16K_PCM_FILE"
-          ffmpeg -hide_banner -loglevel error -y -i "${RUNNER_TEMP}/tencent-speech.wav" -ac 1 -ar 8000 -c:a pcm_s16le -f s16le "$TENCENT_TEST_8K_PCM_FILE"
-          rate=16000
+          set -euo pipefail
+          command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg missing from hosted runner" >&2; exit 1; }
+          source_pcm="${RUNNER_TEMP}/tencent-official-source.pcm"
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 45 \
+            "https://raw.githubusercontent.com/TencentCloud/tencentcloud-speech-sdk-go/257f9f56bcd592bff1faea9b4ce0f1ef90cea803/examples/speakerexample/test.pcm" \
+            -o "$source_pcm"
+          test "$(git hash-object "$source_pcm")" = "48e5f31375a9e7bad4ad21cd104cdd5714670d25"
+          : > "$TENCENT_TEST_16K_PCM_FILE"
+          for i in 1 2 3; do cat "$source_pcm" >> "$TENCENT_TEST_16K_PCM_FILE"; done
+          # 9 repetitions in the minute-stream test must remain over 60 seconds.
+          test "$(wc -c < "$TENCENT_TEST_16K_PCM_FILE")" -gt 213334
+          ffmpeg -hide_banner -loglevel error -y \
+            -f s16le -ar 16000 -ac 1 -i "$TENCENT_TEST_16K_PCM_FILE" \
+            -ar 8000 -ac 1 -c:a pcm_s16le -f s16le "$TENCENT_TEST_8K_PCM_FILE"
           if [[ "$TENCENT_ASR_MODEL" == 8k_* ]]; then
-            rate=8000
-          fi
-          if [[ "$rate" == 8000 ]]; then
             cp "$TENCENT_TEST_8K_PCM_FILE" "$TENCENT_TEST_PCM_FILE"
           else
             cp "$TENCENT_TEST_16K_PCM_FILE" "$TENCENT_TEST_PCM_FILE"
