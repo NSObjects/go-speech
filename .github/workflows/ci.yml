@@ -1,12 +1,24 @@
 name: Go CI
 
 on:
+  # PRs already run Go CI; do not run the same suite again on every feature push.
   push:
+    branches: [main]
   pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-24.04
+    # Image is built and published by ci-image.yml from main.
+    # Pin the image to its originating commit for repeatable tool versions.
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/nsobjects/go-speech-ci:sha-97c09deafd7c79bcf75e85e9bd3147d7f0299f87
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -28,14 +40,10 @@ jobs:
         run: go vet ./...
       - name: Compile live integration tests (without credentials)
         run: go test -tags=integration -run TestNonexistentCompileOnly ./asr/providers/volcengine ./asr/providers/tencent
-      - name: Ensure FFmpeg is available for audio integration tests
+      - name: Verify preinstalled FFmpeg
         run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get install -y ffmpeg || {
-              sudo apt-get update -qq
-              sudo apt-get install -y ffmpeg
-            }
-          fi
+          command -v ffmpeg
+          command -v ffprobe
       - name: Test with race detector
         run: go test -race ./...
       - name: Recheck context deadline classification for socket timing races
@@ -43,17 +51,24 @@ jobs:
 
   native-codecs:
     runs-on: ubuntu-24.04
+    # Image is built and published by ci-image.yml from main.
+    # Pin the image to its originating commit for repeatable tool versions.
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/nsobjects/go-speech-ci:sha-97c09deafd7c79bcf75e85e9bd3147d7f0299f87
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - name: Install native codec development libraries
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y pkg-config libopus-dev libopencore-amrnb-dev
-          pkg-config --modversion opus opencore-amrnb
+      - name: Verify preinstalled native codec development libraries
+        run: pkg-config --modversion opus opencore-amrnb
       - name: Race-test native codec builds
         env:
           CGO_ENABLED: "1"
@@ -69,7 +84,7 @@ jobs:
     # both build/test jobs have succeeded. Never run on forked pull requests.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test, native-codecs]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: read

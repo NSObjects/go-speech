@@ -6,38 +6,47 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
-  prepare-fixtures:
+  live-asr:
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nsobjects/go-speech-ci:sha-97c09deafd7c79bcf75e85e9bd3147d7f0299f87
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 10
     env:
-      VOLCENGINE_TEST_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-test.pcm
-      VOLCENGINE_SHORT_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-short.pcm
-      VOLCENGINE_MANDARIN_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-mandarin.pcm
-      VOLCENGINE_MANDARIN_SHORT_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-mandarin-short.pcm
-      VOLCENGINE_CONTINUOUS_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-continuous.pcm
-      VOLCENGINE_MINUTE_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-minute.pcm
-      VOLCENGINE_OGG_OPUS_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-ogg-opus.ogg
-      VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-continuous.ogg
+      VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
+      VOLCENGINE_RESOURCE_ID: ${{ vars.VOLCENGINE_RESOURCE_ID }}
+      VOLCENGINE_WS_ENDPOINT: ${{ vars.VOLCENGINE_WS_ENDPOINT }}
+      VOLCENGINE_TEST_PCM_FILE: /tmp/volcengine-test.pcm
+      VOLCENGINE_SHORT_PCM_FILE: /tmp/volcengine-short.pcm
+      VOLCENGINE_MANDARIN_PCM_FILE: /tmp/volcengine-mandarin.pcm
+      VOLCENGINE_MANDARIN_SHORT_PCM_FILE: /tmp/volcengine-mandarin-short.pcm
+      VOLCENGINE_CONTINUOUS_PCM_FILE: /tmp/volcengine-continuous.pcm
+      VOLCENGINE_MINUTE_PCM_FILE: /tmp/volcengine-minute.pcm
+      VOLCENGINE_OGG_OPUS_FILE: /tmp/volcengine-ogg-opus.ogg
+      VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE: /tmp/volcengine-continuous.ogg
     steps:
       - uses: actions/checkout@v4
-      - name: Restore or build ASR speech fixtures
-        id: fixtures
-        uses: actions/cache@v4
+      - uses: actions/setup-go@v5
         with:
-          path: .ci/fixtures/volcengine
-          key: volcengine-asr-fixtures-ubuntu24-v1
-      - name: Create fixture output folder on cache miss
-        if: steps.fixtures.outputs.cache-hit != 'true'
-        run: mkdir -p .ci/fixtures/volcengine
-      - name: Install synthesis tools only on cache miss
-        if: steps.fixtures.outputs.cache-hit != 'true'
+          go-version-file: go.mod
+          cache: true
+      - name: Require new-console Volcengine API Key
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends espeak-ng ffmpeg
+          if [ -z "$VOLCENGINE_API_KEY" ]; then
+            echo "::error title=Missing API key::Set VOLCENGINE_API_KEY to the new-console APP Key in Repository secrets."
+            exit 1
+          fi
+      - name: Verify preinstalled audio fixture tools
+        run: |
+          command -v espeak-ng
+          command -v ffmpeg
+          command -v ffprobe
       - name: Generate two-utterance real spoken-audio PCM fixture
-        if: steps.fixtures.outputs.cache-hit != 'true'
         run: |
           # Two distinct utterances separated by 2s of PCM silence. A trailing
           # 1s silence lets the server commit the second definite sentence.
@@ -57,7 +66,6 @@ jobs:
             > "$VOLCENGINE_TEST_PCM_FILE"
           test -s "$VOLCENGINE_TEST_PCM_FILE"
       - name: Generate short-phrase spoken-audio PCM fixture
-        if: steps.fixtures.outputs.cache-hit != 'true'
         run: |
           espeak-ng -v en -s 180 -w "${RUNNER_TEMP}/short.wav" "Hello."
           ffmpeg -hide_banner -loglevel error -y \
@@ -66,49 +74,42 @@ jobs:
           head -c 32000 /dev/zero > "${RUNNER_TEMP}/short-tail.pcm"
           cat "${RUNNER_TEMP}/short-voice.pcm" "${RUNNER_TEMP}/short-tail.pcm" > "$VOLCENGINE_SHORT_PCM_FILE"
           test -s "$VOLCENGINE_SHORT_PCM_FILE"
-      - name: Generate Mandarin spoken-audio fixtures
-        if: steps.fixtures.outputs.cache-hit != 'true'
+      - name: Prepare pinned natural Mandarin PCM fixture
         run: |
-          # eSpeak NG's Mandarin voice supplies offline synthetic test inputs.
-          # Keep fixtures separate from the SDK, which does not implement TTS.
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/mandarin.wav" "今天天气很好。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/mandarin-short.wav" "你好。"
-          for part in mandarin mandarin-short; do
-            ffmpeg -hide_banner -loglevel error -y \
-              -i "${RUNNER_TEMP}/${part}.wav" -ac 1 -ar 16000 \
-              -c:a pcm_s16le -f s16le "${RUNNER_TEMP}/${part}.pcm"
-          done
-          # Flush final recognition without introducing another utterance.
-          head -c 32000 /dev/zero > "${RUNNER_TEMP}/mandarin-tail.pcm"
-          cat "${RUNNER_TEMP}/mandarin.pcm" "${RUNNER_TEMP}/mandarin-tail.pcm" > "$VOLCENGINE_MANDARIN_PCM_FILE"
-          cat "${RUNNER_TEMP}/mandarin-short.pcm" "${RUNNER_TEMP}/mandarin-tail.pcm" > "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE"
+          # Independently recognized as 腾讯云智能语音欢迎您 by both
+          # Tencent and Volcengine (single/full) live ASR suites.
+          # Use the upstream source at a fixed commit and verify its git blob
+          # SHA; do not synthesize Mandarin with eSpeak NG (issue #45).
+          natural="${RUNNER_TEMP}/mandarin-natural.pcm"
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 45 \
+            "https://raw.githubusercontent.com/TencentCloud/tencentcloud-speech-sdk-go/257f9f56bcd592bff1faea9b4ce0f1ef90cea803/examples/speakerexample/test.pcm" \
+            -o "$natural"
+          test "$(wc -c < "$natural")" -eq 76360
+          test "$(git hash-object "$natural")" = 48e5f31375a9e7bad4ad21cd104cdd5714670d25
+          # 1.5s of silence gives VAD time to finalize the last phrase.
+          head -c 48000 /dev/zero > "${RUNNER_TEMP}/mandarin-tail.pcm"
+          cat "$natural" "${RUNNER_TEMP}/mandarin-tail.pcm" > "$VOLCENGINE_MANDARIN_PCM_FILE"
+          cp "$VOLCENGINE_MANDARIN_PCM_FILE" "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE"
           test -s "$VOLCENGINE_MANDARIN_PCM_FILE"
           test -s "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE"
-      - name: Generate continuous Mandarin conversation PCM fixture
-        if: steps.fixtures.outputs.cache-hit != 'true'
+      - name: Generate continuous natural Mandarin conversation fixture
         run: |
-          # Four turns: repeat two full phrases; three 2s silences.
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn1.wav" "今天天气很好。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn2.wav" "我们一起玩游戏。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn3.wav" "今天天气很好。"
-          espeak-ng -v zh -s 125 -w "${RUNNER_TEMP}/turn4.wav" "我们一起玩游戏。"
-          for part in turn1 turn2 turn3 turn4; do
-            ffmpeg -hide_banner -loglevel error -y \
-              -i "${RUNNER_TEMP}/${part}.wav" -ac 1 -ar 16000 \
-              -c:a pcm_s16le -f s16le "${RUNNER_TEMP}/${part}.pcm"
+          # Four independent utterances from a verifiable natural recording,
+          # separated by 2s of PCM silence. The same words repeat but each
+          # turn must be independently finalized on the same WebSocket.
+          for n in 1 2 3 4; do
+            cp "${RUNNER_TEMP}/mandarin-natural.pcm" "${RUNNER_TEMP}/turn${n}.pcm"
           done
           head -c 64000 /dev/zero > "${RUNNER_TEMP}/gap.pcm"
-          head -c 32000 /dev/zero > "${RUNNER_TEMP}/tail.pcm"
           cat "${RUNNER_TEMP}/turn1.pcm" "${RUNNER_TEMP}/gap.pcm" \
             "${RUNNER_TEMP}/turn2.pcm" "${RUNNER_TEMP}/gap.pcm" \
             "${RUNNER_TEMP}/turn3.pcm" "${RUNNER_TEMP}/gap.pcm" \
-            "${RUNNER_TEMP}/turn4.pcm" "${RUNNER_TEMP}/tail.pcm" \
+            "${RUNNER_TEMP}/turn4.pcm" "${RUNNER_TEMP}/mandarin-tail.pcm" \
             > "$VOLCENGINE_CONTINUOUS_PCM_FILE"
           test -s "$VOLCENGINE_CONTINUOUS_PCM_FILE"
       - name: Generate minute-long continuous Mandarin fixture
-        if: steps.fixtures.outputs.cache-hit != 'true'
         run: |
-          # Twelve whole phrases on a single stream, 4s apart. Keep fixture
+          # Twelve natural Mandarin utterances on one stream, 4s apart. Keep fixture
           # construction out of the SDK; no implicit audio transcoding.
           head -c 128000 /dev/zero > "${RUNNER_TEMP}/minute-gap.pcm"
           (
@@ -121,13 +122,12 @@ jobs:
               if [ "$n" -lt 12 ]; then
                 cat "${RUNNER_TEMP}/minute-gap.pcm"
               else
-                cat "${RUNNER_TEMP}/tail.pcm"
+                cat "${RUNNER_TEMP}/mandarin-tail.pcm"
               fi
             done
           ) > "$VOLCENGINE_MINUTE_PCM_FILE"
           test "$(stat -c %s "$VOLCENGINE_MINUTE_PCM_FILE")" -ge 1920000
       - name: Generate genuine Ogg Opus fixture from Mandarin PCM
-        if: steps.fixtures.outputs.cache-hit != 'true'
         run: |
           # The official optimized ASR API requires format=ogg, codec=opus.
           # A complete continuous Ogg stream is NOT the same as raw Opus packets.
@@ -140,7 +140,6 @@ jobs:
           ffprobe -v error -show_entries stream=codec_name \
             -of default=noprint_wrappers=1 "$VOLCENGINE_OGG_OPUS_FILE" | grep -q 'codec_name=opus'
       - name: Generate continuous Ogg Opus conversation fixture
-        if: steps.fixtures.outputs.cache-hit != 'true'
         run: |
           # A single Ogg logical bitstream, never concatenated Ogg files.
           ffmpeg -hide_banner -loglevel error -y -f s16le -ar 16000 -ac 1 \
@@ -151,57 +150,6 @@ jobs:
           test -s "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE"
           ffprobe -v error -show_entries stream=codec_name \
             -of default=noprint_wrappers=1 "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE" | grep -q 'codec_name=opus'
-      - name: Verify cached speech fixtures
-        run: |
-          for f in "$VOLCENGINE_TEST_PCM_FILE" "$VOLCENGINE_SHORT_PCM_FILE" \
-            "$VOLCENGINE_MANDARIN_PCM_FILE" "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE" \
-            "$VOLCENGINE_CONTINUOUS_PCM_FILE" "$VOLCENGINE_MINUTE_PCM_FILE" \
-            "$VOLCENGINE_OGG_OPUS_FILE" "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE"; do
-            test -s "$f"
-          done
-
-  live-asr:
-    needs: prepare-fixtures
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    env:
-      VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
-      VOLCENGINE_RESOURCE_ID: ${{ vars.VOLCENGINE_RESOURCE_ID }}
-      VOLCENGINE_WS_ENDPOINT: ${{ vars.VOLCENGINE_WS_ENDPOINT }}
-      VOLCENGINE_TEST_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-test.pcm
-      VOLCENGINE_SHORT_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-short.pcm
-      VOLCENGINE_MANDARIN_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-mandarin.pcm
-      VOLCENGINE_MANDARIN_SHORT_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-mandarin-short.pcm
-      VOLCENGINE_CONTINUOUS_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-continuous.pcm
-      VOLCENGINE_MINUTE_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-minute.pcm
-      VOLCENGINE_OGG_OPUS_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-ogg-opus.ogg
-      VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE: ${{ github.workspace }}/.ci/fixtures/volcengine/volcengine-continuous.ogg
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Require new-console Volcengine API Key
-        run: |
-          if [ -z "$VOLCENGINE_API_KEY" ]; then
-            echo "::error title=Missing API key::Set VOLCENGINE_API_KEY to the new-console APP Key in Repository secrets."
-            exit 1
-          fi
-      - name: Restore cached ASR speech fixtures
-        uses: actions/cache/restore@v4
-        with:
-          path: .ci/fixtures/volcengine
-          key: volcengine-asr-fixtures-ubuntu24-v1
-          fail-on-cache-miss: true
-      - name: Verify cached speech fixtures
-        run: |
-          for f in "$VOLCENGINE_TEST_PCM_FILE" "$VOLCENGINE_SHORT_PCM_FILE" \
-            "$VOLCENGINE_MANDARIN_PCM_FILE" "$VOLCENGINE_MANDARIN_SHORT_PCM_FILE" \
-            "$VOLCENGINE_CONTINUOUS_PCM_FILE" "$VOLCENGINE_MINUTE_PCM_FILE" \
-            "$VOLCENGINE_OGG_OPUS_FILE" "$VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE"; do
-            test -s "$f"
-          done
       - name: Gate real streaming ASR (PCM, Ogg Opus, Go raw-packet remux)
         run: go test -tags=integration -run '^(TestVolcengineLiveASR|TestVolcengineLiveSilence|TestVolcengineLiveMandarin|TestVolcengineLiveContinuousMandarin|TestVolcengineLiveMinuteSession|TestVolcengineLiveOggOpus|TestVolcengineLiveContinuousOggOpus|TestVolcengineLiveRawOpusRemux)$' -count=1 -v -timeout 8m ./asr/providers/volcengine
       - name: Diagnose ultra-short synthetic English speech recognition

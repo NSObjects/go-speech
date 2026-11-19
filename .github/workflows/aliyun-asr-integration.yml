@@ -6,50 +6,19 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 # Every push runs paid integration once. PRs use the separate offline Go CI,
 # avoiding duplicate cloud charges for the same branch and not exposing secrets
 # to any pull_request event. Manual dispatch is optional for diagnostics.
 jobs:
-  prepare-fixtures:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: Restore or build speech fixtures
-        id: fixtures
-        uses: actions/cache@v4
-        with:
-          path: .ci/fixtures/aliyun
-          key: aliyun-asr-fixtures-ubuntu24-v1
-      - name: Install synthesis tools only on cache miss
-        if: steps.fixtures.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends espeak-ng ffmpeg
-      - name: Generate reusable PCM and Ogg Opus fixtures
-        if: steps.fixtures.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p .ci/fixtures/aliyun
-          espeak-ng -v en -s 130 -w "${RUNNER_TEMP}/speech-test.wav" \
-            "Hello. This is a real speech recognition integration test. Can you hear my voice clearly?"
-          for rate in 16000 8000; do
-            ffmpeg -hide_banner -loglevel error -y \
-              -i "${RUNNER_TEMP}/speech-test.wav" -ac 1 -ar "$rate" \
-              -c:a pcm_s16le -f s16le ".ci/fixtures/aliyun/speech-test-${rate}.pcm"
-          done
-          ffmpeg -hide_banner -loglevel error -y \
-            -i "${RUNNER_TEMP}/speech-test.wav" -ac 1 -ar 48000 \
-            -c:a libopus -b:a 32k -f ogg ".ci/fixtures/aliyun/speech-test.ogg"
-      - name: Verify all reusable audio fixtures
-        run: |
-          test -s .ci/fixtures/aliyun/speech-test-16000.pcm
-          test -s .ci/fixtures/aliyun/speech-test-8000.pcm
-          test -s .ci/fixtures/aliyun/speech-test.ogg
-
   live-asr:
-    needs: prepare-fixtures
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nsobjects/go-speech-ci:sha-97c09deafd7c79bcf75e85e9bd3147d7f0299f87
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -65,8 +34,8 @@ jobs:
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       DASHSCOPE_WS_ENDPOINT: ${{ vars.DASHSCOPE_WS_ENDPOINT }}
       DASHSCOPE_ASR_MODEL: ${{ matrix.model }}
-      ASR_TEST_PCM_FILE: ${{ github.workspace }}/.ci/fixtures/aliyun/${{ matrix.model == 'paraformer-realtime-8k-v2' && 'speech-test-8000.pcm' || 'speech-test-16000.pcm' }}
-      ASR_TEST_OPUS_FILE: ${{ github.workspace }}/.ci/fixtures/aliyun/speech-test.ogg
+      ASR_TEST_PCM_FILE: /tmp/speech-test.pcm
+      ASR_TEST_OPUS_FILE: /tmp/speech-test.ogg
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -83,15 +52,29 @@ jobs:
             *) echo "DASHSCOPE_WS_ENDPOINT must be a secure DashScope WebSocket endpoint" >&2; exit 1 ;;
           esac
 
-      - name: Restore cached speech fixtures
-        uses: actions/cache/restore@v4
-        with:
-          path: .ci/fixtures/aliyun
-          key: aliyun-asr-fixtures-ubuntu24-v1
-          fail-on-cache-miss: true
-      - name: Verify cached audio fixtures
+      - name: Verify preinstalled audio fixture tools
         run: |
+          command -v espeak-ng
+          command -v ffmpeg
+          command -v ffprobe
+
+      - name: Generate synthetic speech fixtures
+        run: |
+          espeak-ng -v en -s 130 -w "${RUNNER_TEMP}/speech-test.wav" \
+            "Hello. This is a real speech recognition integration test. Can you hear my voice clearly?"
+          sample_rate=16000
+          if [ "$DASHSCOPE_ASR_MODEL" = "paraformer-realtime-8k-v2" ]; then
+            sample_rate=8000
+          fi
+          ffmpeg -hide_banner -loglevel error -y \
+            -i "${RUNNER_TEMP}/speech-test.wav" -ac 1 -ar "$sample_rate" \
+            -c:a pcm_s16le -f s16le "$ASR_TEST_PCM_FILE"
           test -s "$ASR_TEST_PCM_FILE"
+
+          # Ogg Opus is used to verify the decoder -> PCM -> ASR path.
+          ffmpeg -hide_banner -loglevel error -y \
+            -i "${RUNNER_TEMP}/speech-test.wav" -ac 1 -ar 48000 \
+            -c:a libopus -b:a 32k -f ogg "$ASR_TEST_OPUS_FILE"
           test -s "$ASR_TEST_OPUS_FILE"
 
       - name: Live ASR task, audio, and final transcript
@@ -101,15 +84,13 @@ jobs:
         if: matrix.model == 'fun-asr-realtime'
         run: go test -tags=integration -run '^TestAliyunLiveOggPassthroughAndRemux$' -count=1 -v -timeout 4m ./asr/providers/aliyun
 
-      - name: Install decoder tools only for Fun-ASR pipeline tests
-        if: matrix.model == 'fun-asr-realtime'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg pkg-config libopus-dev
-
       - name: Ogg Opus decode to live ASR (Fun-ASR smoke test)
         if: matrix.model == 'fun-asr-realtime'
         run: go test -tags=integration -run '^TestAliyunLiveOpusPipeline$' -count=1 -v -timeout 3m ./asr/providers/aliyun
+
+      - name: Verify preinstalled native libopus headers
+        if: matrix.model == 'fun-asr-realtime'
+        run: pkg-config --modversion opus
 
       - name: Raw Opus packet decode to live ASR (Fun-ASR smoke test)
         if: matrix.model == 'fun-asr-realtime'

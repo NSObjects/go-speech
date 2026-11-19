@@ -18,7 +18,7 @@ import (
 // TestVolcengineLiveContinuousOggOpus verifies that confirmed results are
 // delivered while one continuous Ogg Opus stream is still sending audio,
 // not only after CloseSend. EventPartial counts are diagnostic: a short
-// synthetic voice fixture may not yield partial hypotheses on every run.
+// natural voice fixture may not yield partial hypotheses on every run.
 func TestVolcengineLiveContinuousOggOpus(t *testing.T) {
 	key := os.Getenv("VOLCENGINE_API_KEY")
 	path := os.Getenv("VOLCENGINE_CONTINUOUS_OGG_OPUS_FILE")
@@ -163,15 +163,15 @@ func TestVolcengineLiveContinuousOggOpus(t *testing.T) {
 				}
 				joined := strings.Join(texts, "")
 				offset := 0
-				for _, word := range []string{"天气", "游戏", "天气", "游戏"} {
+				for _, word := range []string{"腾讯云", "腾讯云", "腾讯云", "腾讯云"} {
 					at := strings.Index(joined[offset:], word)
 					if at < 0 {
 						t.Fatalf("missing or reordered spoken phrase %q: %q", word, joined)
 					}
 					offset += at + len(word)
 				}
-				for _, word := range []string{"天气", "游戏"} {
-					if n := strings.Count(joined, word); n != 2 {
+				for _, word := range []string{"腾讯云"} {
+					if n := strings.Count(joined, word); n != 4 {
 						t.Fatalf("Ogg Opus duplicated/dropped %q: count=%d, transcript=%q", word, n, joined)
 					}
 				}

@@ -10,16 +10,14 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode"
 
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
 )
 
-// TestVolcengineLiveMandarin exercises real Seed-ASR 2.0 with offline
-// synthesized Mandarin PCM. It validates that Chinese speech is recognized
-// using the service's automatic language handling (no Language override).
-// Synthetic speech is not a substitute for child-voice or noisy-room tests.
+// TestVolcengineLiveMandarin exercises real Seed-ASR with an integrity-pinned
+// natural Mandarin recording, independently recognized by another provider.
+// It tests automatic language handling without asserting child/noise quality.
 func TestVolcengineLiveMandarin(t *testing.T) {
 	apiKey := os.Getenv("VOLCENGINE_API_KEY")
 	if apiKey == "" {
@@ -32,9 +30,9 @@ func TestVolcengineLiveMandarin(t *testing.T) {
 		resultType string
 		want       string
 	}{
-		{name: "short_greeting", file: "VOLCENGINE_MANDARIN_SHORT_PCM_FILE", resultType: ResultSingle, want: "你好"},
-		{name: "sentence_full", file: "VOLCENGINE_MANDARIN_PCM_FILE", resultType: ResultFull, want: "天气"},
-		{name: "sentence_single", file: "VOLCENGINE_MANDARIN_PCM_FILE", resultType: ResultSingle, want: "天气"},
+		{name: "official_replay", file: "VOLCENGINE_MANDARIN_SHORT_PCM_FILE", resultType: ResultSingle, want: "腾讯云"},
+		{name: "sentence_full", file: "VOLCENGINE_MANDARIN_PCM_FILE", resultType: ResultFull, want: "腾讯云"},
+		{name: "sentence_single", file: "VOLCENGINE_MANDARIN_PCM_FILE", resultType: ResultSingle, want: "腾讯云"},
 	}
 	format := audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1}
 	for _, tc := range cases {
@@ -120,21 +118,8 @@ func TestVolcengineLiveMandarin(t *testing.T) {
 				}
 				recognized := strings.Join(got.finals, "")
 				t.Logf("Mandarin %s finals=%q", tc.name, got.finals)
-				if tc.name == "short_greeting" {
-					// Ultra-short synthetic Mandarin is acoustically unstable:
-					// the real provider has sometimes recognized "你好" as "离".
-					// Treat this subtest as a Chinese final-event transport smoke
-					// test, and report exact-text mismatches as quality diagnostics.
-					if strings.IndexFunc(recognized, func(r rune) bool {
-						return unicode.Is(unicode.Han, r)
-					}) < 0 {
-						t.Fatalf("short Mandarin speech produced no Chinese final: %q", recognized)
-					}
-					if !strings.Contains(recognized, tc.want) {
-						t.Logf("synthetic short-greeting quality mismatch: expected %q, got %q (not a transport failure)", tc.want, recognized)
-					}
-				} else if !strings.Contains(recognized, tc.want) {
-					t.Fatalf("expected Chinese phrase containing %q, got %q", tc.want, recognized)
+				if !strings.Contains(recognized, tc.want) {
+					t.Fatalf("expected natural Mandarin phrase containing %q, got %q", tc.want, recognized)
 				}
 			case <-ctx.Done():
 				t.Fatalf("wait for Mandarin ASR final: %v", ctx.Err())
