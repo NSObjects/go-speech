@@ -81,11 +81,11 @@ jobs:
         run: go test -tags=integration -run TestTencentLiveSegmentationOptions -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud 8k PCM input to 16k engine
         run: go test -tags=integration -run TestTencentLiveEightKInputToSixteenKEngine -count=1 -v -timeout 2m ./asr/providers/tencent
-      # When the repository variable is unset, perform a real 2.0 probe
-      # with the existing Tencent credentials. Account entitlement may be
-      # missing, so this diagnostic must never block working legacy engines.
+      # Always probe 2.0 with existing credentials, even when the repository
+      # variable is unset; GitHub step env conditions can incorrectly skip
+      # both fallback and strict branches. This diagnostic remains non-gating
+      # because 2.0 entitlement may be absent.
       - name: Probe Tencent Cloud 2.0 (automatic, non-gating)
-        if: ${{ !vars.TENCENT_V2_ASR_MODEL }}
         continue-on-error: true
         env:
           TENCENT_V2_ASR_MODEL: 16k_zh_en_2.0
