@@ -91,6 +91,33 @@ jobs:
         env:
           TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
         run: go test -tags=integration -run TestTencentLiveV2MinuteStream -count=1 -v -timeout 3m ./asr/providers/tencent
+      # One real, billable speaker-engine entitlement probe on this branch.
+      # Non-gating until the account and speaker_id response are verified.
+      # This step sends synthesized single-speaker PCM, not private recordings.
+      - name: Probe Tencent Cloud V2 speaker metadata (non-gating)
+        continue-on-error: true
+        env:
+          TENCENT_V2_SPEAKER_MODEL: 16k_zh_en_speaker_2.0
+        run: |
+          set +e
+          go test -tags=integration -run TestTencentLiveV2SpeakerEngine -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-speaker.log" 2>&1
+          result=$?
+          cat "${RUNNER_TEMP}/tencent-v2-speaker.log"
+          {
+            echo "### Tencent Cloud V2 speaker-enabled real-cloud probe"
+            echo "Engine: 16k_zh_en_speaker_2.0 (real, potentially billable, one synthesized voice)."
+            if [ "$result" -eq 0 ]; then
+              echo "Result: **PASS** — speaker metadata fields received from Tencent Cloud."
+              grep 'Tencent speaker engine=' "${RUNNER_TEMP}/tencent-v2-speaker.log" || true
+            else
+              echo "Result: **NOT VERIFIED** — account entitlement or returned speaker metadata needs investigation."
+              echo '~~~'
+              grep -E 'Tencent ASR error [0-9]+|WebSocket handshake HTTP [0-9]+|returned no speaker_id|--- FAIL: TestTencentLiveV2SpeakerEngine' "${RUNNER_TEMP}/tencent-v2-speaker.log" | tail -n 6 || true
+              echo '~~~'
+            fi
+            echo "A single voice does not establish multi-person diarization accuracy."
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "$result"
       # The speaker-enabled engine has separate entitlement and is not
       # available on every account. Enable explicitly via repository vars.
       # A single synthesized voice checks metadata plumbing, not diarization quality.
