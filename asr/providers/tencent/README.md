@@ -106,8 +106,8 @@ Actions repository variable `TENCENT_V2_SPEAKER_MODEL` to
 `speaker_id` reaches the SDK on a synthetic single-speaker clip, without
 requiring the 2.0 speaker SKU on accounts that do not have it. This test
 **does not** establish real multi-speaker diarization accuracy. The CI
-speaker probe uses alternating male/female synthesized voices with silent
-gaps to elicit assigned speaker IDs and distinguish them from pending -1
+speaker probe uses alternating Mandarin/English synthesized voices with
+silent gaps to elicit assigned speaker IDs and distinguish them from pending -1
 labels. Real recordings from at least two different people are still
 required for any diarization-accuracy claim. The standard 2.0
 stream, concurrency and minute-plus gates still run independently.
