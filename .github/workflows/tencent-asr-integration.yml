@@ -81,35 +81,27 @@ jobs:
         run: go test -tags=integration -run TestTencentLiveSegmentationOptions -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud 8k PCM input to 16k engine
         run: go test -tags=integration -run TestTencentLiveEightKInputToSixteenKEngine -count=1 -v -timeout 2m ./asr/providers/tencent
-      # Always probe 2.0 with existing credentials, even when the repository
-      # variable is unset; GitHub step env conditions can incorrectly skip
-      # both fallback and strict branches. This diagnostic remains non-gating
-      # because 2.0 entitlement may be absent.
-      - name: Probe Tencent Cloud 2.0 (automatic, non-gating)
-        continue-on-error: true
+      # Real 2.0 PCM recognition succeeded on this account (2026-11-19).
+      # Run a strict, paid gate on every push so entitlement/protocol regressions
+      # cannot silently pass. Repository variable optionally overrides engine.
+      - name: Real Tencent Cloud large-model 2.0 (automatic, strict)
         env:
-          TENCENT_V2_ASR_MODEL: 16k_zh_en_2.0
+          TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
         run: |
-          set +e
-          go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-probe.log" 2>&1
-          result=$?
-          cat "${RUNNER_TEMP}/tencent-v2-probe.log"
-          {
-            echo "### Tencent Cloud 2.0 live diagnostic"
-            echo "Model: \`16k_zh_en_2.0\`. This is a real, potentially billable Tencent Cloud request."
-            if [ "$result" -eq 0 ]; then
-              echo "Result: **PASS** — real V2 recognition returned nonempty Final text and stable EOF."
-            else
-              echo "Result: **NOT VERIFIED** — probe failed, but legacy ASR CI remains gated separately."
-              echo '~~~'
-              grep -E 'Tencent ASR error [0-9]+|WebSocket handshake HTTP [0-9]+|--- FAIL: TestTencentLiveLargeModelV2' "${RUNNER_TEMP}/tencent-v2-probe.log" | tail -n 5 || true
-              echo '~~~'
-            fi
-            echo "Configure repository variable \`TENCENT_V2_ASR_MODEL\` to enforce a strict, blocking 2.0 gate."
-          } >> "${GITHUB_STEP_SUMMARY}"
-          exit "$result"
-      # An explicitly configured, entitled 2.0 model must pass like all
-      # other ASR integration gates; this step must NOT continue-on-error.
-      - name: Real Tencent Cloud 2.0 (strict for configured model)
-        if: ${{ vars.TENCENT_V2_ASR_MODEL }}
-        run: go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent
+          if go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-live.log" 2>&1; then
+            cat "${RUNNER_TEMP}/tencent-v2-live.log"
+            {
+              echo "### Tencent Cloud ASR 2.0"
+              echo "Model: ${TENCENT_V2_ASR_MODEL}"
+              echo "Result: **PASS** — nonempty Final and stable EOF returned by real cloud."
+              grep 'Tencent large model 2.0' "${RUNNER_TEMP}/tencent-v2-live.log" || true
+            } >> "${GITHUB_STEP_SUMMARY}"
+          else
+            cat "${RUNNER_TEMP}/tencent-v2-live.log"
+            {
+              echo "### Tencent Cloud ASR 2.0"
+              echo "Model: ${TENCENT_V2_ASR_MODEL}"
+              echo "Result: **FAIL** — automatic strict cloud gate failed; see test logs."
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi

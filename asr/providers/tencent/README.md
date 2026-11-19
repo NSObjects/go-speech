@@ -182,25 +182,22 @@ create short Mandarin PCM fixtures. Cloud gates cover:
 - a real `16k_zh` session signed with 700ms VAD silence and 10s forced segmentation;
 - 8 kHz PCM sent unchanged to a 16 kHz engine with `input_sample_rate=8000`.
 
-Large-model 2.0 requires a separate billing entitlement. CI
-**automatically probes** `16k_zh_en_2.0` on **every push** using the
-existing Tencent credentials, even when `TENCENT_V2_ASR_MODEL` is unset.
-This is a real, potentially billable cloud request, not a mock. The
-diagnostic uses `continue-on-error`: a missing 2.0 entitlement cannot
-make the otherwise healthy legacy ASR gate fail. The probe result and
-Tencent error code (if any) appear in the workflow job summary; a
-green overall workflow does **not** imply 2.0 support. To also require
-a **blocking, strict** 2.0 live test, set the repository variable
-`TENCENT_V2_ASR_MODEL` to an entitled engine such as `16k_zh_en_2.0`.
-That strict gate does not mask failures.
-A 2026-11-18 live probe of `16k_zh_en_2.0` returned Tencent error
-`4001: result_mod=1 not support for appid ... engine:16k_zh_en_2.0`.
-The SDK no longer sends that unsupported query parameter (see official
-V2 WebSocket protocol: https://cloud.tencent.com/document/product/1093/131127).
-This repairs a known request incompatibility, **not** proof of successful
-2.0 cloud recognition or proof of account entitlement. The opt-in live
-2.0 integration gate still requires `TENCENT_V2_ASR_MODEL`; the mock
-WebSocket sentence-list tests run regardless of entitlement.
+Large-model 2.0 requires the matching Tencent billing entitlement.
+After the V2 handshake fix (removing unsupported `result_mod=1`), a
+**2026-11-19 real-cloud test succeeded** for `16k_zh_en_2.0` on this
+account: 9 Partial events, 1 nonempty Final, and stable EOF in 8.10s.
+This confirms short, single-stream basic recognition, **not** long-session
+reliability, speaker separation, or recognition accuracy.
+
+Because this account now demonstrably supports 2.0, CI runs the **strict,
+potentially billable** 2.0 integration test on **every push**, defaulting
+to `16k_zh_en_2.0`. Set the optional GitHub Actions repository variable
+`TENCENT_V2_ASR_MODEL` only to override the engine (for example
+`16k_zh_en_speaker_2.0`). Both the legacy and 2.0 real-cloud gates must
+pass; the 2.0 result and counts are reported in the job summary.
+The SDK still parses `sentences.sentence_list`; it does not send
+`result_mod`. Official V2 WebSocket protocol:
+https://cloud.tencent.com/document/product/1093/131127
 
 ### VAD threshold comparison (synthetic diagnostic)
 
