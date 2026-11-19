@@ -224,6 +224,8 @@ type sentence struct {
 	Text string `json:"sentence"`
 	Type int    `json:"sentence_type"`
 	ID   int    `json:"sentence_id"`
+	// Pointer preserves absent speaker_id vs Tencent's -1 (pending) and 0.
+	SpeakerID *int `json:"speaker_id"`
 }
 
 func decodeResponse(raw []byte, expectedID string) (response, error) {
@@ -383,13 +385,13 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 				switch sentence.Type {
 				case 0:
 					if _, finalized := s.finalSeen[sentence.ID]; !finalized && sentence.Text != "" {
-						s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: sentence.Text})
+						s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: sentence.Text, SpeakerID: sentence.SpeakerID})
 					}
 				case 1:
 					if _, already := s.finalSeen[sentence.ID]; !already {
 						s.finalSeen[sentence.ID] = struct{}{}
 						if sentence.Text != "" {
-							s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: sentence.Text})
+							s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: sentence.Text, SpeakerID: sentence.SpeakerID})
 						}
 					}
 				default:

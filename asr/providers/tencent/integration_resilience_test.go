@@ -18,8 +18,9 @@ import (
 )
 
 type liveResult struct {
-	partials int
-	finals   []string
+	partials   int
+	finals     []string
+	speakerIDs []int // reported for any text event; -1 means pending
 }
 
 func livePCMFixture(t *testing.T, envName string) []byte {
@@ -86,6 +87,9 @@ func liveSessionWithSegmentation(ctx context.Context, engine string, rate, input
 				out.err = err
 				received <- out
 				return
+			}
+			if event.SpeakerID != nil && event.Text != "" {
+				out.speakerIDs = append(out.speakerIDs, *event.SpeakerID)
 			}
 			switch event.Type {
 			case asr.EventPartial:
