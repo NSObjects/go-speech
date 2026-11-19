@@ -20,6 +20,13 @@ func TestTencentV2SpeakerMetadataPreservesMissingPendingAndZero(t *testing.T) {
 		if got := req.URL.Query().Get("engine_model_type"); got != "16k_zh_en_speaker_2.0" {
 			t.Errorf("wrong speaker engine %q", got)
 		}
+		for key, want := range map[string]string{
+			"result_mod": "1", "sentence_strategy": "1", "speaker_diarization": "1",
+		} {
+			if got := req.URL.Query().Get(key); got != want {
+				t.Errorf("speaker mode query %s=%q; want %q", key, got, want)
+			}
+		}
 		if !verifySignature(req, "secret-key") {
 			t.Error("invalid V2 speaker engine HMAC signature")
 		}
