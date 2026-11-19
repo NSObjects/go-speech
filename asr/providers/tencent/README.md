@@ -207,8 +207,9 @@ Send/CloseSend failure preservation, idle-read timeout, and the shared
 
 Automatic billable Tencent cloud CI runs on every push using
 `TENCENT_APP_ID` (GitHub Actions variable), `TENCENT_SECRET_ID` and
-`TENCENT_SECRET_KEY` (secrets). It uses `espeak-ng` and `ffmpeg` to
-create short Mandarin PCM fixtures. Cloud gates cover:
+`TENCENT_SECRET_KEY` (secrets). It downloads a pinned official Tencent 16 kHz PCM fixture, verifies its Git blob SHA,
+and uses Python's standard library to construct a separate 8 kHz PCM fixture.
+No apt-installed audio generators or external audio conversion packages are required. Cloud gates cover:
 - a configured-engine smoke stream with finalized text and stable EOF;
 - per-request temporary hotwords accepted by Tencent Cloud;
 - three concurrent 16 kHz streams;
@@ -244,9 +245,9 @@ https://cloud.tencent.com/document/product/1093/131127
 
 The automatic paid Tencent CI also tests **700ms**, **1000ms**, and **1500ms**
 `VADSilenceTime` using three separate, sequential `16k_zh` sessions. Each
-session receives *identical* espeak-ng PCM: one short speech fixture, a
+session receives *identical* pinned Tencent speech PCM: one short speech fixture, a
 deliberate 1200ms silent pause, the same speech fixture again, and a
-2400ms trailing pause. The fixture trims synthesized trailing padding to
+2400ms trailing pause. The fixture trims trailing low-energy padding to
 approximately locate the first speech end, without changing voiced audio.
 
 GitHub Actions writes `VAD_COMPARE` log records to the workflow's job summary:
@@ -257,12 +258,91 @@ GitHub Actions writes `VAD_COMPARE` log records to the workflow's job summary:
   the second phrase begins in the caller's approximately real-time pacing;
 - `finals_total`, `partials`, and `stream_wall_ms`: session diagnostics.
 
-These are **not** reliable estimates of natural-speech finalization latency,
+The source fixture changed in PR #40, so the historical synthetic VAD offsets
+must not be compared directly with the current fixture. These are **not** reliable estimates of natural-speech finalization latency,
 premature segmentation rate, WER/CER, or missing utterances. Real conversation
 evaluation requires multiple labeled recordings with speech-end timestamps,
 transcript references, noise/overlap cases and repeated trials before choosing
 a production VAD threshold. The comparison only asserts successful cloud
 streaming, at least one nonempty Final and clean EOF for all three settings.
+
+### Opt-in natural-recording V2 recognition accuracy (local only)
+
+The existing labeled VAD evaluation above exercises the **legacy** `16k_zh`
+engine. To measure the ordinary **large-model 2.0** engine on the same
+natural recordings, use `TestTencentLiveLabeledV2` with the identical JSON
+manifest format shown below (mono 16 kHz signed little-endian PCM, corrected
+whole-recording reference text, speech intervals). A local example:
+
+```sh
+TENCENT_V2_EVAL_MANIFEST=/absolute/path/to/vad-eval.json \
+  go test -tags=integration -run '^TestTencentLiveLabeledV2
+
+For a meaningful follow-up, record one or more naturally spoken, **mono
+16kHz PCM16LE** clips and annotate both a whole-recording reference transcript
+and speech-only start/end intervals. Keep the audio and labels on your own
+machine; no files, transcripts, or speaker data are committed to GitHub.
+Tencent Cloud ASR will still receive the PCM bytes during the test.
+
+For example, create a local `vad-eval.json` next to a `conversation.pcm`:
+
+```json
+{
+  "pcm_file": "conversation.pcm",
+  "reference_text": "你好今天的天气怎么样",
+  "speech_intervals": [
+    {"start_ms": 200, "end_ms": 2600}
+  ]
+}
+```
+
+The reference is the **full** manually corrected transcript in chronological
+order. Annotate speech onset/end in milliseconds relative to the first PCM
+sample. Non-overlapping intervals must lie within the recording duration;
+do not include silence as speech. Reference and audio contents are never
+printed in CI logs. Set the usual Tencent credentials locally, then run:
+
+```sh
+TENCENT_VAD_EVAL_MANIFEST=/absolute/path/to/vad-eval.json \
+  go test -tags=integration -run TestTencentLiveLabeledVAD \
+    -count=1 -v -timeout 10m ./asr/providers/tencent
+```
+
+The command evaluates **700/1000/1500ms** in three fresh Tencent sessions
+using identical, approximately real-time-paced audio. It reports
+`VAD_LABELED` summaries: normalized character error rate (CER; ignoring
+punctuation/spacing/case), Final/Partial counts, Finals delivered while
+an annotated speech interval is underway, and last-Final wall-time
+relative to the last annotated speech end. **No transcripts are logged.**
+
+The timing is approximate: network latency and client scheduling affect
+wall-clock arrival, and a Final occurring during an annotation may represent
+an *earlier* phrase. It is not an exact premature-cut metric. A single
+recording also cannot establish production performance; evaluate multiple
+speakers, noisy conditions, long pauses and interruptions. If the manifest
+is unset, this test explicitly **skips**; passing standard CI does not
+demonstrate natural-speech accuracy. No automatic VAD default changes are made.
+
+Do not equate synthesized test utterances with recognition-accuracy
+benchmarks; these tests verify transport, lifecycle, and final-result
+delivery.
+
+Official protocol: https://cloud.tencent.com/document/product/1093/48982
+ \
+    -count=1 -v -timeout 10m ./asr/providers/tencent
+```
+
+This opt-in test uses `16k_zh_en_2.0` by default and rejects a
+speaker-enabled or legacy model override. It uploads PCM to **Tencent Cloud**,
+not to GitHub. It logs only aggregate `V2_LABELED` CER, edit distance,
+reference character count, Final/Partial counts and session wall time;
+recordings, text, and paths are not printed. The metric ignores whitespace,
+punctuation and case. The score is whole-recording normalized character error
+rate, **not** per-speaker or per-utterance accuracy; no claim is made about
+endpoint latency or multi-speaker diarization. An unset manifest causes an
+explicit skip, so ordinary CI cannot be cited as a natural-speech accuracy
+measurement. For production evaluation use multiple speakers, noisy and
+quiet settings, and distinct child/adult samples with appropriate consent.
 
 ### Opt-in natural-recording evaluation (local only)
 
