@@ -2,8 +2,9 @@
 // application-owned environment variable without importing provider packages.
 //
 // Usage:
-//   ASR_PROVIDER=tencent TENCENT_APP_ID=... TENCENT_SECRET_ID=... TENCENT_SECRET_KEY=... \
-//     go run ./examples/asr-switch speech.pcm
+//
+//	ASR_PROVIDER=tencent TENCENT_APP_ID=... TENCENT_SECRET_ID=... TENCENT_SECRET_KEY=... \
+//	  go run ./examples/asr-switch speech.pcm
 //
 // speech.pcm must be raw 16 kHz mono signed PCM16LE, not WAV.
 package main
@@ -40,7 +41,7 @@ func run() error {
 			NeedVAD: true,
 		},
 		"aliyun": speech.AliyunASR{
-			APIKey: os.Getenv("DASHSCOPE_API_KEY"),
+			APIKey:   os.Getenv("DASHSCOPE_API_KEY"),
 			Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
 		},
 		"volcengine": speech.VolcengineASR{APIKey: os.Getenv("VOLCENGINE_API_KEY")},
