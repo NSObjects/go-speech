@@ -71,8 +71,8 @@ func NewASR(cfg ASRConfig) (asr.StreamRecognizer, error) {
 }
 
 // Each provider New returns *Client, whose nil pointer becomes non-nil when
- // implicitly converted to asr.StreamRecognizer. Normalize errors before
- // conversion so NewASR always returns a genuinely nil interface on failure.
+// implicitly converted to asr.StreamRecognizer. Normalize errors before
+// conversion so NewASR always returns a genuinely nil interface on failure.
 func newTencentASR(cfg tencent.Config) (asr.StreamRecognizer, error) {
 	client, err := tencent.New(cfg)
 	if err != nil {
