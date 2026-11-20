@@ -323,6 +323,17 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	if !s.finished && s.closed() {
 		return asr.Event{}, s.fail(s.closeError(ctx))
 	}
+	// Pending V2 sentences must not mask cancellation of a new Recv call.
+	// A provider-confirmed completion is already terminal and may drain
+	// its queued results regardless of a later canceled caller context.
+	if !s.finished {
+		if err := ctx.Err(); err != nil {
+			return asr.Event{}, s.fail(err)
+		}
+		if err := s.parent.Err(); err != nil {
+			return asr.Event{}, s.fail(err)
+		}
+	}
 	if len(s.queue) > 0 {
 		e := s.queue[0]
 		s.queue[0] = asr.Event{}
