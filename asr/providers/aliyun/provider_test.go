@@ -78,7 +78,7 @@ func TestWebSocketRoundTripAllModels(t *testing.T) {
 					observed <- err
 					return
 				}
-				if typ != websocket.BinaryMessage || string(chunk) != "audio" {
+				if typ != websocket.BinaryMessage || string(chunk) != "audio!" {
 					observed <- fmt.Errorf("bad audio frame: %d %q", typ, chunk)
 					return
 				}
@@ -129,7 +129,7 @@ func TestWebSocketRoundTripAllModels(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer stream.Close()
-			if err = stream.Send(ctx, []byte("audio")); err != nil {
+			if err = stream.Send(ctx, []byte("audio!")); err != nil {
 				t.Fatal(err)
 			}
 			if err = stream.CloseSend(ctx); err != nil {

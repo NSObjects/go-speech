@@ -36,6 +36,7 @@ type Stream struct {
 	sendClosed  bool  // writeMu
 	finished    bool  // readMu
 	terminalErr error // terminalMu: first terminal failure remains observable
+	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -110,6 +111,11 @@ func (s *Stream) Send(ctx context.Context, chunk []byte) error {
 	}
 	if len(chunk) == 0 {
 		return badArgument("empty audio chunk")
+	}
+	// Raw PCM16LE cannot be split in the middle of a sample frame. Other
+	// provider-supported encodings are byte streams: no alignment constraint.
+	if s.pcmFrameBytes > 0 && len(chunk)%s.pcmFrameBytes != 0 {
+		return badArgument("PCM16LE chunk must contain complete audio frames")
 	}
 	if err := s.write(ctx, websocket.BinaryMessage, chunk); err != nil {
 		// Preserve the original write failure for an in-flight Recv, too.
