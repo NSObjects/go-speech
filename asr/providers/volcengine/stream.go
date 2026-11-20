@@ -267,7 +267,16 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 			// seen earlier in this response, even when the provider lists
 			// the provisional entry before the confirmed entry.
 			partial = ""
-			key := fmt.Sprintf("%d:%d:%s", u.Start, u.End, u.Text)
+			// A finalized utterance is identified by its time interval, not by
+			// transcript text. Full snapshots may revise punctuation or
+			// spelling for an already emitted interval; EventFinal is
+			// immutable and must not be emitted twice for that segment.
+			// If timing is absent, use text to avoid collapsing distinct
+			// untimed utterances into the same 0:0 key.
+			key := "text:" + u.Text
+			if u.Start != 0 || u.End != 0 {
+				key = fmt.Sprintf("time:%d:%d", u.Start, u.End)
+			}
 			if _, alreadyEmitted := s.finalSeen[key]; alreadyEmitted {
 				continue
 			}
