@@ -107,9 +107,6 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	if s == nil {
 		return asr.ErrStreamClosed
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if s.closed() {
@@ -117,6 +114,10 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	}
 	if s.sendClosed {
 		return asr.ErrInputClosed
+	}
+	// A canceled upload operation cannot leave a reusable provider session.
+	if err := ctx.Err(); err != nil {
+		return s.fail(err)
 	}
 	if len(data) == 0 {
 		return argumentError("audio chunk cannot be empty")
@@ -141,9 +142,6 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	if s == nil {
 		return asr.ErrStreamClosed
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if s.closed() {
@@ -151,6 +149,9 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	}
 	if s.sendClosed {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return s.fail(err)
 	}
 	if !s.sentAudio {
 		return argumentError("cannot finish an empty audio stream")
