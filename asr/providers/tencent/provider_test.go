@@ -1,6 +1,8 @@
 package tencent
 
 import (
+	"fmt"
+	"strconv"
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
@@ -263,6 +265,39 @@ func TestTencentRemoteErrors(t *testing.T) {
 			_, err := client.OpenStream(ctx, pcmConfig())
 			if !speecherr.IsCode(err, tc.want) {
 				t.Fatalf("response code %d: expected %s, got %v", tc.code, tc.want, err)
+			}
+		})
+	}
+}
+
+// The service documents 4008 as an audio-upload gap and 4009 as a
+// client-side disconnect, not a transient provider outage. Both remain
+// terminal with the original remote codes but must not invite blind retries.
+func TestTencentRemoteErrorRetryability(t *testing.T) {
+	for _, tc := range []struct {
+		code int
+		want speecherr.Code
+		retryable bool
+	}{
+		{4004, speecherr.CodeRateLimited, false}, // quota exhausted
+		{4006, speecherr.CodeRateLimited, true},  // concurrency throttling
+		{4008, speecherr.CodeTimeout, false},     // client audio upload gap
+		{4009, speecherr.CodeUnavailable, false}, // client disconnected
+		{5000, speecherr.CodeUnavailable, true},
+		{5001, speecherr.CodeUnavailable, true},
+		{5002, speecherr.CodeUnavailable, true},
+	} {
+		t.Run(fmt.Sprint(tc.code), func(t *testing.T) {
+			err := remoteError(response{Code: tc.code, Message: "provider test error"})
+			if !speecherr.IsCode(err, tc.want) {
+				t.Fatalf("code %d classified as %v; want %s", tc.code, err, tc.want)
+			}
+			var detail *speecherr.Error
+			if !errors.As(err, &detail) {
+				t.Fatalf("code %d is not a structured error: %v", tc.code, err)
+			}
+			if detail.RemoteCode != strconv.Itoa(tc.code) || detail.Retryable != tc.retryable {
+				t.Fatalf("code %d error details %+v, want retryable %v", tc.code, detail, tc.retryable)
 			}
 		})
 	}
