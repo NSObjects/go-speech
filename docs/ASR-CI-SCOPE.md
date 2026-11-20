@@ -40,3 +40,8 @@ merely to make cloud checks pass.
 If a specific provider API adds a new transport format, event field,
 request option or lifecycle behavior, add a deterministic local unit test and
 a minimal automatic real-provider smoke test for that API feature.
+
+The three Volcengine natural-Mandarin quality diagnostic workflows are
+`workflow_dispatch` only; they are **not** the automatic paid ASR gate.
+Aliyun TTS auto-CI is path-filtered to TTS/shared dependency changes and is
+not triggered by an ASR-only code or workflow change.

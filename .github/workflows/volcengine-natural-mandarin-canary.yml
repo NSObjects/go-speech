@@ -2,11 +2,8 @@ name: Volcengine ASR Natural Mandarin Canary (automatic, paid)
 
 # Diagnostic experiment for issue #45: establish whether real Mandarin
 # speech works before changing the existing strict multi-turn fixtures.
+# Optional model-quality diagnostic only, not part of SDK API acceptance.
 on:
-  push:
-    paths:
-      - "asr/providers/volcengine/**"
-      - ".github/workflows/volcengine-natural-mandarin-canary.yml"
   workflow_dispatch:
 
 permissions:

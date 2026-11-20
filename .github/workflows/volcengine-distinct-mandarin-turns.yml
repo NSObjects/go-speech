@@ -2,11 +2,8 @@ name: Volcengine Distinct Mandarin Turns (automatic, paid)
 
 # Strict follow-up to issue #49: lexical diversity and turn order in one
 # uninterrupted ASR WebSocket. Existing 4/12-turn suites are untouched.
+# Optional model-quality diagnostic only, not part of SDK API acceptance.
 on:
-  push:
-    paths:
-      - "asr/providers/volcengine/integration_distinct_mandarin_turns_test.go"
-      - ".github/workflows/volcengine-distinct-mandarin-turns.yml"
   workflow_dispatch:
 
 permissions:
