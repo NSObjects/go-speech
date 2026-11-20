@@ -49,6 +49,40 @@ func TestFullTranscriptDoesNotRepeatFinalUtterances(t *testing.T) {
 	}
 }
 
+// ResultFull can repeat the same finalized time interval with a revised
+// transcript. A confirmed SDK event must not be emitted twice for that
+// interval even when the later snapshot changes punctuation.
+func TestFullTranscriptRevisedFinalSameIntervalDoesNotDuplicate(t *testing.T) {
+	s := &Stream{resultType: ResultFull, finalSeen: make(map[string]struct{})}
+	first := utterance{Text: "你好", Definite: true, Start: 100, End: 900}
+	revised := utterance{Text: "你好。", Definite: true, Start: 100, End: 900}
+	s.addEvents([]recognition{{Utterances: []utterance{first}}}, false)
+	if !reflect.DeepEqual(s.queue, []asr.Event{{Type: asr.EventFinal, Text: "你好"}}) {
+		t.Fatalf("first final: %#v", s.queue)
+	}
+	s.queue = nil
+	s.addEvents([]recognition{{Utterances: []utterance{revised}}}, true)
+	if len(s.queue) != 0 {
+		t.Fatalf("revised full snapshot duplicated final: %#v", s.queue)
+	}
+	if s.confirmedText != "你好" || len(s.finalSeen) != 1 {
+		t.Fatalf("confirmed state changed: text=%q, seen=%d", s.confirmedText, len(s.finalSeen))
+	}
+}
+
+// Untimed provider responses should still be able to emit distinct confirmed
+// sentences; an absent 0:0 interval must not identify every sentence as one.
+func TestUntimedDistinctFinalsAreNotCollapsed(t *testing.T) {
+	s := &Stream{resultType: ResultSingle, finalSeen: make(map[string]struct{})}
+	for _, text := range []string{"你好", "再见"} {
+		s.addEvents([]recognition{{Utterances: []utterance{{Text: text, Definite: true}}}}, false)
+		if !reflect.DeepEqual(s.queue, []asr.Event{{Type: asr.EventFinal, Text: text}}) {
+			t.Fatalf("untimed final %q: %#v", text, s.queue)
+		}
+		s.queue = nil
+	}
+}
+
 func TestSingleResponseModeDoesNotDropIdenticalUtterances(t *testing.T) {
 	s := &Stream{resultType: ResultSingle, finalSeen: make(map[string]struct{})}
 	for i, start := range []int64{100, 1100} {
