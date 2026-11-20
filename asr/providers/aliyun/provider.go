@@ -206,8 +206,14 @@ func dialError(err error, resp *http.Response) error {
 			code = speecherr.CodeInvalidArgument
 		}
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		code = speecherr.CodeTimeout
+	if resp == nil {
+		// A WebSocket dial may return an i/o timeout without wrapping
+		// context.DeadlineExceeded. Preserve that distinction for callers.
+		var network net.Error
+		if errors.Is(err, context.DeadlineExceeded) ||
+			(errors.As(err, &network) && network.Timeout()) {
+			code = speecherr.CodeTimeout
+		}
 	}
 	return &speecherr.Error{Code: code, Provider: "aliyun", Operation: "connect", Err: err, Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout}
 }
