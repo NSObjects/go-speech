@@ -110,6 +110,65 @@ func RunStreamLifecycle(t *testing.T, open OpenStream) {
 		}
 	})
 
+	// A canceled upload call must terminate the session even if its context
+	// was canceled before the WebSocket write. Keep the first error observable.
+	for _, tc := range []struct {
+		name string
+		newContext func() (context.Context, context.CancelFunc)
+	}{
+		{
+			name: "canceled",
+			newContext: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+		},
+		{
+			name: "deadline",
+			newContext: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			},
+		},
+	} {
+		for _, operation := range []string{"send", "close_send"} {
+			t.Run("pre_"+tc.name+"_"+operation+"_closes_session", func(t *testing.T) {
+				parent, stop := context.WithTimeout(context.Background(), 5*time.Second)
+				defer stop()
+				s := open(t, parent)
+				defer s.Close()
+				if operation == "close_send" {
+					if err := s.Send(parent, []byte{1, 0}); err != nil {
+						t.Fatalf("initial Send: %v", err)
+					}
+				}
+				ctx, cancel := tc.newContext()
+				defer cancel()
+				var first error
+				if operation == "send" {
+					first = s.Send(ctx, []byte{1, 0})
+				} else {
+					first = s.CloseSend(ctx)
+				}
+				if !errors.Is(first, ctx.Err()) {
+					t.Fatalf("%s must preserve %v, got %v", operation, ctx.Err(), first)
+				}
+				for i := 0; i < 2; i++ {
+					_, got := s.Recv(context.Background())
+					if got != first {
+						t.Fatalf("Recv %d changed terminal error: %v vs %v", i, got, first)
+					}
+				}
+				if err := s.Send(context.Background(), []byte{2, 0}); !errors.Is(err, asr.ErrStreamClosed) {
+					t.Fatalf("Send after canceled %s: %v", operation, err)
+				}
+				if err := s.CloseSend(context.Background()); !errors.Is(err, asr.ErrStreamClosed) {
+					t.Fatalf("CloseSend after canceled %s: %v", operation, err)
+				}
+			})
+		}
+	}
+
 	t.Run("parent_cancel_terminates_recv", func(t *testing.T) {
 		parent, cancel := context.WithCancel(context.Background())
 		s := open(t, parent)

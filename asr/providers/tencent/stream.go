@@ -161,8 +161,10 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	if s.sendClosed {
 		return asr.ErrInputClosed
 	}
+	// Cancellation of an upload operation terminates the WebSocket session,
+	// even when it happens before the first write.
 	if err := ctx.Err(); err != nil {
-		return err
+		return s.fail(err)
 	}
 	if len(data) == 0 || len(data)%2 != 0 {
 		return argumentError("PCM16LE audio must contain complete 16-bit samples")
@@ -189,7 +191,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return s.fail(err)
 	}
 	if !s.sentAudio {
 		return argumentError("cannot close empty audio input")

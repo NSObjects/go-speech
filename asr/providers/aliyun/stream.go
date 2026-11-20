@@ -109,6 +109,9 @@ func (s *Stream) Send(ctx context.Context, chunk []byte) error {
 	if s.sendClosed {
 		return ErrSendClosed
 	}
+	if err := ctx.Err(); err != nil {
+		return s.fail(err)
+	}
 	if len(chunk) == 0 {
 		return badArgument("empty audio chunk")
 	}
@@ -134,6 +137,9 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	}
 	if s.sendClosed {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return s.fail(err)
 	}
 	cmd := taskMessage{Header: commandHeader{Action: "finish-task", TaskID: s.taskID, Streaming: "duplex"}, Payload: taskPayload{Input: map[string]any{}}}
 	if err := s.writeJSON(ctx, cmd); err != nil {
