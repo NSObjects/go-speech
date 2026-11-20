@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/speecherr"
 )
 
 // OpenStream opens a session against a provider-specific local WebSocket mock.
@@ -43,6 +44,33 @@ func RunStreamLifecycle(t *testing.T, open OpenStream) {
 		}
 		if _, err := s.Recv(context.Background()); !errors.Is(err, asr.ErrStreamClosed) {
 			t.Fatalf("Recv on closed stream = %v", err)
+		}
+	})
+
+	t.Run("cannot_half_close_before_audio", func(t *testing.T) {
+		parent, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s := open(t, parent)
+		defer s.Close()
+
+		// An invalid Send or CloseSend must not terminate the connection
+		// or accidentally send the provider's finish command.
+		if err := s.Send(parent, nil); !speecherr.IsCode(err, speecherr.CodeInvalidArgument) {
+			t.Fatalf("empty Send = %v, want invalid argument", err)
+		}
+		for i := 0; i < 2; i++ {
+			if err := s.CloseSend(parent); !speecherr.IsCode(err, speecherr.CodeInvalidArgument) {
+				t.Fatalf("empty CloseSend %d = %v, want invalid argument", i, err)
+			}
+		}
+		if err := s.Send(parent, []byte{1, 0}); err != nil {
+			t.Fatalf("Send after invalid CloseSend = %v", err)
+		}
+		if err := s.CloseSend(parent); err != nil {
+			t.Fatalf("CloseSend after valid audio = %v", err)
+		}
+		if err := s.Send(parent, []byte{2, 0}); !errors.Is(err, asr.ErrInputClosed) {
+			t.Fatalf("Send after successful CloseSend = %v", err)
 		}
 	})
 
