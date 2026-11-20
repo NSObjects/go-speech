@@ -263,11 +263,18 @@ func connectError(err error, resp *http.Response) error {
 		logID := resp.Header.Get("X-Tt-Logid")
 		err = fmt.Errorf("%w: HTTP %d, X-Api-Status-Code=%q, X-Tt-Logid=%q",
 			err, resp.StatusCode, remoteCode, logID)
+	} else {
+		// The WebSocket handshake can time out before an HTTP response
+		// arrives. Expose a typed timeout, not a generic unavailable error.
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			code = speecherr.CodeTimeout
+		}
 	}
 	return &speecherr.Error{
 		Code: code, Provider: "volcengine", Operation: "connect",
 		RemoteCode: remoteCode, Err: err,
-		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited,
+		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout,
 	}
 }
 
