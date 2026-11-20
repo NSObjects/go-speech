@@ -188,10 +188,13 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 				return asr.Event{}, s.fail(result)
 			}
 		}
-		_, data, err := s.conn.ReadMessage()
+		typ, data, err := s.conn.ReadMessage()
 		if err != nil {
 			result := s.transportError(ctx, "recv", err)
 			return asr.Event{}, s.fail(result)
+		}
+		if typ != websocket.TextMessage {
+			return asr.Event{}, s.fail(protocolError("recv", errors.New("non-text ASR response")))
 		}
 		ev, err := decodeEvent(data)
 		if err != nil {
@@ -357,9 +360,12 @@ func taskFailure(h responseHeader) error {
 	}
 }
 func (s *Stream) awaitStarted(ctx context.Context) error {
-	_, data, err := s.conn.ReadMessage()
+	typ, data, err := s.conn.ReadMessage()
 	if err != nil {
 		return wrapNetwork(ctx, "task-started", err)
+	}
+	if typ != websocket.TextMessage {
+		return protocolError("task-started", errors.New("non-text ASR start response"))
 	}
 	ev, err := decodeEvent(data)
 	if err != nil {

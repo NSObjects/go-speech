@@ -47,6 +47,41 @@ func RunStreamLifecycle(t *testing.T, open OpenStream) {
 		}
 	})
 
+	t.Run("concurrent_close_unblocks_recv", func(t *testing.T) {
+		parent, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s := open(t, parent)
+		defer s.Close()
+
+		// Recv may be blocked on a network read while another goroutine
+		// shuts the stream down. Close must unblock it without a deadlock or
+		// manufacturing a retryable provider/network failure.
+		ready := make(chan struct{})
+		received := make(chan error, 1)
+		go func() {
+			close(ready)
+			_, err := s.Recv(context.Background())
+			received <- err
+		}()
+		<-ready
+		if err := s.Close(); err != nil {
+			t.Fatalf("concurrent Close: %v", err)
+		}
+		select {
+		case err := <-received:
+			if !errors.Is(err, asr.ErrStreamClosed) || speecherr.IsCode(err, speecherr.CodeUnavailable) {
+				t.Fatalf("Recv after Close = %v, want ErrStreamClosed (non-retryable)", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("Close did not unblock concurrent Recv")
+		}
+		for i := 0; i < 2; i++ {
+			if _, err := s.Recv(context.Background()); !errors.Is(err, asr.ErrStreamClosed) {
+				t.Fatalf("Recv %d after concurrent Close = %v", i, err)
+			}
+		}
+	})
+
 	t.Run("cannot_half_close_before_audio", func(t *testing.T) {
 		parent, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
