@@ -152,17 +152,11 @@ func (m wireMessage) result() ([]recognition, bool, bool, error) {
 			msg = body.Message
 		}
 		code := strconv.FormatUint(uint64(m.code), 10)
-		class := speecherr.CodeUnavailable
-		switch m.code {
-		case 401, 403:
-			class = speecherr.CodeUnauthorized
-		case 429:
-			class = speecherr.CodeRateLimited
-		}
+		class, retryable := classifyASRErrorCode(m.code)
 		return nil, false, false, &speecherr.Error{
 			Code: class, Provider: "volcengine", Operation: "receive",
 			RemoteCode: code, Err: fmt.Errorf("remote error %s: %s", code, msg),
-			Retryable: class == speecherr.CodeRateLimited || (class == speecherr.CodeUnavailable && m.code >= 50000000),
+			Retryable: retryable,
 		}
 	}
 	var p serverPayload
@@ -192,21 +186,14 @@ func (m wireMessage) result() ([]recognition, bool, bool, error) {
 		}
 	}
 	if p.Code != 0 && p.Code != 1000 && p.Code != 20000000 {
-		code := speecherr.CodeUnavailable
-		switch {
-		case p.Code == 1013: // provider: audio was silent; no recognized text
+		if p.Code == 1013 { // provider: audio was silent; no recognized text
 			return nil, true, true, nil
-		case p.Code == 401 || p.Code == 403:
-			code = speecherr.CodeUnauthorized
-		case p.Code == 429:
-			code = speecherr.CodeRateLimited
-		case p.Code >= 4000 && p.Code < 5000:
-			code = speecherr.CodeInvalidArgument
 		}
+		code, retryable := classifyASRErrorCode(uint32(p.Code))
 		return nil, false, false, &speecherr.Error{
 			Code: code, Provider: "volcengine", Operation: "receive",
 			RemoteCode: strconv.Itoa(p.Code),
-			Retryable:  code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited,
+			Retryable:  retryable,
 			Err:        fmt.Errorf("remote response %d: %s", p.Code, p.Message),
 		}
 	}
@@ -223,6 +210,31 @@ func (m wireMessage) result() ([]recognition, bool, bool, error) {
 		return nil, false, false, protocolWrap(err)
 	}
 	return batch, last, false, nil
+}
+
+// classifyASRErrorCode maps the official streaming ASR status families, not
+// TTS status codes. 45xxxxxx indicates a request/audio/session error;
+// 55xxxxxx indicates a transient provider failure. An SDK never replays
+// already-uploaded audio automatically; Retryable only informs the caller.
+func classifyASRErrorCode(code uint32) (speecherr.Code, bool) {
+	switch {
+	case code == 401 || code == 403:
+		return speecherr.CodeUnauthorized, false
+	case code == 429:
+		return speecherr.CodeRateLimited, true
+	case code == 45000081: // next audio packet did not arrive within 8 seconds
+		return speecherr.CodeTimeout, false
+	case code >= 40000000 && code < 50000000:
+		return speecherr.CodeInvalidArgument, false
+	case code >= 50000000 && code < 60000000:
+		return speecherr.CodeUnavailable, true
+	case code >= 400 && code < 500 || code >= 4000 && code < 5000:
+		return speecherr.CodeInvalidArgument, false
+	case code >= 500 && code < 600:
+		return speecherr.CodeUnavailable, true
+	default:
+		return speecherr.CodeUnavailable, false
+	}
 }
 
 func protocolError(msg string) error {
