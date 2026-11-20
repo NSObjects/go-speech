@@ -296,7 +296,11 @@ func (s *Stream) awaitHandshake(ctx context.Context, timeout time.Duration) erro
 	if err != nil {
 		return err
 	}
-	if result.Final != 0 || result.Result != nil {
+	// Session creation must not consume recognition events. A nonempty V2
+	// sentence_list is speech output even when the enclosing final flag is 0.
+	// An empty sentence list is harmless startup metadata, so accept it.
+	if result.Final != 0 || result.Result != nil ||
+		(result.Sentences != nil && len(result.Sentences.SentenceList) > 0) {
 		return protocolError("unexpected recognition event during handshake")
 	}
 	if err := s.conn.SetReadDeadline(time.Time{}); err != nil {
