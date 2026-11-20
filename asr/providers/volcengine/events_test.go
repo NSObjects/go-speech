@@ -13,6 +13,7 @@ import (
 
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
 
@@ -133,6 +134,51 @@ func TestTerminalTextWithoutUtteranceMetadata(t *testing.T) {
 			t.Fatalf("missing trailing final: %#v", s.queue)
 		}
 	})
+}
+
+// An outer provider failure must remain authoritative. Nested payload_msg may
+// contain an unrelated success code, a malformed body, or a nested failure.
+func TestNestedPayloadCannotOverrideOuterProviderError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		payload string
+		want speecherr.Code
+		remoteCode string
+	}{
+		{
+			name: "outer auth failure vs nested success",
+			payload: `{"code":401,"message":"denied","payload_msg":{"code":1000,"result":{"text":"not authorized"}}}`,
+			want: speecherr.CodeUnauthorized,
+			remoteCode: "401",
+		},
+		{
+			name: "outer rate limit vs malformed nested payload",
+			payload: `{"code":429,"message":"throttled","payload_msg":"not an object"}`,
+			want: speecherr.CodeRateLimited,
+			remoteCode: "429",
+		},
+		{
+			name: "nested error within successful envelope",
+			payload: `{"code":1000,"payload_msg":{"code":403,"message":"permission denied"}}`,
+			want: speecherr.CodeUnauthorized,
+			remoteCode: "403",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := wireMessage{kind: messageFullResponse, payload: []byte(tc.payload)}
+			results, last, noSpeech, err := msg.result()
+			if !speecherr.IsCode(err, tc.want) {
+				t.Fatalf("expected %s, got %v", tc.want, err)
+			}
+			var providerErr *speecherr.Error
+			if !errors.As(err, &providerErr) || providerErr.RemoteCode != tc.remoteCode {
+				t.Fatalf("remote error code: %+v; expected %s", providerErr, tc.remoteCode)
+			}
+			if len(results) != 0 || last || noSpeech {
+				t.Fatalf("error was treated as a result: results=%v last=%v noSpeech=%v", results, last, noSpeech)
+			}
+		})
+	}
 }
 
 func TestNestedPayloadDoesNotDiscardEndOfStreamFlag(t *testing.T) {
