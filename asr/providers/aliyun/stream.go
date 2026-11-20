@@ -159,11 +159,13 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
-	if s.finished {
-		return asr.Event{}, io.EOF
-	}
+	// A concurrent Send/CloseSend failure must not be hidden by task-finished.
+	// Preserve the original terminal cause before reporting clean EOF.
 	if err := s.terminalFailure(); err != nil {
 		return asr.Event{}, err
+	}
+	if s.finished {
+		return asr.Event{}, io.EOF
 	}
 	if s.closed() {
 		return asr.Event{}, s.fail(s.closeError(ctx))
@@ -224,6 +226,11 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		case "task-finished":
 			s.finished = true
 			_ = s.Close()
+			// A writer can fail while ReadMessage decodes task-finished.
+			// Do not turn an already recorded terminal failure into EOF.
+			if err := s.terminalFailure(); err != nil {
+				return asr.Event{}, err
+			}
 			return asr.Event{}, io.EOF
 		case "task-failed":
 			return asr.Event{}, s.fail(taskFailure(ev.Header))
