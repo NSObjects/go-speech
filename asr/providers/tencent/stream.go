@@ -318,6 +318,11 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	if err := s.terminalFailure(); err != nil {
 		return asr.Event{}, err
 	}
+	// Only a provider-confirmed final frame may drain queued events after
+	// the socket closes. An explicit Close must discard pending events.
+	if !s.finished && s.closed() {
+		return asr.Event{}, s.fail(s.closeError(ctx))
+	}
 	if len(s.queue) > 0 {
 		e := s.queue[0]
 		s.queue[0] = asr.Event{}
