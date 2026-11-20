@@ -1,7 +1,17 @@
 name: Aliyun CosyVoice TTS Integration (automatic, paid)
 
 on:
+  # Do not bill TTS while changing ASR-only provider code or test fixtures.
+  # Keep TTS auto-checked whenever its code or shared dependencies change.
   push:
+    paths:
+      - "tts/**"
+      - "audio/**"
+      - "speecherr/**"
+      - "speech.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/aliyun-tts-integration.yml"
   workflow_dispatch:
 
 permissions:

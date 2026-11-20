@@ -2,11 +2,8 @@ name: Volcengine FLEURS Mandarin Corpus Canary (automatic, paid)
 
 # Distinct naturally spoken Chinese phrases, with ground-truth transcripts.
 # Strict candidate qualification only; do not weaken the existing live gates.
+# Optional model-quality diagnostic only, not part of SDK API acceptance.
 on:
-  push:
-    paths:
-      - "asr/providers/volcengine/integration_fleurs_mandarin_canary_test.go"
-      - ".github/workflows/volcengine-fleurs-mandarin-canary.yml"
   workflow_dispatch:
 
 permissions:
