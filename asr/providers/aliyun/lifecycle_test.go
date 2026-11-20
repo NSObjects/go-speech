@@ -214,3 +214,28 @@ func TestRecvEOFAfterTaskFinishedIsStable(t *testing.T) {
 		}
 	}
 }
+
+// TestCompletedStreamDoesNotMaskConcurrentTerminalFailure covers the state
+// reachable when task-finished and a failing sender overlap. A terminal error
+// recorded by fail must take precedence over the clean-completion flag.
+func TestCompletedStreamDoesNotMaskConcurrentTerminalFailure(t *testing.T) {
+	cause := errors.New("concurrent upload failed")
+	s := &Stream{finished: true, terminalErr: cause}
+	for i := 0; i < 3; i++ {
+		_, err := s.Recv(context.Background())
+		if err != cause {
+			t.Fatalf("Recv %d masked terminal failure with %v; want original %v", i, err, cause)
+		}
+	}
+	// Pure task completion without a recorded failure must still return
+	// repeatable EOF, including with a subsequently canceled call context.
+	complete := &Stream{finished: true}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := 0; i < 3; i++ {
+		_, err := complete.Recv(canceled)
+		if !errors.Is(err, io.EOF) {
+			t.Fatalf("completed Recv %d = %v, want EOF", i, err)
+		}
+	}
+}
