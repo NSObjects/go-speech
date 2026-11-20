@@ -138,6 +138,48 @@ func TestTerminalTextWithoutUtteranceMetadata(t *testing.T) {
 
 // An outer provider failure must remain authoritative. Nested payload_msg may
 // contain an unrelated success code, a malformed body, or a nested failure.
+// Official streaming-ASR 45xxxxxx errors describe invalid request/audio
+// conditions, while 55xxxxxx errors are transient provider failures.
+// Binary server-error and JSON response envelopes must agree.
+func TestVolcengineOfficialASRErrorCodeClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		code uint32
+		want speecherr.Code
+		retryable bool
+	}{
+		{"bad parameters", 45000001, speecherr.CodeInvalidArgument, false},
+		{"missing audio", 45000002, speecherr.CodeInvalidArgument, false},
+		{"unsupported audio format", 45000151, speecherr.CodeInvalidArgument, false},
+		{"audio upload gap timeout", 45000081, speecherr.CodeTimeout, false},
+		{"stream already completed", 45000091, speecherr.CodeInvalidArgument, false},
+		{"temporary provider outage", 55000000, speecherr.CodeUnavailable, true},
+		{"provider audio failure", 55000001, speecherr.CodeUnavailable, true},
+		{"provider overload", 55000031, speecherr.CodeUnavailable, true},
+		{"authorization", 403, speecherr.CodeUnauthorized, false},
+		{"rate limited", 429, speecherr.CodeRateLimited, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, m := range []wireMessage{
+				{kind: messageServerError, code: tc.code, payload: []byte(`{"message":"provider rejected stream"}`)},
+				{kind: messageFullResponse, payload: []byte(fmt.Sprintf(`{"code":%d,"message":"provider rejected stream"}`, tc.code))},
+			} {
+				events, last, noSpeech, err := m.result()
+				if !speecherr.IsCode(err, tc.want) {
+					t.Fatalf("frame kind %d code %d classified %v, want %s", m.kind, tc.code, err, tc.want)
+				}
+				var detail *speecherr.Error
+				if !errors.As(err, &detail) || detail.RemoteCode != fmt.Sprint(tc.code) || detail.Retryable != tc.retryable {
+					t.Fatalf("frame kind %d code %d details %+v, retryable want %v", m.kind, tc.code, detail, tc.retryable)
+				}
+				if len(events) != 0 || last || noSpeech {
+					t.Fatalf("frame kind %d code %d produced recognition events or EOF", m.kind, tc.code)
+				}
+			}
+		})
+	}
+}
+
 func TestNestedPayloadCannotOverrideOuterProviderError(t *testing.T) {
 	for _, tc := range []struct {
 		name string
