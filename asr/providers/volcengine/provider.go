@@ -189,6 +189,9 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 	}
 	conn.SetReadLimit(maxWirePayload + 128)
 	stream := newStream(conn, ctx, c.cfg.ResultType)
+	if request.Format.Encoding == audio.EncodingPCM16LE {
+		stream.pcmFrameBytes = request.Format.Channels * 2 // signed 16-bit samples per channel
+	}
 	if err := stream.writeFrame(ctx, frame); err != nil {
 		result := stream.transportError(ctx, "start", err)
 		_ = stream.Close()

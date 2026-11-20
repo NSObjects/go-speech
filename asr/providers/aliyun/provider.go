@@ -141,6 +141,9 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 		return nil, dialError(err, resp)
 	}
 	s := newStream(conn, ctx, taskID)
+	if cfg.Format.Encoding == audio.EncodingPCM16LE {
+		s.pcmFrameBytes = cfg.Format.Channels * 2 // signed 16-bit samples per channel
+	}
 	cmd := taskMessage{
 		Header:  commandHeader{Action: "run-task", TaskID: taskID, Streaming: "duplex"},
 		Payload: taskPayload{TaskGroup: "audio", Task: "asr", Function: "recognition", Model: c.cfg.Model, Parameters: params, Input: map[string]any{}},

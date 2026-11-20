@@ -32,6 +32,7 @@ type Stream struct {
 	terminalMu sync.Mutex
 	sendClosed bool
 	sentAudio  bool
+	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
 
 	finished      bool                // readMu
 	terminalErr   error               // terminalMu
@@ -119,6 +120,11 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	}
 	if len(data) == 0 {
 		return argumentError("audio chunk cannot be empty")
+	}
+	// Reject incomplete PCM frames before charging/uploading to the provider.
+	// Ogg Opus, MP3 and WAV bytes remain freely chunkable.
+	if s.pcmFrameBytes > 0 && len(data)%s.pcmFrameBytes != 0 {
+		return argumentError("PCM16LE chunk must contain complete audio frames")
 	}
 	frame, err := encodeFrame(messageAudioRequest, 0, 0, data)
 	if err != nil {
