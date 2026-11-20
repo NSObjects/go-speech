@@ -179,6 +179,20 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		if err := s.terminalFailure(); err != nil {
 			return asr.Event{}, err
 		}
+		// Only a provider-confirmed final response may drain queued events
+		// after the connection closes. An active stream must honor Close and
+		// Recv cancellation before delivering previously buffered results.
+		if !s.finished {
+			if err := ctx.Err(); err != nil {
+				return asr.Event{}, s.fail(err)
+			}
+			if err := s.parent.Err(); err != nil {
+				return asr.Event{}, s.fail(err)
+			}
+			if s.closed() {
+				return asr.Event{}, s.fail(asr.ErrStreamClosed)
+			}
+		}
 		if len(s.queue) > 0 {
 			e := s.queue[0]
 			s.queue[0] = asr.Event{}
@@ -187,17 +201,6 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		if s.finished {
 			return asr.Event{}, io.EOF
-		}
-		// A completed stream stays at EOF (or its original terminal error)
-		// even when a later caller supplies a canceled context.
-		if err := ctx.Err(); err != nil {
-			return asr.Event{}, s.fail(err)
-		}
-		if err := s.parent.Err(); err != nil {
-			return asr.Event{}, s.fail(err)
-		}
-		if s.closed() {
-			return asr.Event{}, s.fail(asr.ErrStreamClosed)
 		}
 		stop := context.AfterFunc(ctx, func() { _ = s.Close() })
 		var deadline time.Time
