@@ -25,7 +25,7 @@ func TestOpenStreamClassifiesWebSocketHandshakeTimeout(t *testing.T) {
 	cause := injectedDialTimeout{}
 	client, err := New(Config{
 		APIKey:   "test-key",
-		Endpoint: "ws://127.0.0.1:1",
+		Endpoint: "ws://127.0.0.1:1/api/v3/sauc/bigmodel_async",
 		Dialer: &websocket.Dialer{
 			NetDialContext: func(context.Context, string, string) (net.Conn, error) {
 				return nil, cause
