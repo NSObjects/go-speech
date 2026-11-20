@@ -169,10 +169,13 @@ func (m wireMessage) result() ([]recognition, bool, bool, error) {
 	if err := json.Unmarshal(m.payload, &p); err != nil {
 		return nil, false, false, protocolWrap(err)
 	}
-	if len(p.PayloadMsg) != 0 && len(p.Result) == 0 {
-		// The provider may wrap the actual result inside payload_msg.
-		// Do not overwrite the outer status or final-packet marker when
-		// unwrapping it: these envelope fields govern the stream lifecycle.
+	// The top-level error is authoritative. Do not let an inner success
+	// code or malformed payload_msg hide a provider authentication, quota,
+	// or request failure.
+	outerSuccess := p.Code == 0 || p.Code == 1000 || p.Code == 20000000
+	if outerSuccess && len(p.PayloadMsg) != 0 && len(p.Result) == 0 {
+		// Successful responses may wrap the result inside payload_msg.
+		// Preserve the outer last-packet marker while unwrapping.
 		var nested serverPayload
 		if err := json.Unmarshal(p.PayloadMsg, &nested); err != nil {
 			return nil, false, false, protocolWrap(err)
