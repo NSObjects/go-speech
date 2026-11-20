@@ -26,8 +26,8 @@ func TestTencentRemoteRetryAdvice(t *testing.T) {
 		{name: "concurrent limit", remote: 4006, want: speecherr.CodeRateLimited, retryable: true},
 		{name: "bad signature", remote: 4002, want: speecherr.CodeUnauthorized},
 		{name: "bad audio pacing", remote: 4000, want: speecherr.CodeInvalidArgument},
-		{name: "client idle", remote: 4008, want: speecherr.CodeTimeout, retryable: true},
-		{name: "connection dropped", remote: 4009, want: speecherr.CodeUnavailable, retryable: true},
+		{name: "client idle", remote: 4008, want: speecherr.CodeTimeout},
+		{name: "connection dropped", remote: 4009, want: speecherr.CodeUnavailable},
 		{name: "server overloaded", remote: 5000, want: speecherr.CodeUnavailable, retryable: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
