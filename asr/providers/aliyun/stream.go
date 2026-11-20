@@ -34,6 +34,7 @@ type Stream struct {
 	readMu      sync.Mutex
 	terminalMu  sync.Mutex
 	sendClosed  bool  // writeMu
+	sentAudio   bool  // writeMu: true after successful audio upload
 	finished    bool  // readMu
 	terminalErr error // terminalMu: first terminal failure remains observable
 	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
@@ -124,6 +125,7 @@ func (s *Stream) Send(ctx context.Context, chunk []byte) error {
 		// Preserve the original write failure for an in-flight Recv, too.
 		return s.fail(s.transportError(ctx, "send", err))
 	}
+	s.sentAudio = true
 	return nil
 }
 func (s *Stream) CloseSend(ctx context.Context) error {
@@ -140,6 +142,9 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	}
 	if err := ctx.Err(); err != nil {
 		return s.fail(err)
+	}
+	if !s.sentAudio {
+		return badArgument("cannot finish an empty audio stream")
 	}
 	cmd := taskMessage{Header: commandHeader{Action: "finish-task", TaskID: s.taskID, Streaming: "duplex"}, Payload: taskPayload{Input: map[string]any{}}}
 	if err := s.writeJSON(ctx, cmd); err != nil {

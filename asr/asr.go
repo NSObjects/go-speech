@@ -61,7 +61,9 @@ type Event struct {
 // Stream is a bidirectional recognition session. A caller may Send and Recv
 // concurrently. Recv returns io.EOF after the event stream ends; errors are
 // returned by Recv, not as Event values. CloseSend signals end-of-input without
-// discarding pending recognition results. Close is idempotent and releases
+// discarding pending recognition results. Calling CloseSend before any
+// successful audio upload returns an invalid-argument error without closing.
+// Close is idempotent and releases
 // resources; canceling the OpenStream context terminates the session.
 //
 // Contract: after a successful task completion, Recv repeatedly returns io.EOF.
