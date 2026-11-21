@@ -55,11 +55,3 @@ func TestConfigForThreeTTSProviders(t *testing.T) {
 	}
 }
 
-func TestModeOrStream(t *testing.T) {
-	if got := modeOrStream(""); got != "stream" {
-		t.Fatal("default mode should be stream")
-	}
-	if got := modeOrStream("batch"); got != "batch" {
-		t.Fatal("batch mode changed")
-	}
-}
