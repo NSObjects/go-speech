@@ -2,7 +2,7 @@
 
 [![Go CI](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml)
 
-A vendor-independent ASR and TTS SDK for Go. **ASR adapters: Alibaba Cloud and Volcengine Doubao streaming WebSocket; TTS adapter: Alibaba Cloud CosyVoice WebSocket.**
+A vendor-independent ASR and TTS SDK for Go. **ASR adapters: Alibaba Cloud, Tencent Cloud and Volcengine; TTS adapters: Alibaba Cloud CosyVoice, Tencent Cloud and Volcengine Seed TTS (streaming WebSocket).**
 
 面向 Go 应用的多厂商语音识别（ASR）和语音合成（TTS）库。库本身与 Eino、LLM、智能体及具体语音设备无关。
 
@@ -101,6 +101,59 @@ recognizer, err := speech.NewASR(cfg)
 ```sh
 go run ./examples/asr-switch speech.pcm
 ```
+
+## 快速开始：三家 TTS 厂商切换
+
+`speech.NewTTS` 和 `speech.NewASR` 使用相同的强类型配置思路。
+返回值同时实现 `tts.Synthesizer`（完整音频）和
+`tts.StreamSynthesizer`（边合成边接收音频）。
+
+```go
+configs := map[string]speech.TTSConfig{
+    "aliyun": speech.AliyunTTS{
+        APIKey: dashscopeKey,
+        Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+        Model: "cosyvoice-v3-flash",
+    },
+    "tencent": speech.TencentTTS{
+        AppID: appID, SecretID: secretID, SecretKey: secretKey,
+    },
+    "volcengine": speech.VolcengineTTS{
+        APIKey: volcengineKey,
+        ResourceID: "seed-tts-2.0",
+    },
+}
+config, ok := configs[providerName]
+if !ok { return fmt.Errorf("unknown TTS provider %q", providerName) }
+
+synth, err := speech.NewTTS(config)
+if err != nil { return err }
+stream, err := synth.SynthesizeStream(ctx, tts.Request{
+    Text: "你好，欢迎使用语音合成。",
+    Voice: providerVoiceID, // 厂商自己的音色 ID
+    Format: audio.Format{
+        Encoding: audio.EncodingMP3, SampleRate: 24000, Channels: 1,
+    },
+})
+if err != nil { return err }
+defer stream.Close()
+
+for {
+    chunk, err := stream.Recv(ctx)
+    if errors.Is(err, io.EOF) { break }
+    if err != nil { return err }
+    consume(chunk.Data) // 业务方负责播放/转发，SDK 不播放音频
+}
+```
+
+上例展示接口，不表示三家的每个音色都支持相同采样率。
+通过各 Provider 的 `SupportedAudio` 能力与音色实际规格选择格式。
+`NewTTS` 不读取 YAML、环境变量，不暗中转换音频，也不会自动重试。
+腾讯云、火山引擎 TTS 的**本地协议测试与真实付费 API 验证是两回事**；
+使用前需要激活对应 TTS 资源并完成真实云端测试。
+细节参见 [腾讯云 TTS](tts/providers/tencent/README.md)、
+[火山引擎 TTS](tts/providers/volcengine/README.md)、
+[阿里云 TTS](tts/providers/aliyun/README.md)。
 
 ## 主要 API
 
