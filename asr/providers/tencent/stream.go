@@ -235,6 +235,18 @@ func decodeResponse(raw []byte, expectedID string) (response, error) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return result, &speecherr.Error{Code: speecherr.CodeProtocol, Provider: "tencent", Operation: "decode", Err: err}
 	}
+	// Go's zero value would otherwise turn a missing or null code into a
+	// successful Tencent response. Both handshake ACKs and transcript frames
+	// must explicitly carry a numeric service status.
+	var status struct {
+		Code *json.RawMessage `json:"code"`
+	}
+	if err := json.Unmarshal(raw, &status); err != nil {
+		return result, protocolError("invalid response status")
+	}
+	if status.Code == nil {
+		return result, protocolError("missing or null response code")
+	}
 	if result.VoiceID != expectedID {
 		return result, protocolError("voice_id mismatch or missing")
 	}
