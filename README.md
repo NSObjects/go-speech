@@ -299,5 +299,7 @@ Tencent's proprietary Opus frame format is **not** compatible with
 `audio.EncodingOpus` (Ogg Opus), so no implicit conversion is attempted.
 See [Tencent ASR guide](asr/providers/tencent/README.md). A real cloud
 integration test requires `TENCENT_APP_ID`, `TENCENT_SECRET_ID`, and
-`TENCENT_SECRET_KEY` in GitHub Actions. Tencent TTS is a separate
-future provider, not part of this change.
+`TENCENT_SECRET_KEY` in GitHub Actions. Tencent TTS is implemented separately under `tts/providers/tencent`,
+with batch and streaming APIs available through `speech.NewTTS`.
+Its real-cloud audio synthesis remains unverified because the current test
+account reports quota error `3022`; offline protocol tests are available.
