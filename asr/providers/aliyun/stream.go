@@ -355,12 +355,13 @@ func taskFailure(h responseHeader) error {
 	retryable := false
 	switch {
 	case remote == "invalidapikey" || remote == "invalid_api_key" ||
+		remote == "authenticationfailed" ||
 		remote == "accessdenied" || remote == "access_denied":
 		code = speecherr.CodeUnauthorized
 	case remote == "invalidparameter" || strings.HasPrefix(remote, "invalidparameter.") ||
 		remote == "modelnotfound" || remote == "notfound":
 		code = speecherr.CodeInvalidArgument
-	case remote == "throttling.ratequota" || remote == "throttling.burstrate" ||
+	case remote == "throttling" || remote == "throttling.ratequota" || remote == "throttling.burstrate" ||
 		remote == "limit_requests" || remote == "limit_burst_rate":
 		code, retryable = speecherr.CodeRateLimited, true
 	case remote == "throttling.allocationquota" || remote == "insufficient_quota" ||
