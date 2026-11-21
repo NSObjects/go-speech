@@ -86,8 +86,9 @@ func loopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// SupportedAudio describes output format options of the official V3
-// unidirectional API. EncodingOpus denotes an Ogg Opus bitstream.
+// SupportedAudio describes the union of V3 unidirectional output formats.
+// EncodingOpus denotes an Ogg Opus bitstream, which requires 48 kHz;
+// validateRequest enforces this format-specific restriction.
 func SupportedAudio() audio.Capability {
 	return audio.Capability{
 		Encodings: []audio.Encoding{
@@ -125,6 +126,14 @@ func validateRequest(req tts.Request) (tts.Request, string, error) {
 	case audio.EncodingMP3:
 		return req, "mp3", nil
 	case audio.EncodingOpus:
+		// The V3 unidirectional TTS endpoint only emits Ogg Opus at 48 kHz.
+		// Reject other sample rates before opening a billable session.
+		if req.Format.SampleRate != 48000 {
+			return req, "", &speecherr.Error{
+				Code: speecherr.CodeUnsupported, Provider: "volcengine", Operation: "tts",
+				Err: fmt.Errorf("Ogg Opus TTS requires 48000 Hz; got %d", req.Format.SampleRate),
+			}
+		}
 		return req, "ogg_opus", nil
 	default:
 		return req, "", invalid("unsupported audio encoding")

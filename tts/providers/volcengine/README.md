@@ -38,8 +38,9 @@ independent request ID. Old-console AppID/AccessToken authentication is
 intentionally omitted. Resource entitlement and speaker choice must match:
 `seed-tts-2.0` requires an activated 2.0 voice.
 
-Supported provider formats: PCM16LE, MP3 or Ogg Opus (mono at the V3-supported
-sample rates). The WAV option is intentionally omitted: the provider can emit
+Supported provider formats: PCM16LE and MP3 (mono at 8, 16, 22.05, 24,
+32, 44.1 or 48 kHz); Ogg Opus is **48 kHz mono only**. Other Ogg Opus
+sample rates are rejected locally before the SDK opens a network session. The WAV option is intentionally omitted: the provider can emit
 repeated WAV headers during streaming, which is not a valid concatenated
 single WAV file. No decoding, repackaging or transcoding is performed.
 
