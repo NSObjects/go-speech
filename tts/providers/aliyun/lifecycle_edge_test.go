@@ -186,3 +186,5 @@ func TestCosyVoiceStartupTaskFailed(t *testing.T) {
 		t.Fatalf("task-start failure lost classification: %v", err)
 	}
 }
+
+var _ tts.Client = (*Client)(nil)
