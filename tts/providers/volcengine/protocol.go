@@ -111,16 +111,21 @@ func parseResponse(data []byte) (wireFrame, error) {
 	return result, nil
 }
 
-// sessionStatus checks the successful provider SessionFinished marker.
+// SessionFinished (event 152) confirms normal completion. The official
+// unidirectional API may return usage metadata without status_code; a status
+// field, when present, must still indicate success.
 func (f wireFrame) sessionStatus() error {
+	if len(bytes.TrimSpace(f.payload)) == 0 {
+		return nil
+	}
 	var info struct {
 		StatusCode *int `json:"status_code"`
 		Message string `json:"message"`
 	}
-	if err := json.Unmarshal(f.payload, &info); err != nil || info.StatusCode == nil {
-		return protocol("missing or invalid session status")
+	if err := json.Unmarshal(f.payload, &info); err != nil {
+		return protocol("invalid SessionFinished metadata")
 	}
-	if *info.StatusCode != 20000000 {
+	if info.StatusCode != nil && *info.StatusCode != 20000000 {
 		return remoteError(uint32(*info.StatusCode), info.Message)
 	}
 	return nil

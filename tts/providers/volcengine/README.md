@@ -17,7 +17,7 @@ if err != nil { return err }
 
 stream, err := client.SynthesizeStream(ctx, tts.Request{
     Text: "你好，欢迎使用语音合成。",
-    Voice: "zh_female_shuangkuaisisi_moon_bigtts",
+    Voice: "zh_female_vv_uranus_bigtts",
     Format: audio.Format{
         Encoding: audio.EncodingMP3, SampleRate: 24000, Channels: 1,
     },
@@ -45,11 +45,12 @@ single WAV file. No decoding, repackaging or transcoding is performed.
 
 The SDK serializes a V3 JSON text request, validates response frame lengths
 and optional gzip payloads, returns event 352 audio bytes, and ends only on
-event 152 with `status_code=20000000`. Errors retain the remote code.
+event 152. Its payload may contain `usage` without `status_code`; any explicit non-success status is still an error. Errors retain the remote code.
 Mock tests verify request headers, protocol framing, consecutive audio,
 stable EOF, cancellation, and malformed responses.
 
-**Live-service status:** Offline protocol tests do not establish that a
-Volcengine TTS resource is activated or successfully synthesizes using a
-particular API Key/voice. Real-cloud TTS integration must be enabled and
-verified separately; existing Volcengine ASR checks are not TTS validation.
+**Live-service status:** The real Seed TTS 2.0 smoke test on PR #74
+successfully synthesized 114,138 bytes of PCM24k audio in seven chunks using
+`zh_female_vv_uranus_bigtts`, then reached stable EOF. This validates one
+specific account/resource/voice combination; other resources and voices must
+be checked separately. Existing Volcengine ASR checks are not TTS validation.

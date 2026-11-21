@@ -244,6 +244,7 @@ func remoteError(remote int, message string) error {
 	switch remote {
 	case 10001, 10006, 10007, 10008: code = speecherr.CodeInvalidArgument
 	case 10002: code, retryable = speecherr.CodeRateLimited, true
+	case 3022: code = speecherr.CodeRateLimited // provider: resource pack exhausted; requires billing remediation
 	case 10003: code = speecherr.CodeUnauthorized
 	case 10004, 10009: code = speecherr.CodeTimeout
 	case 10005: code = speecherr.CodeUnavailable

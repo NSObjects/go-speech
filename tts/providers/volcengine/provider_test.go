@@ -58,7 +58,7 @@ func errorFrame(code uint32, payload []byte) []byte {
 func testRequest() tts.Request {
 	return tts.Request{
 		Text: "你好，欢迎使用语音合成。",
-		Voice: "zh_female_shuangkuaisisi_moon_bigtts",
+		Voice: "zh_female_vv_uranus_bigtts",
 		Format: audio.Format{
 			Encoding: audio.EncodingMP3, SampleRate: 24000, Channels: 1,
 		},
@@ -184,7 +184,17 @@ func TestV3FrameValidationAndErrors(t *testing.T) {
 	}
 	for _, payload := range []string{
 		`{}`,
+		`{"usage":{"text_words":2}}`,
 		`{"status_code":null}`,
+		`{"status_code":20000000,"message":"ok"}`,
+	} {
+		frame := wireFrame{payload: []byte(payload)}
+		if err := frame.sessionStatus(); err != nil {
+			t.Fatalf("valid SessionFinished rejected: %s: %v", payload, err)
+		}
+	}
+	for _, payload := range []string{
+		`not-json`,
 		`{"status_code":45000000,"message":"denied"}`,
 	} {
 		frame := wireFrame{payload: []byte(payload)}
