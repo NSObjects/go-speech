@@ -184,7 +184,17 @@ func TestV3FrameValidationAndErrors(t *testing.T) {
 	}
 	for _, payload := range []string{
 		`{}`,
+		`{"usage":{"text_words":2}}`,
 		`{"status_code":null}`,
+		`{"status_code":20000000,"message":"ok"}`,
+	} {
+		frame := wireFrame{payload: []byte(payload)}
+		if err := frame.sessionStatus(); err != nil {
+			t.Fatalf("valid SessionFinished rejected: %s: %v", payload, err)
+		}
+	}
+	for _, payload := range []string{
+		`not-json`,
 		`{"status_code":45000000,"message":"denied"}`,
 	} {
 		frame := wireFrame{payload: []byte(payload)}
