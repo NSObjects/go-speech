@@ -15,8 +15,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var errClosed = errors.New("tts/aliyun: stream closed")
-
 // Stream is one synthesized audio result. Only one concurrent Recv is
 // supported. Cancellation/Close release the connection; io.EOF and terminal
 // failures remain stable across subsequent Recv calls.
@@ -70,7 +68,7 @@ func (s *Stream) closeError(ctx context.Context) error {
 	if err := s.parent.Err(); err != nil {
 		return err
 	}
-	return errClosed
+	return tts.ErrStreamClosed
 }
 
 // fail is called only under readMu and remembers the first terminal failure.
@@ -95,7 +93,7 @@ func (s *Stream) networkError(ctx context.Context, op string, err error) error {
 		return context.DeadlineExceeded
 	}
 	if s.closed() {
-		return errClosed
+		return tts.ErrStreamClosed
 	}
 	code := speecherr.CodeUnavailable
 	if errors.As(err, &ne) && ne.Timeout() {
@@ -203,7 +201,7 @@ func (s *Stream) start(ctx context.Context, model string, req tts.Request, encod
 // output format. Control events contain no audio and are not exposed as chunks.
 func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 	if s == nil {
-		return audio.Chunk{}, errClosed
+		return audio.Chunk{}, tts.ErrStreamClosed
 	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
