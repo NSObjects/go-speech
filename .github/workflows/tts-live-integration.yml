@@ -1,0 +1,59 @@
+name: Tencent and Volcengine TTS Integration (automatic, paid)
+
+on:
+  push:
+    paths:
+      - "tts/providers/tencent/**"
+      - "tts/providers/volcengine/**"
+      - "speech_tts.go"
+      - "audio/**"
+      - "speecherr/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/tts-live-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tencent-live-tts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      TENCENT_APP_ID: ${{ vars.TENCENT_APP_ID }}
+      TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+      TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+      TENCENT_TTS_VOICE: ${{ vars.TENCENT_TTS_VOICE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify Tencent credentials
+        run: |
+          test -n "$TENCENT_APP_ID" || { echo "Missing TENCENT_APP_ID repository variable" >&2; exit 1; }
+          test -n "$TENCENT_SECRET_ID" || { echo "Missing TENCENT_SECRET_ID repository secret" >&2; exit 1; }
+          test -n "$TENCENT_SECRET_KEY" || { echo "Missing TENCENT_SECRET_KEY repository secret" >&2; exit 1; }
+      - name: Real signed Tencent TTS WSv2 PCM synthesis and final EOF
+        run: go test -tags=integration -run '^TestTencentLiveTTS$' -count=1 -v -timeout 90s ./tts/providers/tencent
+
+  volcengine-live-tts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
+      VOLCENGINE_TTS_RESOURCE_ID: ${{ vars.VOLCENGINE_TTS_RESOURCE_ID }}
+      VOLCENGINE_TTS_VOICE: ${{ vars.VOLCENGINE_TTS_VOICE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify Volcengine API key
+        run: |
+          test -n "$VOLCENGINE_API_KEY" || { echo "Missing VOLCENGINE_API_KEY repository secret" >&2; exit 1; }
+      - name: Real Seed TTS V3 PCM audio and SessionFinished event
+        run: go test -tags=integration -run '^TestVolcengineLiveTTS$' -count=1 -v -timeout 90s ./tts/providers/volcengine
