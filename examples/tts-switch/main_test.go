@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"reflect"
 	"testing"
 
@@ -62,9 +61,5 @@ func TestModeOrStream(t *testing.T) {
 	}
 	if got := modeOrStream("batch"); got != "batch" {
 		t.Fatal("batch mode changed")
-	}
-	if !errors.Is(errors.New("example"), errors.New("example")) {
-		// errors.New has unique identity; no special error comparison is used
-		// by the example beyond errors.Is(io.EOF).
 	}
 }
