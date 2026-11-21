@@ -145,6 +145,7 @@ func TestRequestAndConfigValidation(t *testing.T) {
 		{10001,speecherr.CodeInvalidArgument,false},
 		{10002,speecherr.CodeRateLimited,true},
 		{10003,speecherr.CodeUnauthorized,false},
+		{3022,speecherr.CodeRateLimited,false}, // live provider: resource pack exhausted
 		{20000,speecherr.CodeUnavailable,true},
 	} {
 		err:=remoteError(tc.code,"failed")
