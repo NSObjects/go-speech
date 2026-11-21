@@ -168,8 +168,9 @@ SDK 不对音色进行跨厂商映射。推荐显式设置 `Format`，避免切�
 调用方使用一个环境变量切换 Provider，并且为当前 Provider 提供其音色 ID：
  
 ```sh
-TTS_PROVIDER=volcengine VOLCENGINE_API_KEY=... \\
-TTS_VOICE=zh_female_vv_uranus_bigtts \\
+export TTS_PROVIDER=volcengine
+export VOLCENGINE_API_KEY=...
+export TTS_VOICE=zh_female_vv_uranus_bigtts
 go run ./examples/tts-switch "你好，欢迎使用语音合成。" output.mp3
 ```
 
