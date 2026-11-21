@@ -15,8 +15,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var errClosed = errors.New("tts/volcengine: stream closed")
-
 // Stream is a single V3 synthesis. Only one Recv caller is supported.
 type Stream struct {
 	conn *websocket.Conn
@@ -80,7 +78,7 @@ func (s *Stream) closeError(ctx context.Context) error {
 	if err := s.parent.Err(); err != nil {
 		return err
 	}
-	return errClosed
+	return tts.ErrStreamClosed
 }
 
 func (s *Stream) networkError(ctx context.Context, op string, err error) error {
@@ -96,7 +94,7 @@ func (s *Stream) networkError(ctx context.Context, op string, err error) error {
 		return context.DeadlineExceeded
 	}
 	if s.closed() {
-		return errClosed
+		return tts.ErrStreamClosed
 	}
 	code := speecherr.CodeUnavailable
 	if errors.As(err, &ne) && ne.Timeout() {
@@ -152,7 +150,7 @@ func (s *Stream) sendText(ctx context.Context, req tts.Request, encoding string)
 // SessionFinished event 152 with successful status_code 20000000.
 func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 	if s == nil {
-		return audio.Chunk{}, errClosed
+		return audio.Chunk{}, tts.ErrStreamClosed
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

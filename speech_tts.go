@@ -29,17 +29,14 @@ func (TencentTTS) isTTSConfig()    {}
 func (AliyunTTS) isTTSConfig()     {}
 func (VolcengineTTS) isTTSConfig() {}
 
-// TTSSynthesizer supports both complete-buffer and streaming synthesis.
-// All built-in providers implement both tts contracts.
-type TTSSynthesizer interface {
-	tts.Synthesizer
-	tts.StreamSynthesizer
-}
+// TTSSynthesizer is retained as an alias for the shared tts.Client.
+// New code can use tts.Client directly; both names describe the same API.
+type TTSSynthesizer = tts.Client
 
 // NewTTS creates a provider-selected TTS client with no network connection.
 // A new provider session is established only for Synthesize or SynthesizeStream.
 // Both value and pointer configs are accepted; typed nil pointers are rejected.
-func NewTTS(cfg TTSConfig) (TTSSynthesizer, error) {
+func NewTTS(cfg TTSConfig) (tts.Client, error) {
 	switch c := cfg.(type) {
 	case TencentTTS:
 		return newTencentTTS(tencenttts.Config(c))
@@ -63,7 +60,7 @@ func NewTTS(cfg TTSConfig) (TTSSynthesizer, error) {
 	return nil, ErrInvalidTTSConfig
 }
 
-func newTencentTTS(cfg tencenttts.Config) (TTSSynthesizer, error) {
+func newTencentTTS(cfg tencenttts.Config) (tts.Client, error) {
 	client, err := tencenttts.New(cfg)
 	if err != nil {
 		return nil, err
@@ -71,7 +68,7 @@ func newTencentTTS(cfg tencenttts.Config) (TTSSynthesizer, error) {
 	return client, nil
 }
 
-func newAliyunTTS(cfg aliyuntts.Config) (TTSSynthesizer, error) {
+func newAliyunTTS(cfg aliyuntts.Config) (tts.Client, error) {
 	client, err := aliyuntts.New(cfg)
 	if err != nil {
 		return nil, err
@@ -79,7 +76,7 @@ func newAliyunTTS(cfg aliyuntts.Config) (TTSSynthesizer, error) {
 	return client, nil
 }
 
-func newVolcengineTTS(cfg volctts.Config) (TTSSynthesizer, error) {
+func newVolcengineTTS(cfg volctts.Config) (tts.Client, error) {
 	client, err := volctts.New(cfg)
 	if err != nil {
 		return nil, err

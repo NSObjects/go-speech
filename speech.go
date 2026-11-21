@@ -1,6 +1,6 @@
-// Package speech provides a small, vendor-independent entry point for
-// constructing ASR clients. Session behavior lives in the asr package;
-// provider-specific protocols remain in asr/providers.
+// Package speech provides vendor-independent constructors for ASR and TTS.
+// Streaming contracts live in the asr and tts packages; provider-specific
+// protocols remain in their respective providers packages.
 //
 // No configuration files, environment variables, global state or implicit
 // network connections are managed by this package.

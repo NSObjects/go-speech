@@ -15,8 +15,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var errClosed = errors.New("tts/tencent: stream closed")
-
 // Stream yields consecutive raw audio frames from a single Tencent TTS
 // session. A single goroutine may call Recv. Close is idempotent.
 type Stream struct {
@@ -54,7 +52,7 @@ func (s *Stream) closed() bool {
 func (s *Stream) closeError(ctx context.Context) error {
 	if err := ctx.Err(); err != nil { return err }
 	if err := s.parent.Err(); err != nil { return err }
-	return errClosed
+	return tts.ErrStreamClosed
 }
 func (s *Stream) fail(err error) error {
 	if s.terminalErr == nil { s.terminalErr = err }
@@ -67,7 +65,7 @@ func (s *Stream) transportError(ctx context.Context, op string, err error) error
 	var ne net.Error
 	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) &&
 		errors.As(err, &ne) && ne.Timeout() { return context.DeadlineExceeded }
-	if s.closed() { return errClosed }
+	if s.closed() { return tts.ErrStreamClosed }
 	code := speecherr.CodeUnavailable
 	if errors.As(err, &ne) && ne.Timeout() { code = speecherr.CodeTimeout }
 	return &speecherr.Error{Code:code, Provider:"tencent", Operation:op, Err:err, Retryable:true}
@@ -132,7 +130,7 @@ func (s *Stream) start(ctx context.Context, text string, timeout time.Duration) 
 // Recv returns each binary audio frame unchanged and stable EOF after FINAL.
 // Control events carry subtitles/metadata, not audio.
 func (s *Stream) Recv(ctx context.Context) (audio.Chunk,error) {
-	if s == nil { return audio.Chunk{},errClosed }
+	if s == nil { return audio.Chunk{},tts.ErrStreamClosed }
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
 	if s.terminalErr != nil { return audio.Chunk{},s.terminalErr }
