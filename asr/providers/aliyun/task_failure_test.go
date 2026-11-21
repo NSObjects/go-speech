@@ -16,12 +16,14 @@ func TestTaskFailureDashScopeCodes(t *testing.T) {
 		retryable bool
 	}{
 		{"invalid API key", "InvalidApiKey", "incorrect credential", speecherr.CodeUnauthorized, false},
+		{"authentication failed legacy", "AuthenticationFailed", "test failure", speecherr.CodeUnauthorized, false},
 		{"snake case API key", "invalid_api_key", "bad key", speecherr.CodeUnauthorized, false},
 		{"access denied", "AccessDenied", "permission required", speecherr.CodeUnauthorized, false},
 		{"invalid parameter", "InvalidParameter", "wrong sample_rate", speecherr.CodeInvalidArgument, false},
 		{"nested invalid parameter", "InvalidParameter.Audio", "unsupported audio", speecherr.CodeInvalidArgument, false},
 		{"missing model", "ModelNotFound", "model absent", speecherr.CodeInvalidArgument, false},
 		{"request throttling", "Throttling.RateQuota", "rate exceeded", speecherr.CodeRateLimited, true},
+		{"generic throttling legacy", "Throttling", "test failure", speecherr.CodeRateLimited, true},
 		{"burst throttling", "Throttling.BurstRate", "slow down", speecherr.CodeRateLimited, true},
 		{"allocation exhausted", "Throttling.AllocationQuota", "quota exceeded", speecherr.CodeRateLimited, false},
 		{"billing issue", "Arrearage", "payment needed", speecherr.CodeRateLimited, false},
