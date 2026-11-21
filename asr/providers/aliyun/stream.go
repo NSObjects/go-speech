@@ -347,23 +347,50 @@ func protocolError(op string, err error) error {
 	return &speecherr.Error{Code: speecherr.CodeProtocol, Provider: "aliyun", Operation: op, Err: err}
 }
 func taskFailure(h responseHeader) error {
+	// Classify the stable DashScope error_code before using remote prose.
+	// In particular, quota exhaustion requires account remediation, while
+	// request-rate throttling may recover when the caller backs off.
+	remote := strings.ToLower(strings.TrimSpace(h.ErrorCode))
 	code := speecherr.CodeInternal
-	desc := strings.ToLower(h.ErrorCode + " " + h.ErrorMessage)
+	retryable := false
 	switch {
-	case strings.Contains(desc, "auth") || strings.Contains(desc, "permission"):
+	case remote == "invalidapikey" || remote == "invalid_api_key" ||
+		remote == "accessdenied" || remote == "access_denied":
 		code = speecherr.CodeUnauthorized
-	case strings.Contains(desc, "quota") || strings.Contains(desc, "limit") || strings.Contains(desc, "throttl"):
+	case remote == "invalidparameter" || strings.HasPrefix(remote, "invalidparameter.") ||
+		remote == "modelnotfound" || remote == "notfound":
+		code = speecherr.CodeInvalidArgument
+	case remote == "throttling.ratequota" || remote == "throttling.burstrate" ||
+		remote == "limit_requests" || remote == "limit_burst_rate":
+		code, retryable = speecherr.CodeRateLimited, true
+	case remote == "throttling.allocationquota" || remote == "insufficient_quota" ||
+		remote == "arrearage":
 		code = speecherr.CodeRateLimited
-	case strings.Contains(desc, "timeout"):
-		code = speecherr.CodeTimeout
-	case strings.Contains(desc, "unavailable"):
-		code = speecherr.CodeUnavailable
+	case remote == "serviceunavailable" || remote == "service_unavailable":
+		code, retryable = speecherr.CodeUnavailable, true
+	case remote == "internalerror":
+		code = speecherr.CodeInternal
+	default:
+		// Unrecognized vendor codes may still carry a useful diagnostic.
+		// Never infer a retry merely from a message or an unknown code.
+		desc := strings.ToLower(h.ErrorMessage)
+		switch {
+		case strings.Contains(desc, "authentication") || strings.Contains(desc, "permission denied"):
+			code = speecherr.CodeUnauthorized
+		case strings.Contains(desc, "throttl") || strings.Contains(desc, "rate limit") ||
+			strings.Contains(desc, "quota"):
+			code = speecherr.CodeRateLimited
+		case strings.Contains(desc, "timeout"):
+			code = speecherr.CodeTimeout
+		case strings.Contains(desc, "unavailable"):
+			code = speecherr.CodeUnavailable
+		}
 	}
 	return &speecherr.Error{
 		Code: code, Provider: "aliyun", Operation: "task",
 		RemoteCode: h.ErrorCode,
 		Err:        fmt.Errorf("remote error %q: %s", h.ErrorCode, h.ErrorMessage),
-		Retryable:  code == speecherr.CodeUnavailable || code == speecherr.CodeTimeout || code == speecherr.CodeRateLimited,
+		Retryable:  retryable,
 	}
 }
 func (s *Stream) awaitStarted(ctx context.Context) error {
