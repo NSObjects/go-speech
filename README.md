@@ -33,7 +33,7 @@ go-speech/
 go get github.com/NSObjects/go-speech@latest
 ```
 
-> ASR 已包含阿里云五模型及火山引擎豆包流式 ASR Provider。TTS 已新增阿里云 CosyVoice WebSocket Provider（真实云端验证情况以 GitHub Actions 为准）。
+> ASR 和 TTS 都已接入阿里云、腾讯云、火山引擎。TTS 中阿里云 CosyVoice 与火山引擎 Seed TTS 已通过真实云端音频合成测试；腾讯云 TTS 由于当前测试账号资源包额度不足（远端错误码 `3022`），真实音频合成尚未验收。
 
 ## 快速开始：使用统一的 ASR 入口
 
@@ -105,8 +105,9 @@ go run ./examples/asr-switch speech.pcm
 ## 快速开始：三家 TTS 厂商切换
 
 `speech.NewTTS` 和 `speech.NewASR` 使用相同的强类型配置思路。
-返回值同时实现 `tts.Synthesizer`（完整音频）和
-`tts.StreamSynthesizer`（边合成边接收音频）。
+返回值为 `tts.Client`，同时实现 `tts.Synthesizer`（完整音频）和
+`tts.StreamSynthesizer`（边合成边接收音频）。旧名称
+`speech.TTSSynthesizer` 是同一类型的别名，原调用代码无需修改。
 
 ```go
 configs := map[string]speech.TTSConfig{
@@ -149,11 +150,32 @@ for {
 上例展示接口，不表示三家的每个音色都支持相同采样率。
 通过各 Provider 的 `SupportedAudio` 能力与音色实际规格选择格式。
 `NewTTS` 不读取 YAML、环境变量，不暗中转换音频，也不会自动重试。
-腾讯云、火山引擎 TTS 的**本地协议测试与真实付费 API 验证是两回事**；
-使用前需要激活对应 TTS 资源并完成真实云端测试。
+三家 TTS 都遵循相同的公共接口，但 `Voice` 是**厂商自己的音色 ID**，
+SDK 不对音色进行跨厂商映射。推荐显式设置 `Format`，避免切换 Provider 时
+使用各家不同的默认输出格式；不支持的编码/采样率会直接报错，不会隐式转码。
+
+流式输出必须依次读取到 `io.EOF` 才算成功，并始终调用 `Close()` 释放资源。
+如果主动提前关闭，`Recv` 会返回可由 `errors.Is(err, tts.ErrStreamClosed)`
+识别的统一错误；如果是取消请求则保留 `context.Canceled` 等原始原因。
+音频块只是**同一音频流的连续字节**，单个 MP3/Ogg 块不一定可以单独播放。
+腾讯云 TTS 的真实音频验证目前仍受账号 `3022` 额度耗尽阻塞，
+不应把 CI 中的额度警告当作合成成功。
 细节参见 [腾讯云 TTS](tts/providers/tencent/README.md)、
 [火山引擎 TTS](tts/providers/volcengine/README.md)、
 [阿里云 TTS](tts/providers/aliyun/README.md)。
+
+**完整可运行示例：** [examples/tts-switch](examples/tts-switch)。
+调用方使用一个环境变量切换 Provider，并且为当前 Provider 提供其音色 ID：
+ 
+```sh
+TTS_PROVIDER=volcengine VOLCENGINE_API_KEY=... \\
+TTS_VOICE=zh_female_vv_uranus_bigtts \\
+go run ./examples/tts-switch "你好，欢迎使用语音合成。" output.mp3
+```
+
+也可设置 `TTS_PROVIDER=aliyun` / `tencent` 和对应鉴权参数及
+`TTS_VOICE`。默认使用流式接口；设置 `TTS_MODE=batch` 则调用一次性合成。
+示例请求 MP3 24 kHz 单声道，把结果保存为文件，不额外下载或转换音频。
 
 ## 主要 API
 
