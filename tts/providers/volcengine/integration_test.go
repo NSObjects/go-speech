@@ -27,7 +27,7 @@ func TestVolcengineLiveTTS(t *testing.T) {
 	}
 	voice := os.Getenv("VOLCENGINE_TTS_VOICE")
 	if voice == "" {
-		voice = "zh_female_shuangkuaisisi_moon_bigtts"
+		voice = "zh_female_vv_uranus_bigtts"
 	}
 	client, err := New(Config{APIKey: key, ResourceID: resource})
 	if err != nil {
