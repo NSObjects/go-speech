@@ -2,7 +2,7 @@
 
 [![Go CI](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml)
 
-A vendor-independent ASR and TTS SDK for Go. **ASR adapters: Alibaba Cloud and Volcengine Doubao streaming WebSocket; TTS adapter: Alibaba Cloud CosyVoice WebSocket.**
+A vendor-independent ASR and TTS SDK for Go. **ASR adapters: Alibaba Cloud, Tencent Cloud and Volcengine; TTS adapters: Alibaba Cloud CosyVoice, Tencent Cloud and Volcengine Seed TTS (streaming WebSocket).**
 
 面向 Go 应用的多厂商语音识别（ASR）和语音合成（TTS）库。库本身与 Eino、LLM、智能体及具体语音设备无关。
 
