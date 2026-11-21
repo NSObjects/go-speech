@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/NSObjects/go-speech/speecherr"
+	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
 )
 
@@ -121,8 +122,12 @@ func TestCosyVoiceExplicitCloseWithoutRecvReleasesPeer(t *testing.T) {
 		}
 	}
 	_, err = s.Recv(context.Background())
-	if !errors.Is(err, errClosed) || errors.Is(err, io.EOF) {
+	if !errors.Is(err, tts.ErrStreamClosed) || errors.Is(err, io.EOF) {
 		t.Fatalf("unexpected Recv after explicit close: %v", err)
+	}
+	_, again := s.Recv(context.Background())
+	if !errors.Is(again, tts.ErrStreamClosed) {
+		t.Fatalf("repeated Recv lost shared closed error: %v", again)
 	}
 	select {
 	case closed := <-freed:
