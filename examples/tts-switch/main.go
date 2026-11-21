@@ -71,7 +71,10 @@ func run() error {
 		return fmt.Errorf("configure TTS: %w", err)
 	}
 	mode := os.Getenv("TTS_MODE")
-	if mode != "" && mode != "stream" && mode != "batch" {
+	if mode == "" {
+		mode = "stream"
+	}
+	if mode != "stream" && mode != "batch" {
 		return errors.New("TTS_MODE must be stream or batch")
 	}
 	request := tts.Request{
@@ -142,13 +145,7 @@ func run() error {
 	if err := os.Rename(tmp.Name(), outputPath); err != nil {
 		return err
 	}
-	fmt.Printf("TTS: %s audio written to %s (%d bytes)\n", modeOrStream(mode), outputPath, written)
+	fmt.Printf("TTS: %s audio written to %s (%d bytes)\n", mode, outputPath, written)
 	return nil
 }
 
-func modeOrStream(mode string) string {
-	if mode == "" {
-		return "stream"
-	}
-	return mode
-}
