@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -158,4 +157,3 @@ func remoteError(remote uint32, message string) error {
 	}
 }
 
-var _ = errors.Is
