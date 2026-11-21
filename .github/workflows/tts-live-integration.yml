@@ -72,6 +72,5 @@ jobs:
       - name: Verify Volcengine API key
         run: |
           test -n "$VOLCENGINE_API_KEY" || { echo "Missing VOLCENGINE_API_KEY repository secret" >&2; exit 1; }
-      - name: Real Seed TTS V3 PCM MP3 Ogg Opus, and terminal EOF
-        run: go test -tags=integration -run '^(TestVolcengineLiveTTS|TestVolcengineLiveEncodedFormats)
- -count=1 -v -timeout 3m ./tts/providers/volcengine
+      - name: Real Seed TTS V3 PCM MP3 Ogg Opus and terminal EOF
+        run: go test -tags=integration -run TestVolcengineLive -count=1 -v -timeout 3m ./tts/providers/volcengine
