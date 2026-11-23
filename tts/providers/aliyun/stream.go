@@ -27,6 +27,7 @@ type Stream struct {
 	closeOnce   sync.Once
 	readMu      sync.Mutex
 	finished    bool
+	audioSeen   bool
 	terminalErr error
 }
 
@@ -238,6 +239,7 @@ func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 		switch typ {
 		case websocket.BinaryMessage:
 			if len(data) != 0 {
+				s.audioSeen = true
 				return audio.Chunk{Data: data, Format: s.format}, nil
 			}
 		case websocket.TextMessage:
@@ -249,6 +251,9 @@ func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 			case "task-failed":
 				return audio.Chunk{}, s.fail(classifyTaskFailure(ev))
 			case "task-finished":
+				if !s.audioSeen {
+					return audio.Chunk{}, s.fail(protocol("synthesis completed without audio"))
+				}
 				s.finished = true
 				_ = s.Close()
 				return audio.Chunk{}, io.EOF
