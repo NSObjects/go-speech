@@ -118,15 +118,30 @@ func (f wireFrame) sessionStatus() error {
 	if len(bytes.TrimSpace(f.payload)) == 0 {
 		return nil
 	}
-	var info struct {
-		StatusCode *int `json:"status_code"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(f.payload, &info); err != nil {
+	// Usage-only completion messages are valid, but an explicit null or
+	// malformed status_code must not be silently interpreted as success.
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(f.payload, &fields); err != nil || fields == nil {
 		return protocol("invalid SessionFinished metadata")
 	}
-	if info.StatusCode != nil && *info.StatusCode != 20000000 {
-		return remoteError(uint32(*info.StatusCode), info.Message)
+	raw, exists := fields["status_code"]
+	if !exists {
+		return nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return protocol("null SessionFinished status_code")
+	}
+	var status int
+	if err := json.Unmarshal(raw, &status); err != nil {
+		return protocol("invalid SessionFinished status_code")
+	}
+	if status != 20000000 {
+		var info struct { Message string `json:"message"` }
+		_ = json.Unmarshal(f.payload, &info)
+		if status < 0 {
+			return protocol("negative SessionFinished status_code")
+		}
+		return remoteError(uint32(status), info.Message)
 	}
 	return nil
 }
