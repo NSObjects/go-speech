@@ -136,7 +136,9 @@ func (f wireFrame) sessionStatus() error {
 		return protocol("invalid SessionFinished status_code")
 	}
 	if status != 20000000 {
-		var info struct { Message string `json:"message"` }
+		var info struct {
+			Message string `json:"message"`
+		}
 		_ = json.Unmarshal(f.payload, &info)
 		if status < 0 {
 			return protocol("negative SessionFinished status_code")
