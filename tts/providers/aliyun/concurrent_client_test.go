@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
 )
 
