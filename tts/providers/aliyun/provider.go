@@ -255,24 +255,33 @@ func dialFailure(err error, resp *http.Response) error {
 }
 
 func classifyTaskFailure(header serverHeader) error {
-	remote := strings.ToLower(header.ErrorCode + " " + header.ErrorMessage)
+	// Prefer the provider's machine-readable code. Human-readable messages
+	// are not stable and must not make exhausted quota look retryable.
+	remote := strings.ToLower(strings.TrimSpace(header.ErrorCode))
 	code := speecherr.CodeInternal
+	retryable := false
 	switch {
-	case strings.Contains(remote, "auth"), strings.Contains(remote, "permission"), strings.Contains(remote, "invalidapikey"):
+	case strings.Contains(remote, "invalidapikey"), strings.Contains(remote, "accessdenied"),
+		strings.Contains(remote, "unauthorized"), strings.Contains(remote, "permission"),
+		strings.Contains(remote, "authentication"):
 		code = speecherr.CodeUnauthorized
-	case strings.Contains(remote, "rate"), strings.Contains(remote, "quota"), strings.Contains(remote, "throttl"):
+	case strings.Contains(remote, "quota"), strings.Contains(remote, "allocation"),
+		strings.Contains(remote, "billing"), strings.Contains(remote, "balance"):
 		code = speecherr.CodeRateLimited
+	case strings.Contains(remote, "throttl"), strings.Contains(remote, "ratelimit"),
+		strings.Contains(remote, "too_many_requests"):
+		code, retryable = speecherr.CodeRateLimited, true
 	case strings.Contains(remote, "timeout"):
-		code = speecherr.CodeTimeout
+		code, retryable = speecherr.CodeTimeout, true
 	case strings.Contains(remote, "unavailable"), strings.Contains(remote, "servererror"):
-		code = speecherr.CodeUnavailable
-	case strings.Contains(remote, "invalidparameter"):
+		code, retryable = speecherr.CodeUnavailable, true
+	case strings.Contains(remote, "invalidparameter"), strings.Contains(remote, "modelnotfound"):
 		code = speecherr.CodeInvalidArgument
 	}
 	return &speecherr.Error{
 		Code: code, Provider: "aliyun", Operation: "task", RemoteCode: header.ErrorCode,
-		Retryable: code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout || code == speecherr.CodeUnavailable,
-		Err:       fmt.Errorf("remote task %s: %s", header.ErrorCode, header.ErrorMessage),
+		Retryable: retryable,
+		Err: fmt.Errorf("remote task %s: %s", header.ErrorCode, header.ErrorMessage),
 	}
 }
 
