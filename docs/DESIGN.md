@@ -1,4 +1,4 @@
-# Design notes (v0.1 foundation)
+# SDK design and contracts
 
 ## Scope
 
@@ -62,16 +62,26 @@ billing/duplicates matter, and whether to expose partial transcription.
 
 Native unit tests inject remote failure, malformed WebSocket notifications,
 task-ID mismatches, unexpected disconnects, explicit Close, parent/per-call
-cancellation, and repeated EOF/error reads. The paid automatic Aliyun ASR CI
-checks actual model behavior separately.
+cancellation, and repeated EOF/error reads. Live provider integration workflows check actual cloud behavior separately;
+local contract tests do not establish recognition quality or vendor entitlement.
 
-## Next milestone
+## Current provider implementation
 
-The Volcengine Doubao V3 optimized streaming adapter is now the second ASR
-provider implementation. Both implement the same `asr.StreamRecognizer`
-contract, but have separate WebSocket framing and credentials. Continue by
-running live cloud integration and adding cross-provider contract tests.
-Do not introduce implicit audio conversion into `Stream.Send`.
+- ASR: Aliyun, Volcengine, and Tencent adapters implement the shared
+  `asr.StreamRecognizer` contract, with vendor-specific authentication,
+  frame encoding, supported audio formats, and recognition events.
+- TTS: Aliyun CosyVoice, Volcengine Seed TTS, and Tencent adapters implement
+  `tts.Client` (batch and audio-streaming synthesis). TTS streaming accepts a
+  complete text request, not incremental text input.
+- Live cloud ASR has been validated for all three providers. Aliyun and
+  Volcengine TTS have live synthesis coverage. Tencent TTS has offline
+  protocol/contract tests but no successful live synthesis verification yet.
+- Contract and network lifecycle tests are distinct from speech quality,
+  voice compatibility, device integration, and production latency evaluation.
+
+Do not introduce implicit audio conversion into `Stream.Send` or provider
+TTS APIs. Future functionality must preserve vendor-neutral core contracts;
+optional vendor-specific capabilities should be separate interfaces.
 
 ## ASR audio capability and error contract
 
