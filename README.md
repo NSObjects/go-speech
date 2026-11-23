@@ -4,9 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/NSObjects/go-speech.svg)](https://pkg.go.dev/github.com/NSObjects/go-speech)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-**go-speech** 是一个支持多云厂商的 Go 语音识别（ASR）与语音合成（TTS）SDK，提供统一的接口和流式处理能力。
-
-支持阿里云、火山引擎和腾讯云，通过配置选择服务商。
+**go-speech** 是支持阿里云、火山引擎和腾讯云的 Go 语音识别（ASR）与语音合成（TTS）SDK，提供统一接口和流式处理。
 
 ## 功能
 
@@ -16,12 +14,6 @@
 | 火山引擎 | 流式识别 | 一次性合成、流式合成（Seed TTS） |
 | 腾讯云 | 流式识别 | 一次性合成、流式合成（WebSocket v2） |
 
-- **ASR**：发送音频数据，接收实时识别结果。
-- **TTS**：将文本合成为完整音频，或逐块接收合成音频。
-- **音频处理**：提供音频格式描述及可选的编解码工具。
-- **错误处理**：统一错误分类，支持 `context.Context` 取消和超时。
-
-各厂商的模型、音色与音频格式支持情况见下方厂商文档。
 
 ## 安装
 
@@ -32,6 +24,13 @@ go get github.com/NSObjects/go-speech@latest
 ```
 
 ## 快速开始
+
+以下命令在克隆仓库的根目录中执行：
+
+```bash
+git clone https://github.com/NSObjects/go-speech.git
+cd go-speech
+```
 
 ### TTS：文本转语音
 
@@ -75,7 +74,7 @@ result, err := client.Synthesize(ctx, tts.Request{
 if err != nil {
     return err
 }
-// result.Data 包含完整音频数据
+_ = result.Data // 完整音频字节
 ```
 
 `SynthesizeStream` 返回 `tts.Stream`，通过 `Recv(ctx)` 逐块读取音频，读取结束返回 `io.EOF`。使用后调用 `Close()`。
@@ -122,8 +121,6 @@ defer stream.Close()
 
 使用 `Send(ctx, data)` 发送音频，使用 `Recv(ctx)` 接收 `asr.EventPartial` 和 `asr.EventFinal`。发送完毕后调用 `CloseSend(ctx)`，继续接收直到 `io.EOF`。
 
-完整代码见 [ASR 示例](examples/asr-switch) 和 [TTS 示例](examples/tts-switch)。
-
 ## 选择厂商
 
 通过不同的配置类型初始化相同接口：
@@ -134,21 +131,13 @@ defer stream.Close()
 | 火山引擎 | `speech.VolcengineASR` | `speech.VolcengineTTS` |
 | 腾讯云 | `speech.TencentASR` | `speech.TencentTTS` |
 
-不同厂商使用各自的认证信息、模型及音色 ID。具体配置见：
-
-| 厂商 | ASR 文档 | TTS 文档 |
-| --- | --- | --- |
-| 阿里云 | [ASR](asr/providers/aliyun/README.md) | [TTS](tts/providers/aliyun/README.md) |
-| 火山引擎 | [ASR](asr/providers/volcengine/README.md) | [TTS](tts/providers/volcengine/README.md) |
-| 腾讯云 | [ASR](asr/providers/tencent/README.md) | [TTS](tts/providers/tencent/README.md) |
+不同厂商使用各自的认证信息、模型和音色 ID。详见 [阿里云](asr/providers/aliyun/README.md)、[火山引擎](asr/providers/volcengine/README.md) 和 [腾讯云](asr/providers/tencent/README.md) ASR 文档，以及各自的 [阿里云 TTS](tts/providers/aliyun/README.md)、[火山引擎 TTS](tts/providers/volcengine/README.md)、[腾讯云 TTS](tts/providers/tencent/README.md) 文档。
 
 ## 音频格式
 
 使用 `audio.Format` 指定编码格式、采样率和声道数。支持的组合取决于厂商及模型。
 
 TTS 未显式指定格式时使用厂商默认值；不同厂商的默认值可能不同。SDK 不会自动转码或重采样。音频块应按接收顺序处理。
-
-更多信息见 [音频处理文档](docs/AUDIO.md)。
 
 ## 测试
 
@@ -157,8 +146,6 @@ go test ./...
 go test -race ./...
 go vet ./...
 ```
-
-云端集成测试说明见 [docs/INTEGRATION.md](docs/INTEGRATION.md)。
 
 ## 文档
 
