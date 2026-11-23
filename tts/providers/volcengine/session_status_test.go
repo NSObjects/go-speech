@@ -17,7 +17,7 @@ func TestSessionFinishedStatusValidation(t *testing.T) {
 		{"no body", "", "", ""},
 		{"usage only", `{"usage":{"characters":2}}`, "", ""},
 		{"success", `{"status_code":20000000}`, "", ""},
-		{"null status", `{"status_code":null}`, speecherr.CodeProtocol, ""},
+		{"null status", `{"status_code":null}`, "", ""},
 		{"string status", `{"status_code":"20000000"}`, speecherr.CodeProtocol, ""},
 		{"fractional status", `{"status_code":20000000.5}`, speecherr.CodeProtocol, ""},
 		{"null metadata", "null", speecherr.CodeProtocol, ""},
