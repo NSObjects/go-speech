@@ -139,7 +139,7 @@ For one raw Opus capture session:
 // github.com/NSObjects/go-speech/audio,
 // github.com/NSObjects/go-speech/audio/codec/opus.
 muxer, err := opus.NewOggMuxer(opus.OggConfig{
-    Channels: 1, InputSampleRate: 16000, PreSkip: encoderLookahead48k,
+    Channels: 1, InputSampleRate: 16000, PreSkip: 0, // Replace 0 with the encoder's actual lookahead (48 kHz samples) if known.
 })
 if err != nil { return err }
 
