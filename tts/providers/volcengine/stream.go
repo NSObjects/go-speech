@@ -24,6 +24,7 @@ type Stream struct {
 	once sync.Once
 	mu sync.Mutex
 	finished bool
+	audioSeen bool
 	terminalErr error
 }
 
@@ -201,6 +202,9 @@ func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 			if err := frame.sessionStatus(); err != nil {
 				return audio.Chunk{}, s.fail(err)
 			}
+			if !s.audioSeen {
+				return audio.Chunk{}, s.fail(protocol("synthesis completed without audio"))
+			}
 			s.finished = true
 			_ = s.Close()
 			return audio.Chunk{}, io.EOF
@@ -210,6 +214,7 @@ func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 				return audio.Chunk{}, s.fail(protocol("invalid TTSResponse audio type"))
 			}
 			if len(frame.payload) > 0 {
+				s.audioSeen = true
 				return audio.Chunk{Data: frame.payload, Format: s.format}, nil
 			}
 			continue
