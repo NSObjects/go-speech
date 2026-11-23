@@ -9,10 +9,10 @@ import (
 
 func TestSessionFinishedStatusValidation(t *testing.T) {
 	for _, tc := range []struct {
-		name string
+		name    string
 		payload string
-		code speecherr.Code
-		remote string
+		code    speecherr.Code
+		remote  string
 	}{
 		{"no body", "", "", ""},
 		{"usage only", `{"usage":{"characters":2}}`, "", ""},
@@ -28,7 +28,9 @@ func TestSessionFinishedStatusValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := (wireFrame{payload: []byte(tc.payload)}).sessionStatus()
 			if tc.code == "" {
-				if err != nil { t.Fatalf("unexpected error: %v", err) }
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
 				return
 			}
 			if !speecherr.IsCode(err, tc.code) {
