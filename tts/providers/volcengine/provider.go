@@ -188,7 +188,7 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	}
 	conn.SetReadLimit(maxWirePayload + 256)
 	stream := newStream(conn, ctx, req.Format)
-	if err := stream.sendText(ctx, req, encoding); err != nil {
+	if err := stream.sendText(ctx, req, encoding, c.cfg.StartTimeout); err != nil {
 		_ = stream.Close()
 		return nil, err
 	}
