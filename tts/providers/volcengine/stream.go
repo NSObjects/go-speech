@@ -107,7 +107,7 @@ func (s *Stream) networkError(ctx context.Context, op string, err error) error {
 	}
 }
 
-func (s *Stream) sendText(ctx context.Context, req tts.Request, encoding string) error {
+func (s *Stream) sendText(ctx context.Context, req tts.Request, encoding string, timeout time.Duration) error {
 	body, err := json.Marshal(map[string]any{
 		"user": map[string]any{"uid": "go-speech"},
 		"req_params": map[string]any{
@@ -134,7 +134,7 @@ func (s *Stream) sendText(ctx context.Context, req tts.Request, encoding string)
 	}
 	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
 	defer stop()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(timeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
 	}
