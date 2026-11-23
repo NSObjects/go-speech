@@ -1,71 +1,89 @@
-# Automated Aliyun ASR online integration
+# Integration testing
 
-The ordinary `Go CI` workflow is offline (mock WebSocket and local codec tests).
-The separate **Aliyun ASR Integration (automatic, paid)** workflow runs
-**automatically for every push** (all branches), and optionally on manual
-dispatch. The workflow deliberately has **no pull_request trigger**: the
-separate Go CI checks PRs without secrets, and a branch push already runs
-real ASR once without duplicate PR cloud charges.
+The repository distinguishes **offline SDK tests** from **paid real-cloud
+tests**. A successful mocked protocol test does not demonstrate real provider
+entitlement or audio quality. Consult the latest GitHub Actions result for
+the exact revision and job, rather than treating this document as live status.
 
-## Repository configuration
+## Offline checks
 
-Settings → Secrets and variables → Actions:
+The [Go CI workflow](../.github/workflows/ci.yml) runs for pull requests and
+pushes to `main`. It runs Go formatting checks, `go vet`, `go test -race`,
+and compilation of selected `integration`-tagged test files **without
+executing those tests**. A separate job checks optional libopus and
+OpenCORE-AMR-NB builds under their build tags.
 
-- Secret `DASHSCOPE_API_KEY`: an Alibaba Cloud Model Studio API key.
-- Variable `DASHSCOPE_WS_ENDPOINT`: matching regional WSS endpoint, e.g.
-  `wss://dashscope.aliyuncs.com/api-ws/v1/inference`.
+```sh
+go test ./...
+go test -race ./...
+go vet ./...
+```
 
-The API key must be authorized to invoke the target model in that region.
-Keys are never copied into test fixtures or committed to source.
+Offline mock WebSocket tests exercise framing, independent sessions,
+cancellation, timeouts, terminal EOF/errors, and resource cleanup.
+They do **not** validate paid provider services or account permissions.
 
-## What runs
+## Paid provider workflows
 
-The workflow exercises **five models**, as separate jobs with at most two
-concurrent live ASR requests:
+| Workflow | Coverage | Trigger |
+| --- | --- | --- |
+| [Aliyun ASR](../.github/workflows/aliyun-asr-integration.yml) | Five configured ASR model variants; real streamed audio and final transcript | Every branch push and manual dispatch |
+| [Volcengine ASR](../.github/workflows/volcengine-asr-integration.yml) | Selected live Doubao ASR paths and formats | See workflow triggers |
+| [Tencent ASR](../.github/workflows/tencent-asr-integration.yml) | Realtime ASR and supported speaker engine | See workflow triggers |
+| [Aliyun CosyVoice TTS](../.github/workflows/aliyun-tts-integration.yml) | Selected PCM/MP3/WAV/Ogg Opus streaming and batch cases | Relevant push paths and manual dispatch |
+| [Volcengine + Tencent TTS](../.github/workflows/tts-live-integration.yml) | Seed TTS PCM/MP3/Ogg Opus streaming and batch; separate Tencent smoke test | Relevant push paths and manual dispatch |
 
-- Fun-ASR-Realtime
-- Qwen-Audio 3.1 ASR Streaming
-- Qwen-Audio 3.1 ASR Message
-- Paraformer-Realtime-v2
-- Paraformer-Realtime-8k-v2
+The Alibaba ASR matrix consists of
+`fun-asr-realtime`, `qwen-audio-3.1-asr-flash-streaming`,
+`qwen-audio-3.1-asr-flash-message`,
+`paraformer-realtime-v2`, and `paraformer-realtime-8k-v2`.
+The workflow limits live requests to two model jobs at once.
 
-`espeak-ng` generates a short English utterance, `ffmpeg` generates 16kHz
-mono PCM16LE (or 8kHz for Paraformer 8k), and the SDK sends real-time audio
-chunks over authenticated WebSocket. The test waits for task completion,
-requires a nonempty final transcript, and validates session lifecycle.
+Aliyun's **paid** Fun-ASR Opus step checks Ogg Opus passthrough and
+raw Opus packet to Ogg remux without transcoding. The FFmpeg decoding
+and native libopus decoder alternatives are exercised by separate offline
+tests; do not count them as additional real-cloud Opus checks.
 
-Fun-ASR additionally tests **four** Opus paths:
+The TTS workflow includes a Tencent job whose **successful job conclusion
+does not necessarily mean the cloud synthesis test passed**. When the
+remote account returns `3022` (resource pack exhausted), the workflow
+emits a warning and marks Tencent TTS audio **not validated**, while
+other errors still fail the job. Read the job log or step summary.
 
-- **Ogg Opus → ASR** (unchanged, zero-transcode passthrough)
-- **Raw Opus packets → pure-Go OggMuxer → ASR** (zero-transcode repackaging)
-- **Ogg Opus → persistent FFmpeg decoder → PCM16LE → ASR**
-- **Raw Opus packets → native libopus PacketDecoder → PCM16LE → ASR**
+## Credentials and cost
 
-The direct paths are the recommended routes if the model accepts Ogg Opus.
-The PCM paths remain optional compatibility fallbacks. All tests use the
-same synthetic spoken-English fixture.
+Each workflow gets its own secrets and variables via GitHub Actions.
+For example, Aliyun ASR requires:
 
-The fixtures contain synthetic speech, *not* real children's voices. They
-verify connectivity and correctness, not accuracy, voice-device acoustic
-quality, or production tail latency. Every invocation may incur provider
-charges; the workflow intentionally does not skip paid requests.
+- Secret: `DASHSCOPE_API_KEY`.
+- Variable: `DASHSCOPE_WS_ENDPOINT`, a regional
+  `wss://.../api-ws/v1/inference` endpoint.
 
-## Local execution
+Other workflows document their environment variables directly. Do not
+commit keys, signed WebSocket URLs, or user voice recordings to fixtures.
+Real-cloud test executions can incur provider charges, and changing an
+unrelated feature branch may still trigger workflows whose `push` filters
+cover all branches.
 
-Provide mono PCM16LE test audio at the proper sample rate:
+## Local Aliyun ASR smoke test
+
+Provide a real 16 kHz mono PCM16LE file, or the sample rate required by
+the selected model:
 
 ```sh
 export DASHSCOPE_API_KEY="..."
 export DASHSCOPE_WS_ENDPOINT="wss://dashscope.aliyuncs.com/api-ws/v1/inference"
 export DASHSCOPE_ASR_MODEL="fun-asr-realtime"
 export ASR_TEST_PCM_FILE="/path/to/speech-16k-mono.pcm"
-go test -tags=integration -run '^TestAliyunLiveASR$' -v ./asr/providers/aliyun
+go test -tags=integration -run '^TestAliyunLiveASR$' -count=1 -v ./asr/providers/aliyun
 ```
 
-To run the decoded Opus pipeline locally, also set
-`ASR_TEST_OPUS_FILE` to an Ogg Opus file and install FFmpeg.
+For the paid Ogg Opus passthrough/remux test, see
+`TestAliyunLiveOggPassthroughAndRemux` and the corresponding workflow.
+For other providers, use their individual integration tests and
+environment settings. Use synthetic audio for smoke tests and evaluate
+recognition accuracy on representative application recordings separately.
 
-CI automatically runs the online model matrix on every push.
-Runs are not canceled or replaced by a shared concurrency group. You can
-rerun individual failing jobs in GitHub Actions; no manual first-time trigger
-is necessary.
+The SDK does not impose a universal transcript accuracy threshold,
+network throughput target, cloud concurrency limit, or application-level
+telemetry.
