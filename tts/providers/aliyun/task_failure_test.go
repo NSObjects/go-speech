@@ -9,11 +9,11 @@ import (
 
 func TestCosyVoiceStructuredTaskFailures(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		code string
+		name    string
+		code    string
 		message string
-		want speecherr.Code
-		retry bool
+		want    speecherr.Code
+		retry   bool
 	}{
 		{"throttle", "Throttling", "request too frequent", speecherr.CodeRateLimited, true},
 		{"quota", "QuotaExceeded", "please retry later", speecherr.CodeRateLimited, false},
