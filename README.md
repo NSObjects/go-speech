@@ -33,6 +33,10 @@ go-speech/
 go get github.com/NSObjects/go-speech@latest
 ```
 
+**Go requirement:** Go 1.27.4 or newer. This is the minimum toolchain
+version declared by `go.mod`, including for SDK consumers. CI uses Go 1.27.4
+for offline, race, native-codec and integration-test compilation checks.
+
 > ASR 和 TTS 都已接入阿里云、腾讯云、火山引擎。TTS 中阿里云 CosyVoice 与火山引擎 Seed TTS 已通过真实云端音频合成测试；腾讯云 TTS 由于当前测试账号资源包额度不足（远端错误码 `3022`），真实音频合成尚未验收。
 
 ## 快速开始：使用统一的 ASR 入口

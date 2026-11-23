@@ -36,10 +36,17 @@ jobs:
             done
             exit 1
           fi
+      - name: Verify Go toolchain
+        run: |
+          go version
+          test "$(go env GOVERSION)" = "go1.27.4"
       - name: Vet
         run: go vet ./...
       - name: Compile live integration tests (without credentials)
-        run: go test -tags=integration -run TestNonexistentCompileOnly ./asr/providers/volcengine ./asr/providers/tencent
+        run: |
+          go test -tags=integration -run TestNonexistentCompileOnly \
+            ./asr/providers/volcengine ./asr/providers/tencent \
+            ./tts/providers/aliyun ./tts/providers/volcengine
       - name: Verify preinstalled FFmpeg
         run: |
           command -v ffmpeg
@@ -67,6 +74,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Verify Go toolchain
+        run: |
+          go version
+          test "$(go env GOVERSION)" = "go1.27.4"
       - name: Verify preinstalled native codec development libraries
         run: pkg-config --modversion opus opencore-amrnb
       - name: Race-test native codec builds
