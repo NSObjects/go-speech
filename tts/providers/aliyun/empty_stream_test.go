@@ -2,12 +2,12 @@ package aliyun
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
-	"net/http"
 )
 
 func TestCosyVoiceEmptyStreamIsStableProtocolFailure(t *testing.T) {
