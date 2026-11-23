@@ -45,7 +45,7 @@ export TTS_VOICE="zh_female_vv_uranus_bigtts"
 go run ./examples/tts-switch "你好，欢迎使用 go-speech。" output.mp3
 ```
 
-默认使用流式合成。一次性合成：
+上面的示例程序以流式方式接收音频。如需在全部合成完成后一次获取音频，可运行：
 
 ```bash
 TTS_MODE=batch go run ./examples/tts-switch "你好。" output.mp3
