@@ -129,7 +129,8 @@ func (f wireFrame) sessionStatus() error {
 		return nil
 	}
 	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-		return protocol("null SessionFinished status_code")
+		// Some valid provider completion messages explicitly send null.
+		return nil
 	}
 	var status int
 	if err := json.Unmarshal(raw, &status); err != nil {
