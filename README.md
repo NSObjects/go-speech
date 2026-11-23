@@ -1,303 +1,230 @@
 # go-speech
 
 [![Go CI](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/NSObjects/go-speech/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/NSObjects/go-speech.svg)](https://pkg.go.dev/github.com/NSObjects/go-speech)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-A vendor-independent ASR and TTS SDK for Go. **ASR adapters: Alibaba Cloud, Tencent Cloud and Volcengine; TTS adapters: Alibaba Cloud CosyVoice, Tencent Cloud and Volcengine Seed TTS (streaming WebSocket).**
+**面向 Go 应用的多厂商 ASR（语音识别）和 TTS（语音合成）SDK。**
 
-面向 Go 应用的多厂商语音识别（ASR）和语音合成（TTS）库。库本身与 Eino、LLM、智能体及具体语音设备无关。
+通过统一接口接入阿里云、火山引擎和腾讯云。业务方使用强类型配置选择厂商，SDK 负责网络协议、流式会话、音频数据传输和错误归一化。
 
-## 设计目标
+- **统一入口**：`speech.NewASR`、`speech.NewTTS`
+- **流式优先**：ASR 支持持续上传音频和接收识别事件；TTS 支持逐块接收合成音频
+- **明确生命周期**：`context.Context` 控制取消，`Close` 释放资源
+- **不绑定业务**：不包含设备通信、VAD 决策、Agent/LLM、录音或播放器
+- **无隐式转码与重试**：音频格式选择、跨厂商切换和失败重试由调用方控制
 
-- **独立能力**：ASR、TTS 分别是独立 package，可按需使用。
-- **多厂商**：通过 Provider 接口添加阿里云、火山引擎、腾讯云等实现。
-- **批量与流式**：Batch 和 Streaming 是可选能力，厂商无须强制实现两者。
-- **可取消**：网络操作使用 `context.Context`，流式会话显式关闭。
-- **统一错误**：使用 `speecherr.Error` 分类错误并保留底层错误。
-- **不预设业务**：不包含 VAD、Agent、MQTT、设备播放或对话 FSM。
+## 环境与安装
 
-## 结构
+要求 **Go 1.27.4 或更高版本**。
 
-```text
-go-speech/
-├── asr/       # ASR contracts and provider registry
-├── tts/       # TTS contracts and provider registry
-├── audio/     # shared audio representation
-├── speecherr/ # normalized provider errors
-├── docs/      # design notes
-└── .github/   # CI
-```
-
-## Go Module
-
-```bash
+```sh
 go get github.com/NSObjects/go-speech@latest
 ```
 
-> ASR 和 TTS 都已接入阿里云、腾讯云、火山引擎。TTS 中阿里云 CosyVoice 与火山引擎 Seed TTS 已通过真实云端音频合成测试；腾讯云 TTS 由于当前测试账号资源包额度不足（远端错误码 `3022`），真实音频合成尚未验收。
+## 厂商支持
 
-## 快速开始：使用统一的 ASR 入口
+| 厂商 | ASR | TTS | 说明 |
+| --- | --- | --- | --- |
+| 阿里云 | 流式识别 | Batch / Stream | DashScope ASR、CosyVoice |
+| 火山引擎 | 流式识别 | Batch / Stream | 豆包 ASR、Seed TTS |
+| 腾讯云 | 流式识别 | Batch / Stream | 实时 ASR、流式 TTS v2 |
 
-`speech.NewASR` 使用 **配置类型** 选择厂商，并返回
-`asr.StreamRecognizer`。业务代码无需导入 `asr/providers/*`，
-也不需要 SDK 读取 YAML、环境变量或设置全局 Provider。
+以上表示**代码中已实现的接口**，不等于每个模型、音色和格式组合都通过真实云端验证。阿里云 CosyVoice 与火山引擎 Seed TTS 已有真实云端音频验证；腾讯云 TTS 的在线合成尚未完成验证。具体支持的音频格式与可用模型以各厂商文档及账号权限为准。
+
+## TTS：语音合成
+
+`speech.NewTTS` 返回 `tts.Client`，同时支持：
+
+- `Synthesize(ctx, req)`：获得完整 `audio.Buffer`，适合短文本
+- `SynthesizeStream(ctx, req)`：连续读取 `audio.Chunk`，适合低延迟处理或转发
+
+以下示例使用阿里云 CosyVoice，完整读取流式音频并写入 MP3 文件：
 
 ```go
+package main
+
 import (
+    "context"
+    "errors"
+    "io"
+    "log"
+    "os"
+    "time"
+
     speech "github.com/NSObjects/go-speech"
-    "github.com/NSObjects/go-speech/asr"
     "github.com/NSObjects/go-speech/audio"
+    "github.com/NSObjects/go-speech/tts"
 )
 
-// 只需提供当前使用的厂商配置：
-recognizer, err := speech.NewASR(speech.TencentASR{
-    AppID: appID, SecretID: secretID, SecretKey: secretKey,
-    EngineModel: "16k_zh_en_2.0", NeedVAD: true,
-})
-if err != nil { return err }
+func main() {
+    client, err := speech.NewTTS(speech.AliyunTTS{
+        APIKey:   os.Getenv("DASHSCOPE_API_KEY"),
+        Endpoint: os.Getenv("DASHSCOPE_WS_ENDPOINT"),
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
 
-stream, err := recognizer.OpenStream(ctx, asr.Config{
-    Format: audio.Format{
-        Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1,
-    },
-})
-if err != nil { return err }
-defer stream.Close()
-// One sender calls Send then CloseSend; a concurrent receiver calls Recv
-// until io.EOF. EventPartial is tentative; EventFinal is confirmed text.
+    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+    defer cancel()
+
+    stream, err := client.SynthesizeStream(ctx, tts.Request{
+        Text:  "你好，欢迎使用语音合成。",
+        Voice: "longanyang",
+        Format: audio.Format{
+            Encoding: audio.EncodingMP3,
+            SampleRate: 22050,
+            Channels: 1,
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer stream.Close()
+
+    file, err := os.Create("speech.mp3")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer file.Close()
+
+    for {
+        chunk, err := stream.Recv(ctx)
+        if errors.Is(err, io.EOF) {
+            break
+        }
+        if err != nil {
+            log.Fatal(err)
+        }
+        if _, err := file.Write(chunk.Data); err != nil {
+            log.Fatal(err)
+        }
+    }
+}
 ```
 
-**按变量切换**：调用方决定变量的来源，并选择相应的强类型配置。
-`NewASR` 本身只创建 Client，不打开远程连接。
+设置 `DASHSCOPE_API_KEY` 与对应地域的 `DASHSCOPE_WS_ENDPOINT` 后运行。文件仅在成功收到合成完成事件后才可视为完整；生产代码应使用临时文件，并在失败时删除不完整输出。
+
+**切换厂商只需更换配置类型**，无需在业务中导入 `tts/providers/*`：
 
 ```go
-configs := map[string]speech.ASRConfig{
-    "tencent": speech.TencentASR{
-        AppID: appID, SecretID: secretID, SecretKey: secretKey,
-        EngineModel: "16k_zh_en_2.0",
-    },
-    "aliyun": speech.AliyunASR{
-        APIKey: dashscopeKey,
-        Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-    },
-    "volcengine": speech.VolcengineASR{
-        APIKey: volcengineKey,
-    },
-}
-cfg, ok := configs[providerName]
-if !ok { return fmt.Errorf("unknown ASR provider %q", providerName) }
-recognizer, err := speech.NewASR(cfg)
+// 阿里云
+speech.NewTTS(speech.AliyunTTS{
+    APIKey: key,
+    Endpoint: endpoint,
+})
+
+// 火山引擎（使用新控制台 API Key）
+speech.NewTTS(speech.VolcengineTTS{
+    APIKey: key,
+    ResourceID: "seed-tts-2.0",
+})
+
+// 腾讯云
+speech.NewTTS(speech.TencentTTS{
+    AppID: appID,
+    SecretID: secretID,
+    SecretKey: secretKey,
+})
 ```
 
-也支持传入 `*speech.TencentASR` 等指针配置。配置类型直接复用
-现有 Provider 的字段定义，不维护另一套配置参数。三个 Provider 的
-音频格式、模型能力和 VAD 设置仍各自生效；Factory 不进行隐式转码、
-自动重试或失败自动切换。需要自行扩展其他 Provider 时，仍可使用
-`asr.Registry` 或实现 `asr.StreamRecognizer`。
+这些配置是独立的示例表达式；实际使用时应检查返回的 `client, err`。音色 ID **不跨厂商通用**，应根据所选 Provider 设置 `tts.Request.Voice`。
 
-**完整可运行的 PCM 流式例子：** [examples/asr-switch](examples/asr-switch)。
-设置 `ASR_PROVIDER=tencent` / `aliyun` / `volcengine` 和对应鉴权
-环境变量，准备原始 16 kHz mono PCM16LE 文件，然后运行：
+也可以直接运行 [TTS 厂商切换示例](examples/tts-switch)，默认生成 24 kHz mono MP3：
 
 ```sh
+export TTS_PROVIDER=volcengine
+export VOLCENGINE_API_KEY="..."
+export TTS_VOICE=zh_female_vv_uranus_bigtts
+go run ./examples/tts-switch "你好，欢迎使用语音合成。" speech.mp3
+
+# 一次性合成
+TTS_MODE=batch go run ./examples/tts-switch "你好。" speech.mp3
+```
+
+`TTS_PROVIDER` 也支持 `aliyun`、`tencent`，需要设置相应的凭据和厂商音色 ID。
+
+## ASR：流式语音识别
+
+`speech.NewASR` 返回 `asr.StreamRecognizer`。打开会话后：
+
+1. `Send(ctx, bytes)` 上传音频；一个发送者和一个接收者可以并行运行。
+2. `Recv(ctx)` 接收 `asr.EventPartial`（可能变化）与 `asr.EventFinal`（已确认文本片段）。
+3. 上传结束后调用 `CloseSend(ctx)`，继续读取直到 `io.EOF`。
+4. 始终调用 `Close()` 释放会话。
+
+```go
+client, err := speech.NewASR(speech.VolcengineASR{
+    APIKey: apiKey,
+})
+if err != nil {
+    return err
+}
+
+stream, err := client.OpenStream(ctx, asr.Config{
+    Format: audio.Format{
+        Encoding: audio.EncodingPCM16LE,
+        SampleRate: 16000,
+        Channels: 1,
+    },
+})
+if err != nil {
+    return err
+}
+defer stream.Close()
+
+// 在发送协程中按实际采样率上传 PCM16LE 数据并调用 CloseSend(ctx)；
+// 接收协程持续调用 Recv(ctx)，处理 EventPartial / EventFinal。
+```
+
+以上是 API 片段；完整可运行、包含音频发送速率控制和并行接收的程序见 [ASR 厂商切换示例](examples/asr-switch)。
+
+```sh
+export ASR_PROVIDER=volcengine
+export VOLCENGINE_API_KEY="..."
 go run ./examples/asr-switch speech.pcm
 ```
 
-## 快速开始：三家 TTS 厂商切换
+输入文件需要是**原始 16 kHz、单声道 PCM16LE**，不是 WAV 文件。`ASR_PROVIDER` 同样支持 `aliyun`、`tencent`；输入格式必须符合选用模型的要求。
 
-`speech.NewTTS` 和 `speech.NewASR` 使用相同的强类型配置思路。
-返回值为 `tts.Client`，同时实现 `tts.Synthesizer`（完整音频）和
-`tts.StreamSynthesizer`（边合成边接收音频）。旧名称
-`speech.TTSSynthesizer` 是同一类型的别名，原调用代码无需修改。
+## 音频格式与生命周期
 
-```go
-configs := map[string]speech.TTSConfig{
-    "aliyun": speech.AliyunTTS{
-        APIKey: dashscopeKey,
-        Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-        Model: "cosyvoice-v3-flash",
-    },
-    "tencent": speech.TencentTTS{
-        AppID: appID, SecretID: secretID, SecretKey: secretKey,
-    },
-    "volcengine": speech.VolcengineTTS{
-        APIKey: volcengineKey,
-        ResourceID: "seed-tts-2.0",
-    },
-}
-config, ok := configs[providerName]
-if !ok { return fmt.Errorf("unknown TTS provider %q", providerName) }
+`audio.Format` 明确描述编码、采样率与声道数。SDK 不会根据文件扩展名偷偷转换音频，也不会为不同厂商自动重采样。
 
-synth, err := speech.NewTTS(config)
-if err != nil { return err }
-stream, err := synth.SynthesizeStream(ctx, tts.Request{
-    Text: "你好，欢迎使用语音合成。",
-    Voice: providerVoiceID, // 厂商自己的音色 ID
-    Format: audio.Format{
-        Encoding: audio.EncodingMP3, SampleRate: 24000, Channels: 1,
-    },
-})
-if err != nil { return err }
-defer stream.Close()
+- TTS 音频块是同一音频流的连续字节。**单个 MP3 或 Ogg Opus Chunk 不一定能独立解码**；保存文件时按接收顺序拼接。
+- 阿里云 CosyVoice 可请求 PCM16LE、MP3、WAV、Ogg Opus；火山引擎 Seed TTS 可请求 PCM16LE、MP3、Ogg Opus，**Ogg Opus 仅支持 48 kHz mono**。不同模型和音色仍有额外限制。
+- `audio.EncodingOpus` 表示 **Ogg Opus** 容器，不是裸 Opus Packet。
+- TTS 请求一次提供完整文本；当前 `SynthesizeStream` 指的是**音频流式输出**，不是增量文本输入。
+- 成功完成后，`Recv` 持续返回 `io.EOF`；主动提前关闭可通过 `errors.Is(err, tts.ErrStreamClosed)` 判断，取消与超时保留 `context` 错误。
+- 失败后的 `Recv` 保留终止错误。不要在同一失败会话内盲目重放音频或合成请求。
 
-for {
-    chunk, err := stream.Recv(ctx)
-    if errors.Is(err, io.EOF) { break }
-    if err != nil { return err }
-    consume(chunk.Data) // 业务方负责播放/转发，SDK 不播放音频
-}
-```
+可选音频工具包括 [FFmpeg 流式解码](audio/ffmpeg/)、[Opus](audio/codec/opus) 与 [AMR-NB](audio/codec/amrnb) 处理；原生编解码功能按需启用 CGo/build tags，核心 SDK 不强制依赖 FFmpeg。
 
-上例展示接口，不表示三家的每个音色都支持相同采样率。
-通过各 Provider 的 `SupportedAudio` 能力与音色实际规格选择格式。
-`NewTTS` 不读取 YAML、环境变量，不暗中转换音频，也不会自动重试。
-三家 TTS 都遵循相同的公共接口，但 `Voice` 是**厂商自己的音色 ID**，
-SDK 不对音色进行跨厂商映射。推荐显式设置 `Format`，避免切换 Provider 时
-使用各家不同的默认输出格式；不支持的编码/采样率会直接报错，不会隐式转码。
+详细约束见 [音频设计](docs/AUDIO.md)、[ASR 接口](asr/) 和 [TTS 接口](tts/)。
 
-流式输出必须依次读取到 `io.EOF` 才算成功，并始终调用 `Close()` 释放资源。
-如果主动提前关闭，`Recv` 会返回可由 `errors.Is(err, tts.ErrStreamClosed)`
-识别的统一错误；如果是取消请求则保留 `context.Canceled` 等原始原因。
-音频块只是**同一音频流的连续字节**，单个 MP3/Ogg 块不一定可以单独播放。
-腾讯云 TTS 的真实音频验证目前仍受账号 `3022` 额度耗尽阻塞，
-不应把 CI 中的额度警告当作合成成功。
-细节参见 [腾讯云 TTS](tts/providers/tencent/README.md)、
-[火山引擎 TTS](tts/providers/volcengine/README.md)、
-[阿里云 TTS](tts/providers/aliyun/README.md)。
+## 错误处理
 
-**完整可运行示例：** [examples/tts-switch](examples/tts-switch)。
-调用方使用一个环境变量切换 Provider，并且为当前 Provider 提供其音色 ID：
- 
+厂商错误统一包装为 `speecherr.Error`，可通过 `speecherr.IsCode` 检查错误类别，并从 `RemoteCode` 查看厂商原始错误码。常见类别包括 `invalid_argument`、`unsupported`、`unauthorized`、`rate_limited`、`timeout`、`unavailable`、`protocol`。
+
+`Retryable` 只提供建议；是否重试、退避及幂等保护由调用方决定。切换厂商、读取环境变量和加载配置同样由业务层负责。
+
+## 测试与开发
+
 ```sh
-export TTS_PROVIDER=volcengine
-export VOLCENGINE_API_KEY=...
-export TTS_VOICE=zh_female_vv_uranus_bigtts
-go run ./examples/tts-switch "你好，欢迎使用语音合成。" output.mp3
-```
-
-也可设置 `TTS_PROVIDER=aliyun` / `tencent` 和对应鉴权参数及
-`TTS_VOICE`。默认使用流式接口；设置 `TTS_MODE=batch` 则调用一次性合成。
-示例请求 MP3 24 kHz 单声道，把结果保存为文件，不额外下载或转换音频。
-
-## 主要 API
-
-```go
-// ASR: implement asr.Recognizer for one-shot recognition,
-// and/or asr.StreamRecognizer for streaming recognition.
-// asr.Registry maps names to those optional capabilities.
-
-// TTS: implement tts.Synthesizer and/or tts.StreamSynthesizer.
-// tts.Registry maps names to those optional capabilities.
-
-// audio.Format describes encoding, sample rate, and channel count.
-```
-
-流式 ASR 的 `EventFinal` 是确认的文本片段，不一定意味着整轮发言结束；VAD/turn endpointing 应由上层处理。流式 TTS 暂时接收完整文本，未来可额外扩展增量文本输入接口。
-
-具体用法参见 [阿里云 ASR Adapter](asr/providers/aliyun/README.md)。
-
-更多设计约束参见 [docs/DESIGN.md](docs/DESIGN.md)。
-
-## 测试
-
-```bash
+go test ./...
 go test -race ./...
 go vet ./...
 ```
 
+真实云端集成测试使用 `integration` build tag，需要相应的密钥、账号权限，且**可能产生费用**。项目的 GitHub Actions 包含独立的 [Go CI](.github/workflows/ci.yml)、[阿里云 TTS 集成测试](.github/workflows/aliyun-tts-integration.yml) 与 [火山引擎 TTS 集成测试](.github/workflows/tts-live-integration.yml)。查看当前执行结果请以 Actions 为准。
+
+## 进一步阅读
+
+- ASR Provider：[阿里云](asr/providers/aliyun/README.md) · [火山引擎](asr/providers/volcengine/README.md) · [腾讯云](asr/providers/tencent/README.md)
+- TTS Provider：[阿里云 CosyVoice](tts/providers/aliyun/README.md) · [火山引擎 Seed TTS](tts/providers/volcengine/README.md) · [腾讯云](tts/providers/tencent/README.md)
+- [SDK 设计](docs/DESIGN.md) · [音频处理](docs/AUDIO.md) · [集成测试](docs/INTEGRATION.md)
+
 ## License
 
-Apache-2.0.
-
-## Audio formats
-
-The [`audio`](audio/) package now provides format detection, PCM16 WAV reading/writing,
-mono/stereo conversion, a stateful PCM16 streaming resampler, and model capability
-validation. Compressed audio is **passed through**, not decoded/transcoded.
-See [docs/AUDIO.md](docs/AUDIO.md) for supported codecs, Ogg requirements,
-chunk handling, and ASR integration examples.
-
-## Optional compressed audio transcoding
-
-Complete compressed audio buffers can be converted to PCM16LE or WAV by the
-opt-in [`audio/ffmpeg`](audio/ffmpeg/) adapter, which requires an installed
-FFmpeg executable. Core `audio` remains Go-only. The same optional package also provides a
-**persistent** `ffmpeg.OpenStreamDecoder` that accepts successive Ogg Opus,
-Ogg Speex, AMR-NB, MP3, AAC or PCM/WAV fragments and outputs streaming PCM16LE.
-It is not a raw-Opus-packet decoder; see [audio design](docs/AUDIO.md).
-
-## Real Aliyun ASR integration
-
-The offline CI needs no cloud credentials. An [automatic, paid Aliyun ASR integration workflow](.github/workflows/aliyun-asr-integration.yml)
-runs on every push, testing five ASR models with your `DASHSCOPE_API_KEY` secret and `DASHSCOPE_WS_ENDPOINT` variable to exercise real ASR with synthetic spoken audio. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
-
-## Raw device packet decoding (optional)
-
-`audio/codec/opus` and `audio/codec/amrnb` now provide optional native
-packet-level decoders. Raw Opus decoding is backed by libopus; AMR-NB frame
-decoding uses OpenCORE-AMR-NB. Both are compiled in only under explicit
-`libopus` / `opencoreamr` build tags with CGo. The default build remains
-free of system codec dependencies.
-
-The `amrnb.Framer` pure-Go utility also packages storage frames for the
-existing persistent FFmpeg decoder. See [docs/AUDIO.md](docs/AUDIO.md)
-for raw-packet vs Ogg vs RTP distinctions and setup.
-
-## Recommended Opus path: no decode/re-encode
-
-When the selected ASR model accepts Ogg Opus, forward existing Ogg Opus
-bytes directly. For device transport that sends **complete raw Opus packets**,
-the new pure-Go `opus.OggMuxer` produces a valid streaming Ogg Opus container:
-`Headers() → WritePacket(packet) → Close()`. It does not decode to PCM or use
-FFmpeg/CGo, and the original compressed Opus payload is unchanged.
-See [docs/AUDIO.md](docs/AUDIO.md) and the automatic paid integration tests
-for both Ogg passthrough and raw-packet repackaging.
-
-## ASR stream failure handling
-
-Streaming adapters now expose shared `asr.ErrStreamClosed` and
-`asr.ErrInputClosed` errors, preserve cancellation, and keep the original
-terminal `Recv` error visible on repeated calls. Malformed remote protocol
-events use `speecherr.CodeProtocol`; the original remote service code is
-available in `speecherr.Error.RemoteCode`. Do not retry audio on the same
-failed session: open a new session and decide at the application layer if
-replaying audio is safe. See [docs/DESIGN.md](docs/DESIGN.md).
-
-## 火山引擎 Doubao ASR
-
-新增 [`asr/providers/volcengine`](asr/providers/volcengine/)：支持官方推荐的
-V3 `bigmodel_async` WebSocket 二进制协议、PCM16/WAV/MP3/Ogg Opus 原样传输、
-流式部分/最终结果、Context 取消和统一错误。详细接入方式见
-[火山引擎 Provider 文档](asr/providers/volcengine/README.md)。
-
-## ASR format compatibility and errors
-
-Validate the actual input format before opening a stream:
-`aliyun.SupportedAudio(model)` for a specific Alibaba model, or
-`volcengine.SupportedAudio()` for Seed-ASR 2.0's optimized streaming
-endpoint. Both return `audio.Capability`, whose `Validate` method checks
-supported encoding, sample rate, and channel count without transcoding.
-
-Unsupported input formats return `speecherr.CodeUnsupported`, and
-`errors.Is(err, audio.ErrUnsupportedFormat)` is true. Invalid format metadata
-instead returns `speecherr.CodeInvalidArgument` and preserves
-`audio.ErrInvalidFormat`. Feature incompatibility (for example, a model
-parameter that the vendor does not implement) remains a separate
-`CodeUnsupported` error and does not claim to be an audio-format error.
-
-## Aliyun CosyVoice TTS
-
-`tts/providers/aliyun` implements both batch and streaming TTS against
-CosyVoice WebSocket. It sends complete text once, then emits binary audio
-chunks without implicit conversion. See [TTS Provider README](tts/providers/aliyun/README.md).
-
-## Tencent Cloud real-time ASR
-
-`asr/providers/tencent` implements Tencent Cloud real-time ASR
-WebSocket V2 with HMAC-SHA1 URL signing, PCM16LE mono streaming and
-partial/final transcript events using the existing `asr.Stream` interface.
-Tencent's proprietary Opus frame format is **not** compatible with
-`audio.EncodingOpus` (Ogg Opus), so no implicit conversion is attempted.
-See [Tencent ASR guide](asr/providers/tencent/README.md). A real cloud
-integration test requires `TENCENT_APP_ID`, `TENCENT_SECRET_ID`, and
-`TENCENT_SECRET_KEY` in GitHub Actions. Tencent TTS is a separate
-future provider, not part of this change.
+[Apache License 2.0](LICENSE)
