@@ -1,92 +1,106 @@
-# Design notes (v0.1 foundation)
+# SDK design and public API contracts
+
+This document describes the current `go-speech` contracts. The code in
+`speech.go`, `speech_tts.go`, `asr/asr.go`, and `tts/tts.go` is authoritative.
 
 ## Scope
 
-This repository provides Go contracts and vendor adapters for speech recognition
-(ASR) and text-to-speech (TTS). It is a library, not an agent framework, a
-conversation orchestrator, an audio player, or a hosted service.
+`go-speech` is a Go library for vendor-neutral ASR and TTS, not a hosted
+speech service or an Agent runtime. The Go module has independent
+`asr`, `tts`, `audio`, and `speecherr` packages.
 
-## API design
+The core adapters do not manage VAD policy, device/MQTT traffic, microphone
+capture, audio playback, turn-taking, conversation memory, monitoring, or
+application-level retries. Audio conversion is **explicit** through separate
+`audio` utilities; provider adapters never silently convert supplied bytes.
 
-- One repository and one Go module; independent `asr`, `tts`, and `audio` packages.
-- Implementations can provide batch, streaming, or both capabilities.
-- Registries are application-owned; there is no global mutable provider list.
-- Configuration shared across vendors stays small. Provider-specific credentials,
-  model IDs, voice parameters, and transport settings live in provider constructors.
-- `context.Context` is required on network operations; streams have explicit Close.
-- ASR final transcript segments are not necessarily utterance boundaries.
-- TTS streaming currently takes complete input text. Incremental text-to-audio
-  sessions, if supported by vendors, will be an additional optional capability.
-- No automatic cross-vendor failover. Mid-stream switching can require replaying
-  audio and is the responsibility of the application.
+## Provider selection
 
-## Stream contract
+The root package exposes:
 
-- ASR allows one concurrent sender and one receiver. `CloseSend` ends input but
-  allows pending recognition results to drain via `Recv` until `io.EOF`.
-- TTS `Recv` returns audio chunks until `io.EOF`.
-- Implementations must honor cancellation, release sockets on `Close`, and
-  make `Close` idempotent. Avoid retaining input buffers without documenting it.
-- Streaming tests for each vendor must cover cancellation, EOF, and failures.
+- `speech.NewASR(speech.ASRConfig) (asr.StreamRecognizer, error)`
+- `speech.NewTTS(speech.TTSConfig) (tts.Client, error)`
 
-## Out of scope
+Supported config types are `speech.AliyunASR`, `speech.VolcengineASR`,
+`speech.TencentASR` and their `TTS` counterparts. Config values and pointers
+are accepted; nil or typed-nil configs return `ErrInvalidASRConfig` or
+`ErrInvalidTTSConfig`. Invalid provider options return provider errors instead.
 
-VAD, endpointing policy, device/MQTT/WebSocket transport, playback state, audio
-buffer arbitration, Agent Runtime, memory, codec transcoding, and speech turn
-management belong to the application or other dedicated modules.
+The constructors do not open network sessions. ASR connects via
+`OpenStream`; TTS connects via `Synthesize` or `SynthesizeStream`.
+Each request creates an independent vendor session. Callers own credentials,
+configuration loading, model selection, and service-level retry policies.
+The root configuration types intentionally select only built-in adapters;
+for custom implementations, use the separate `asr` / `tts` interfaces.
 
-## Errors and streaming session lifecycle
+## ASR contract
 
-Provider adapters wrap remote failures in `speecherr.Error` with a stable
-classification (`Code`) while preserving the original `Err` for `errors.Is`.
-`RemoteCode` carries the provider's original diagnostic code when supplied,
-without requiring callers to parse error messages.
+`asr.StreamRecognizer.OpenStream(ctx, asr.Config)` returns `asr.Stream`:
 
-- `speecherr.CodeProtocol`: malformed or internally inconsistent remote
-  notifications. These are **not** normally retryable.
-- `asr.ErrStreamClosed`: stream closed or aborted by application; **not** a
-  transient network failure. `asr.ErrInputClosed`: audio input has already
-  been finished with `CloseSend`, but the result stream may still be drained.
-- `context.Canceled` and `context.DeadlineExceeded` are preserved as-is.
-  They are not recategorized as retryable network errors.
-- After receiving `task-finished`, subsequent `Recv` calls return `io.EOF`.
-- After a terminal failure, `Recv` preserves the first protocol/provider/
-  transport error on subsequent calls so upper layers do not lose the cause.
-- Failed writes close the WebSocket session: attempting to continue sending
-  on a failed/possibly corrupt connection is unsafe.
+- `Send(ctx, data)` submits bytes in the declared audio encoding.
+- `CloseSend(ctx)` finishes input without discarding pending recognition.
+- `Recv(ctx)` yields `EventPartial` and `EventFinal`; optional
+  `EventSpeechStart` / `EventSpeechEnd` depend on the vendor.
+- `Close()` releases the session. Always close it even after EOF or failure.
 
-`speecherr.Error.Retryable` is only advisory. Retrying a **streaming** request
-is not the same as retrying a stateless API call: applications must decide
-whether audio frames can be safely replayed in a fresh session, whether
-billing/duplicates matter, and whether to expose partial transcription.
+One concurrent sender and one concurrent receiver are supported, but two
+simultaneous senders or two simultaneous receivers are **not** guaranteed safe.
+A Final segment is not necessarily a complete conversation turn.
+`Event.SpeakerID` is optional, provider-specific, session-local metadata;
+`nil` means absent, `-1` pending, and nonnegative values are labels,
+not persistent identities.
 
-Native unit tests inject remote failure, malformed WebSocket notifications,
-task-ID mismatches, unexpected disconnects, explicit Close, parent/per-call
-cancellation, and repeated EOF/error reads. The paid automatic Aliyun ASR CI
-checks actual model behavior separately.
+`asr.Recognizer` also defines a separate one-shot `Recognize` interface,
+but `speech.NewASR` returns **only** `asr.StreamRecognizer`. Do not
+infer that all built-in providers implement batch recognition.
 
-## Next milestone
+## TTS contract
 
-The Volcengine Doubao V3 optimized streaming adapter is now the second ASR
-provider implementation. Both implement the same `asr.StreamRecognizer`
-contract, but have separate WebSocket framing and credentials. Continue by
-running live cloud integration and adding cross-provider contract tests.
-Do not introduce implicit audio conversion into `Stream.Send`.
+`tts.Client` combines `Synthesize(ctx, tts.Request)` and
+`SynthesizeStream(ctx, tts.Request)`:
 
-## ASR audio capability and error contract
+- `Synthesize` collects a complete `audio.Buffer` in memory.
+- `SynthesizeStream` yields `audio.Chunk` through `Recv(ctx)`.
+- A `tts.Request` contains the **complete text**; streaming means audio
+  output, **not** incremental text input.
+- Each stream supports one `Recv` caller; `Close()` is idempotent.
 
-Audio format metadata must match the actual bytes; the ASR provider will
-**not** resample or transcode. Callers may query `aliyun.SupportedAudio(model)`
-and `volcengine.SupportedAudio()` before opening a session, then call
-`audio.Capability.Validate(format)` to check a chosen format.
+The requested `Voice` identifier is vendor-specific. Zero-valued
+`audio.Format` selects a provider default; an explicit unsupported
+format is rejected. Compressed audio chunks are fragments of a complete
+bitstream: concatenate in order or pass them to a streaming decoder.
+A batch request has a 64 MiB output limit in the built-in adapters.
 
-- Invalid metadata (missing encoding, nonpositive sample rate or channel
-  count) returns `speecherr.CodeInvalidArgument` and preserves
-  `audio.ErrInvalidFormat` through `errors.Is`.
-- Structurally valid but unsupported encoding, rate or channel count returns
-  `speecherr.CodeUnsupported` and preserves `audio.ErrUnsupportedFormat`
-  through `errors.Is`. Unsupported **provider features** such as explicit
-  language selection may also return `CodeUnsupported`, but must not
-  masquerade as an unsupported audio format.
-- Credentials, networking, vendor event decoding, and streaming lifecycle
-  still use the existing `speecherr.Error` and `asr.Stream` contracts.
+## Cancellation, errors, and retry policy
+
+Both streaming APIs reserve repeated `io.EOF` for **successful completion**.
+After a terminal error, subsequent `Recv` calls preserve the terminal cause;
+cancellation returns `context.Canceled` / `context.DeadlineExceeded`.
+Closing a stream prematurely returns `tts.ErrStreamClosed` for TTS;
+ASR distinguishes `asr.ErrStreamClosed` from `asr.ErrInputClosed`
+after a successful half-close.
+
+Provider errors use `speecherr.Error`, including `Code`, `RemoteCode`,
+`Retryable`, and wrapped `Err`. Use `speecherr.IsCode` for categories and
+`errors.Is` / `errors.As` for original causes. `Retryable` is advisory:
+the SDK does not automatically replay audio or duplicate billable requests.
+A broken WebSocket session cannot safely be resumed.
+
+## Audio boundaries
+
+`audio.Format` must describe the actual bytes; `audio.EncodingOpus`
+means **Ogg Opus**, not raw device Opus packets. The SDK exposes explicit
+PCM/WAV conversion, pure-Go Ogg encapsulation, and optional FFmpeg/native
+codec adapters in separate packages. None is implicitly invoked by
+`asr.Stream.Send` or a TTS provider.
+
+See [audio handling](AUDIO.md) and [integration testing](INTEGRATION.md).
+
+## Verification scope
+
+Offline Go CI runs format checks, vet, race tests, and optional native
+codec builds. Paid vendor workflows validate selected real ASR/TTS protocols,
+models, and formats. Real-cloud verification of Tencent TTS audio is
+**not complete**: the test account returns resource-pack exhaustion (3022),
+which is recorded as a warning rather than verified PCM synthesis.
+Neither offline mocks nor green CI alone prove every voice/model combination.
