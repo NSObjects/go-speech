@@ -41,12 +41,12 @@ func (VolcengineASR) isASRConfig() {}
 
 // NewASR constructs the provider selected by the config's concrete type.
 // It validates the chosen provider through its existing constructor and
-// returns the shared streaming interface. No WebSocket is opened until
+// returns the shared batch and streaming interface. No WebSocket is opened until
 // OpenStream is called.
 //
 // Both values and pointers to the config types are supported. A typed nil
 // pointer is rejected instead of panicking.
-func NewASR(cfg ASRConfig) (asr.StreamRecognizer, error) {
+func NewASR(cfg ASRConfig) (asr.Client, error) {
 	switch c := cfg.(type) {
 	case TencentASR:
 		return newTencentASR(tencent.Config(c))
@@ -71,9 +71,9 @@ func NewASR(cfg ASRConfig) (asr.StreamRecognizer, error) {
 }
 
 // Each provider New returns *Client, whose nil pointer becomes non-nil when
-// implicitly converted to asr.StreamRecognizer. Normalize errors before
+// implicitly converted to asr.Client. Normalize errors before
 // conversion so NewASR always returns a genuinely nil interface on failure.
-func newTencentASR(cfg tencent.Config) (asr.StreamRecognizer, error) {
+func newTencentASR(cfg tencent.Config) (asr.Client, error) {
 	client, err := tencent.New(cfg)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func newTencentASR(cfg tencent.Config) (asr.StreamRecognizer, error) {
 	return client, nil
 }
 
-func newAliyunASR(cfg aliyun.Config) (asr.StreamRecognizer, error) {
+func newAliyunASR(cfg aliyun.Config) (asr.Client, error) {
 	client, err := aliyun.New(cfg)
 	if err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func newAliyunASR(cfg aliyun.Config) (asr.StreamRecognizer, error) {
 	return client, nil
 }
 
-func newVolcengineASR(cfg volcengine.Config) (asr.StreamRecognizer, error) {
+func newVolcengineASR(cfg volcengine.Config) (asr.Client, error) {
 	client, err := volcengine.New(cfg)
 	if err != nil {
 		return nil, err
