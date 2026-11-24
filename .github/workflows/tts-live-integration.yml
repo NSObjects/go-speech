@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if go test -tags=integration -run TestTencentLiveTTS -count=1 -v -timeout 90s ./tts/providers/tencent > "$RUNNER_TEMP/tencent-tts-live.log" 2>&1; then
+          if go test -tags=integration -run '^TestTencentLive(TTS|Duplex)$' -count=1 -v -timeout 90s ./tts/providers/tencent > "$RUNNER_TEMP/tencent-tts-live.log" 2>&1; then
             cat "$RUNNER_TEMP/tencent-tts-live.log"
             echo "### Tencent TTS: PASS — real PCM audio and EOF verified" >> "$GITHUB_STEP_SUMMARY"
           else

@@ -6,8 +6,10 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/speecherr"
@@ -26,6 +28,9 @@ type Stream struct {
 	done        chan struct{}
 	closeOnce   sync.Once
 	readMu      sync.Mutex
+	writeMu     sync.Mutex
+	inputClosed bool
+	textSent    bool
 	finished    bool
 	audioSeen   bool
 	terminalErr error
@@ -141,7 +146,7 @@ func command(action, id string, payload any) any {
 	}
 }
 
-func (s *Stream) start(ctx context.Context, model string, req tts.Request, encoding string, timeout time.Duration) error {
+func (s *Stream) startSession(ctx context.Context, model string, req tts.Request, encoding string, timeout time.Duration) error {
 	params := map[string]any{
 		"text_type": "PlainText", "voice": req.Voice,
 		"format": encoding, "sample_rate": req.Format.SampleRate,
@@ -185,16 +190,68 @@ func (s *Stream) start(ctx context.Context, model string, req tts.Request, encod
 	if err := s.conn.SetReadDeadline(time.Time{}); err != nil {
 		return s.networkError(ctx, "task-started", err)
 	}
-	if err := s.sendJSON(ctx, command("continue-task", s.taskID, map[string]any{
-		"input": map[string]any{"text": req.Text},
-	})); err != nil {
+	return nil
+}
+
+func (s *Stream) start(ctx context.Context, model string, req tts.Request, encoding string, timeout time.Duration) error {
+	if err := s.startSession(ctx, model, req, encoding, timeout); err != nil {
 		return err
+	}
+	if err := s.SendText(ctx, req.Text); err != nil {
+		return err
+	}
+	return s.CloseSend(ctx)
+}
+
+// SendText adds one text fragment to the active synthesis task.
+func (s *Stream) SendText(ctx context.Context, text string) error {
+	if s == nil {
+		return tts.ErrStreamClosed
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if s.closed() {
+		return s.closeError(ctx)
+	}
+	if s.inputClosed {
+		return tts.ErrInputClosed
+	}
+	if !utf8.ValidString(text) || strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > maxTextRunes {
+		return invalid("text fragment must contain 1–20000 valid UTF-8 characters")
+	}
+	if err := s.sendJSON(ctx, command("continue-task", s.taskID, map[string]any{
+		"input": map[string]any{"text": text},
+	})); err != nil {
+		_ = s.Close()
+		return err
+	}
+	s.textSent = true
+	return nil
+}
+
+// CloseSend completes text input while Recv continues to receive audio.
+func (s *Stream) CloseSend(ctx context.Context) error {
+	if s == nil {
+		return tts.ErrStreamClosed
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if s.closed() {
+		return s.closeError(ctx)
+	}
+	if s.inputClosed {
+		return tts.ErrInputClosed
+	}
+	if !s.textSent {
+		return invalid("at least one text fragment is required")
 	}
 	if err := s.sendJSON(ctx, command("finish-task", s.taskID, map[string]any{
 		"input": map[string]any{},
 	})); err != nil {
+		_ = s.Close()
 		return err
 	}
+	s.inputClosed = true
 	return nil
 }
 
