@@ -57,12 +57,7 @@ jobs:
           ffprobe -v error -show_entries stream=codec_name -of default=noprint_wrappers=1 \
             "$VOLCENGINE_OGG_OPUS_FILE" | grep 'codec_name=opus'
       - name: Short-audio Recognize (complete PCM input and final text)
-        run: go test -tags=integration -run '^TestVolcengineLiveShortRecognize
-        run: |
-          go test -tags=integration \
-            -run '^(TestVolcengineLiveASR|TestVolcengineLiveOggOpus)$' \
-            -count=1 -v -timeout 3m ./asr/providers/volcengine
- -count=1 -v -timeout 2m ./asr/providers/volcengine
+        run: go test -tags=integration -run '^TestVolcengineLiveShortRecognize$' -count=1 -v -timeout 2m ./asr/providers/volcengine
 
       - name: Real Volcengine PCM and Ogg Opus API, Final and stable EOF
         run: |
