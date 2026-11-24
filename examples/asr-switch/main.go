@@ -42,8 +42,7 @@ func run() error {
 		},
 		"aliyun": speech.AliyunASR{
 			APIKey:   os.Getenv("DASHSCOPE_API_KEY"),
-			Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-		},
+					},
 		"volcengine": speech.VolcengineASR{APIKey: os.Getenv("VOLCENGINE_API_KEY")},
 	}
 	cfg, ok := configs[os.Getenv("ASR_PROVIDER")]
