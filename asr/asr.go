@@ -29,8 +29,8 @@ type Recognizer interface {
 
 // Client supports both whole-buffer and live streaming recognition.
 type Client interface {
-    Recognizer
-    StreamRecognizer
+	Recognizer
+	StreamRecognizer
 }
 
 // StreamRecognizer opens streaming ASR sessions.
