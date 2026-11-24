@@ -79,6 +79,73 @@ jobs:
       # Recognition quality and CER are not SDK acceptance criteria.
       - name: Real Tencent Cloud PCM streaming ASR and terminal EOF
         run: go test -tags=integration -run TestTencentLivePCMASR -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Short-audio Recognize (complete PCM input and final text)
+        run: go test -tags=integration -run '^TestTencentLiveShortRecognize
+        run: go test -tags=integration -run TestTencentLiveRequestHints -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud concurrent streaming sessions
+        run: go test -tags=integration -run TestTencentLiveConcurrentSessions -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud 8k PCM input to 16k engine
+        run: go test -tags=integration -run TestTencentLiveEightKInputToSixteenKEngine -count=1 -v -timeout 2m ./asr/providers/tencent
+      # V2 uses caller-paced 40ms PCM frames. These strict, billable gates
+      # check independent concurrent streams and stable completion.
+      - name: Real Tencent Cloud 2.0 concurrent streams (strict)
+        env:
+          TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
+        run: go test -tags=integration -run TestTencentLiveV2ConcurrentSessions -count=1 -v -timeout 2m ./asr/providers/tencent
+      - name: Real Tencent Cloud large-model 2.0 (automatic, strict)
+        env:
+          TENCENT_V2_ASR_MODEL: ${{ vars.TENCENT_V2_ASR_MODEL || '16k_zh_en_2.0' }}
+        run: |
+          if go test -tags=integration -run TestTencentLiveLargeModelV2 -count=1 -v -timeout 2m ./asr/providers/tencent > "${RUNNER_TEMP}/tencent-v2-live.log" 2>&1; then
+            cat "${RUNNER_TEMP}/tencent-v2-live.log"
+            {
+              echo "### Tencent Cloud ASR 2.0"
+              echo "Model: ${TENCENT_V2_ASR_MODEL}"
+              echo "Result: **PASS** — nonempty Final and stable EOF returned by real cloud."
+              grep 'Tencent large model 2.0' "${RUNNER_TEMP}/tencent-v2-live.log" || true
+            } >> "${GITHUB_STEP_SUMMARY}"
+          else
+            cat "${RUNNER_TEMP}/tencent-v2-live.log"
+            {
+              echo "### Tencent Cloud ASR 2.0"
+              echo "Model: ${TENCENT_V2_ASR_MODEL}"
+              echo "Result: **FAIL** — automatic strict cloud gate failed; see test logs."
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+
+  # Strict, paid speaker-enabled V2 ASR gate. A pinned 16kHz sample from the
+  # official Tencent Go SDK eliminates dependency on apt-based fixture tools.
+  # It proves speech and speaker-ID transport, not diarization accuracy.
+  speaker-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      TENCENT_APP_ID: ${{ vars.TENCENT_APP_ID }}
+      TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+      TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+      TENCENT_V2_SPEAKER_MODEL: 16k_zh_en_speaker_2.0
+      TENCENT_TEST_16K_PCM_FILE: /tmp/tencent-official-speech.pcm
+      TENCENT_TEST_SPEAKER_PCM_FILE: /tmp/tencent-official-speaker-extended.pcm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare Tencent official public PCM (no codec packages)
+        run: |
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 45 \
+            "https://raw.githubusercontent.com/TencentCloud/tencentcloud-speech-sdk-go/257f9f56bcd592bff1faea9b4ce0f1ef90cea803/examples/speakerexample/test.pcm" \
+            -o "$TENCENT_TEST_16K_PCM_FILE"
+          test "$(git hash-object "$TENCENT_TEST_16K_PCM_FILE")" = "48e5f31375a9e7bad4ad21cd104cdd5714670d25"
+          for i in $(seq 1 12); do cat "$TENCENT_TEST_16K_PCM_FILE"; done > "$TENCENT_TEST_SPEAKER_PCM_FILE"
+          test -s "$TENCENT_TEST_SPEAKER_PCM_FILE"
+      - name: Real Tencent Cloud V2 speaker model and speaker ID (strict)
+        run: |
+          go test -tags=integration -run TestTencentLiveV2SpeakerEngine -count=1 -v -timeout 2m ./asr/providers/tencent
+ -count=1 -v -timeout 2m ./asr/providers/tencent
+
       - name: Real Tencent Cloud per-request hotword hints
         run: go test -tags=integration -run TestTencentLiveRequestHints -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud concurrent streaming sessions
