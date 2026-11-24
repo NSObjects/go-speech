@@ -247,16 +247,23 @@ func (s *duplexStream) receive(ctx context.Context, deadline time.Time) (wireFra
 		return wireFrame{}, protocol("expected binary duplex response")
 	}
 	// ConnectionStarted has no session_id; other response events are session-scoped.
-	if len(data) >= 12 && binary.BigEndian.Uint32(data[4:8]) == duplexConnectionStarted {
+	if len(data) >= 16 && binary.BigEndian.Uint32(data[4:8]) == duplexConnectionStarted {
 		if data[0] != 0x11 || data[1]>>4 != kindFullResponse || data[1]&15 != 4 ||
 			data[2]>>4 != 1 || data[2]&15 > 1 || data[3] != 0 {
 			return wireFrame{}, protocol("invalid ConnectionStarted header")
 		}
-		size := binary.BigEndian.Uint32(data[8:12])
-		if size > maxWirePayload || int(size) != len(data)-12 {
-			return wireFrame{}, protocol("invalid ConnectionStarted payload")
-		}
-		payload := data[12:]
+		// ConnectionStarted includes a connection ID before the JSON payload.
+        connectIDSize := uint64(binary.BigEndian.Uint32(data[8:12]))
+        if connectIDSize == 0 || connectIDSize > 128 || connectIDSize > uint64(len(data)-16) {
+            return wireFrame{}, protocol("invalid ConnectionStarted ID")
+        }
+        pos := 12 + int(connectIDSize)
+        size := uint64(binary.BigEndian.Uint32(data[pos : pos+4]))
+        pos += 4
+        if size > maxWirePayload || size != uint64(len(data)-pos) {
+            return wireFrame{}, protocol("invalid ConnectionStarted payload")
+        }
+        payload := data[pos:]
 		if data[2]&15 == 1 {
 			reader, err := gzip.NewReader(bytes.NewReader(payload))
 			if err != nil {
