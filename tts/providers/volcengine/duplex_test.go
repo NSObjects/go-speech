@@ -1,7 +1,9 @@
 package volcengine
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -55,8 +57,12 @@ func TestDuplexStreamingTextAndAudio(t *testing.T) {
 			return
 		}
 		if binary.BigEndian.Uint32(buf[4:8]) != duplexStartConnection {
-			return
-		}
+            return
+        }
+        if len(buf) != 14 || binary.BigEndian.Uint32(buf[8:12]) != 2 || !bytes.Equal(buf[12:], []byte("{}")) {
+            t.Error("StartConnection must contain a valid JSON object")
+            return
+        }
 		_ = conn.WriteMessage(websocket.BinaryMessage, duplexResponse(duplexConnectionStarted, "", kindFullResponse, nil))
 		_, buf, err = conn.ReadMessage()
 		if err != nil || binary.BigEndian.Uint32(buf[4:8]) != duplexStartSession {
@@ -64,6 +70,21 @@ func TestDuplexStreamingTextAndAudio(t *testing.T) {
 		}
 		length := binary.BigEndian.Uint32(buf[8:12])
 		session := string(buf[12 : 12+length])
+        bodyAt := 12 + int(length)
+        if len(buf) < bodyAt+4 {
+            t.Error("truncated StartSession payload")
+            return
+        }
+        payloadSize := int(binary.BigEndian.Uint32(buf[bodyAt:bodyAt+4]))
+        if payloadSize != len(buf)-bodyAt-4 {
+            t.Error("invalid StartSession payload length")
+            return
+        }
+        var body struct { Namespace string `json:"namespace"` }
+        if err := json.Unmarshal(buf[bodyAt+4:], &body); err != nil || body.Namespace != "BidirectionalTTS" {
+            t.Errorf("StartSession missing namespace: %q, %v",body.Namespace,err)
+            return
+        }
 		_ = conn.WriteMessage(websocket.BinaryMessage, duplexResponse(duplexSessionStarted, session, kindFullResponse, nil))
 		count := 0
 		for {
