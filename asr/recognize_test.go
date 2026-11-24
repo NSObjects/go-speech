@@ -12,13 +12,13 @@ import (
 	"github.com/NSObjects/go-speech/audio"
 )
 
-type fakeRecognizer struct {
+type fakeShortRecognizer struct {
 	stream *fakeShortStream
 	err    error
 	cfg    Config
 }
 
-func (c *fakeRecognizer) OpenStream(ctx context.Context, cfg Config) (Stream, error) {
+func (c *fakeShortRecognizer) OpenStream(ctx context.Context, cfg Config) (Stream, error) {
 	c.cfg = cfg
 	if c.err != nil {
 		return nil, c.err
@@ -94,7 +94,7 @@ func TestRecognizeStreamAggregatesFinalEventsAndSendsChunks(t *testing.T) {
 	s.events <- Event{Type: EventPartial, Text: "wrong"}
 	s.events <- Event{Type: EventFinal, Text: "你好，", Language: "zh-CN"}
 	s.events <- Event{Type: EventFinal, Text: "世界。"}
-	c := &fakeRecognizer{stream: s}
+	c := &fakeShortRecognizer{stream: s}
 	input := validBuffer(shortAudioChunkBytes*2 + 2)
 	input.Format.Encoding = audio.EncodingMP3
 	got, err := RecognizeStream(context.Background(), c, input, Config{})
@@ -117,7 +117,7 @@ func TestRecognizeStreamAggregatesFinalEventsAndSendsChunks(t *testing.T) {
 func TestRecognizeStreamPCMUsesPacedFrames(t *testing.T) {
 	s := newFakeStream()
 	s.events <- Event{Type: EventFinal, Text: "你好"}
-	c := &fakeRecognizer{stream: s}
+	c := &fakeShortRecognizer{stream: s}
 	input := validBuffer(16000 * 2 / 25 * 2)
 	start := time.Now()
 	got, err := RecognizeStream(context.Background(), c, input, Config{})
@@ -149,7 +149,7 @@ func TestRecognizeStreamRejectsInvalidInputBeforeOpening(t *testing.T) {
 		{"too long PCM", validBuffer(16000 * 2 * 61), Config{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			c := &fakeRecognizer{err: errors.New("should not open")}
+			c := &fakeShortRecognizer{err: errors.New("should not open")}
 			_, err := RecognizeStream(context.Background(), c, test.input, test.cfg)
 			if !errors.Is(err, ErrInvalidShortAudio) {
 				t.Fatalf("want ErrInvalidShortAudio, got %v", err)
@@ -160,7 +160,7 @@ func TestRecognizeStreamRejectsInvalidInputBeforeOpening(t *testing.T) {
 func TestRecognizeStreamErrors(t *testing.T) {
 	t.Run("open", func(t *testing.T) {
 		expected := errors.New("open error")
-		_, err := RecognizeStream(context.Background(), &fakeRecognizer{err: expected}, validBuffer(2), Config{})
+		_, err := RecognizeStream(context.Background(), &fakeShortRecognizer{err: expected}, validBuffer(2), Config{})
 		if !errors.Is(err, expected) {
 			t.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func TestRecognizeStreamErrors(t *testing.T) {
 		expected := errors.New("send error")
 		s := newFakeStream()
 		s.sendErr = expected
-		_, err := RecognizeStream(context.Background(), &fakeRecognizer{stream: s}, validBuffer(2), Config{})
+		_, err := RecognizeStream(context.Background(), &fakeShortRecognizer{stream: s}, validBuffer(2), Config{})
 		if !errors.Is(err, expected) {
 			t.Fatal(err)
 		}
@@ -178,7 +178,7 @@ func TestRecognizeStreamErrors(t *testing.T) {
 		expected := errors.New("recv error")
 		s := newFakeStream()
 		s.recvErr = expected
-		_, err := RecognizeStream(context.Background(), &fakeRecognizer{stream: s}, validBuffer(2), Config{})
+		_, err := RecognizeStream(context.Background(), &fakeShortRecognizer{stream: s}, validBuffer(2), Config{})
 		if !errors.Is(err, expected) {
 			t.Fatal(err)
 		}
@@ -186,7 +186,7 @@ func TestRecognizeStreamErrors(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err := RecognizeStream(ctx, &fakeRecognizer{err: errors.New("should not open")}, validBuffer(2), Config{})
+		_, err := RecognizeStream(ctx, &fakeShortRecognizer{err: errors.New("should not open")}, validBuffer(2), Config{})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
@@ -195,7 +195,7 @@ func TestRecognizeStreamErrors(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 		defer cancel()
 		<-ctx.Done()
-		_, err := RecognizeStream(ctx, &fakeRecognizer{err: errors.New("should not open")}, validBuffer(2), Config{})
+		_, err := RecognizeStream(ctx, &fakeShortRecognizer{err: errors.New("should not open")}, validBuffer(2), Config{})
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatal(err)
 		}
