@@ -6,7 +6,7 @@ CosyVoice WebSocket task protocol.
 
 - Model defaults to `cosyvoice-v3-flash`. Choose a supported model/voice
   combination in your region; `longanyang` is a V3 Flash system voice.
-- Configure the **matching regional workspace endpoint** and API key.
+- The default endpoint is the China DashScope service. For another region or dedicated workspace, set `Endpoint` alongside the API key.
   For example, the official endpoint is
   `wss://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference`
   (Beijing), or use the Singapore workspace-specific host.
@@ -28,7 +28,6 @@ CosyVoice WebSocket task protocol.
 ```go
 client, err := aliyun.New(aliyun.Config{
     APIKey: os.Getenv("DASHSCOPE_API_KEY"),
-    Endpoint: os.Getenv("DASHSCOPE_WS_ENDPOINT"),
     Model: aliyun.ModelCosyVoiceV3Flash,
 })
 if err != nil { return err }
