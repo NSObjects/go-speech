@@ -96,6 +96,7 @@ func TestRecognizeStreamAggregatesFinalEventsAndSendsChunks(t *testing.T) {
 	s.events <- Event{Type: EventFinal, Text: "世界。"}
 	c := &fakeRecognizer{stream: s}
 	input := validBuffer(shortAudioChunkBytes*2 + 2)
+	input.Format.Encoding = audio.EncodingMP3
 	got, err := RecognizeStream(context.Background(), c, input, Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -113,6 +114,19 @@ func TestRecognizeStreamAggregatesFinalEventsAndSendsChunks(t *testing.T) {
 		t.Fatal("session must be closed")
 	}
 }
+func TestRecognizeStreamPCMUsesPacedFrames(t *testing.T) {
+    s := newFakeStream()
+    s.events <- Event{Type: EventFinal, Text: "你好"}
+    c := &fakeRecognizer{stream:s}
+    input := validBuffer(16000*2/25*2)
+    start := time.Now()
+    got,err := RecognizeStream(context.Background(),c,input,Config{})
+    if err != nil { t.Fatal(err) }
+    if got.Text != "你好" { t.Fatalf("got %+v",got) }
+    if s.sent != 2 { t.Fatalf("expected two 40ms PCM frames, got %d",s.sent) }
+    if time.Since(start) < 65*time.Millisecond { t.Fatal("PCM was not paced at realtime speed") }
+}
+
 func TestRecognizeStreamRejectsInvalidInputBeforeOpening(t *testing.T) {
 	for _, test := range []struct {
 		name  string
@@ -123,6 +137,8 @@ func TestRecognizeStreamRejectsInvalidInputBeforeOpening(t *testing.T) {
 		{"oversized", validBuffer(MaxShortAudioBytes + 1), Config{}},
 		{"invalid format", audio.Buffer{Data: []byte("audio")}, Config{}},
 		{"format mismatch", validBuffer(2), Config{Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 8000, Channels: 1}}},
+        {"bad PCM frame",validBuffer(3),Config{}},
+        {"too long PCM",validBuffer(16000*2*61),Config{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			c := &fakeRecognizer{err: errors.New("should not open")}
