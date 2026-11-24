@@ -18,6 +18,9 @@ import (
 )
 
 func duplexResponse(event uint32, session string, kind byte, payload []byte) []byte {
+	if event == duplexConnectionStarted && session == "" {
+		session = "mock-connection"
+	}
 	size := 12 + len(payload)
 	if session != "" {
 		size += 4 + len(session)
