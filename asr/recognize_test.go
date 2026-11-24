@@ -55,7 +55,7 @@ func (s *fakeShortStream) Recv(ctx context.Context)(Event,error){
    return e,nil
  }
 }
-func (s *fakeShortStream) Close()error{s.once.Do(func(){close(s.done)});return nil}
+func (s *fakeShortStream) Close()error{s.once.Do(func(){s.mu.Lock();s.closed=true;s.mu.Unlock();close(s.done)});return nil}
 func validBuffer(size int) audio.Buffer {
  return audio.Buffer{Data:[]byte(strings.Repeat("a",size)),Format:audio.Format{Encoding:audio.EncodingPCM16LE,SampleRate:16000,Channels:1}}
 }
