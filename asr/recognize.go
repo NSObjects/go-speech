@@ -123,6 +123,13 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
+	// Preserve the real receive failure when closing the socket causes
+	// the sender to observe only ErrStreamClosed.
+	if recvErr != nil && !errors.Is(recvErr, ErrStreamClosed) {
+		if sendErr == nil || errors.Is(sendErr, ErrStreamClosed) || errors.Is(sendErr, context.Canceled) {
+			return Result{}, recvErr
+		}
+	}
 	if sendErr != nil {
 		return Result{}, sendErr
 	}
