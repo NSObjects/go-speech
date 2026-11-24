@@ -41,8 +41,7 @@ func run() error {
 			NeedVAD: true,
 		},
 		"aliyun": speech.AliyunASR{
-			APIKey:   os.Getenv("DASHSCOPE_API_KEY"),
-			Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+			APIKey: os.Getenv("DASHSCOPE_API_KEY"),
 		},
 		"volcengine": speech.VolcengineASR{APIKey: os.Getenv("VOLCENGINE_API_KEY")},
 	}

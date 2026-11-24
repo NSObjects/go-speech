@@ -19,6 +19,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const DefaultEndpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+
 const (
 	defaultStartTimeout = 15 * time.Second
 	defaultWriteTimeout = 10 * time.Second
@@ -26,9 +28,9 @@ const (
 
 var _ asr.StreamRecognizer = (*Client)(nil)
 
-// Config provides the Alibaba-specific settings. Endpoint is the full WebSocket
-// URL ending in /api-ws/v1/inference. Insecure ws is only allowed on loopback
-// for tests. Each OpenStream creates a separate WebSocket connection.
+// Config provides Alibaba-specific settings. Endpoint is optional and defaults
+// to the China DashScope WebSocket URL. Override it for other regions or
+// workspace-specific endpoints. Each OpenStream creates a WebSocket connection.
 type Config struct {
 	Endpoint             string
 	APIKey               string
@@ -49,8 +51,11 @@ type Config struct {
 type Client struct{ cfg Config }
 
 func New(cfg Config) (*Client, error) {
-	if strings.TrimSpace(cfg.APIKey) == "" || strings.TrimSpace(cfg.Endpoint) == "" {
-		return nil, badArgument("APIKey and Endpoint are required")
+	if strings.TrimSpace(cfg.APIKey) == "" {
+		return nil, badArgument("APIKey is required")
+	}
+	if cfg.Endpoint == "" {
+		cfg.Endpoint = DefaultEndpoint
 	}
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {

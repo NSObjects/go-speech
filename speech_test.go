@@ -30,11 +30,8 @@ func TestNewASRSupportedProviders(t *testing.T) {
 			},
 		},
 		{
-			name: "Aliyun value",
-			config: speech.AliyunASR{
-				APIKey:   "test-api-key",
-				Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-			},
+			name: "Aliyun value with default endpoint",
+			config: speech.AliyunASR{APIKey: "test-api-key"},
 		},
 		{
 			name: "Aliyun pointer",
@@ -107,7 +104,7 @@ func TestNewASRRejectsNilConfig(t *testing.T) {
 func TestNewASRPreservesProviderErrors(t *testing.T) {
 	for _, cfg := range []speech.ASRConfig{
 		speech.TencentASR{AppID: "not-a-number", SecretID: "id", SecretKey: "secret"},
-		speech.AliyunASR{APIKey: "key"}, // Endpoint required by existing adapter.
+		speech.AliyunASR{},                // APIKey required by adapter.
 		speech.VolcengineASR{},          // APIKey required by existing adapter.
 	} {
 		client, err := speech.NewASR(cfg)

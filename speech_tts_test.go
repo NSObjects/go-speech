@@ -24,10 +24,8 @@ func TestNewTTSSupportedProviders(t *testing.T) {
 			&speech.TencentTTS{AppID: "123456", SecretID: "test-id", SecretKey: "test-key"},
 		},
 		{
-			"Aliyun value",
-			speech.AliyunTTS{
-				APIKey: "test-key", Endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-			},
+			"Aliyun value with default endpoint",
+			speech.AliyunTTS{APIKey: "test-key"},
 		},
 		{
 			"Aliyun pointer",
@@ -87,7 +85,7 @@ func TestNewTTSVariableSelectionAndNil(t *testing.T) {
 func TestNewTTSProviderValidationErrors(t *testing.T) {
 	for _, config := range []speech.TTSConfig{
 		speech.TencentTTS{AppID: "not-numeric", SecretID: "test", SecretKey: "test"},
-		speech.AliyunTTS{APIKey: "key"},
+		speech.AliyunTTS{},
 		speech.VolcengineTTS{},
 	} {
 		client, err := speech.NewTTS(config)
