@@ -9,6 +9,7 @@ import (
 
 	speech "github.com/NSObjects/go-speech"
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/audio"
 )
 
 func TestNewASRSupportedProviders(t *testing.T) {
@@ -65,6 +66,12 @@ func TestNewASRSupportedProviders(t *testing.T) {
 			if _, err := recognizer.OpenStream(ctx, asr.Config{}); !errors.Is(err, context.Canceled) {
 				t.Fatalf("OpenStream with canceled context: got %v", err)
 			}
+            if _, err := recognizer.Recognize(ctx, audio.Buffer{
+                Data: []byte{0, 0},
+                Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+            }, asr.Config{}); !errors.Is(err, context.Canceled) {
+                t.Fatalf("Recognize with canceled context: got %v", err)
+            }
 		})
 	}
 }
