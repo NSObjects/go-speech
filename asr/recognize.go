@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/NSObjects/go-speech/audio"
 )
@@ -15,6 +16,8 @@ import (
 const MaxShortAudioBytes = 16 << 20
 
 const shortAudioChunkBytes = 32 << 10
+const shortAudioPCMFrame = 40 * time.Millisecond
+const maxShortAudioDuration = 60 * time.Second
 
 var ErrInvalidShortAudio = errors.New("asr: invalid short audio")
 
@@ -35,6 +38,20 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 		return Result{}, fmt.Errorf("%w: config format differs from input format", ErrInvalidShortAudio)
 	}
 	cfg.Format = input.Format
+    chunkSize := shortAudioChunkBytes
+    if input.Format.Encoding == audio.EncodingPCM16LE {
+        frameBytes := input.Format.Channels * 2
+        if len(input.Data)%frameBytes != 0 {
+            return Result{}, fmt.Errorf("%w: incomplete PCM frame", ErrInvalidShortAudio)
+        }
+        frameCount := len(input.Data)/frameBytes
+        if int64(frameCount) > int64(input.Format.SampleRate)*int64(maxShortAudioDuration/time.Second) {
+            return Result{}, fmt.Errorf("%w: PCM exceeds 60 seconds", ErrInvalidShortAudio)
+        }
+        chunkSize = input.Format.SampleRate * frameBytes / 25 // 40 ms PCM frames
+        if chunkSize == 0 { return Result{}, fmt.Errorf("%w: invalid PCM sample rate", ErrInvalidShortAudio) }
+        chunkSize = max(chunkSize/frameBytes, 1)*frameBytes
+    }
 
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -46,21 +63,28 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 
 	sent := make(chan error, 1)
 	go func() {
-		var sendErr error
-		for offset := 0; offset < len(input.Data); offset += shortAudioChunkBytes {
-			end := min(offset+shortAudioChunkBytes, len(input.Data))
-			if sendErr = stream.Send(sessionCtx, input.Data[offset:end]); sendErr != nil {
-				break
-			}
-		}
-		if sendErr == nil {
-			sendErr = stream.CloseSend(sessionCtx)
-		}
-		if sendErr != nil {
-			_ = stream.Close()
-		}
-		sent <- sendErr
-	}()
+        var sendErr error
+        var ticker *time.Ticker
+        if input.Format.Encoding == audio.EncodingPCM16LE {
+            ticker = time.NewTicker(shortAudioPCMFrame)
+            defer ticker.Stop()
+        }
+        for offset := 0; offset < len(input.Data); offset += chunkSize {
+            end := min(offset+chunkSize, len(input.Data))
+            if sendErr = stream.Send(sessionCtx, input.Data[offset:end]); sendErr != nil { break }
+            if ticker != nil {
+                select {
+                case <-ticker.C:
+                case <-sessionCtx.Done():
+                    sendErr = sessionCtx.Err()
+                }
+                if sendErr != nil { break }
+            }
+        }
+        if sendErr == nil { sendErr = stream.CloseSend(sessionCtx) }
+        if sendErr != nil { _ = stream.Close() }
+        sent <- sendErr
+    }()
 
 	var parts []string
 	var lang string
