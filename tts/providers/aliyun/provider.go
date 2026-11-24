@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	DefaultEndpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
 	ModelCosyVoiceV3Flash = "cosyvoice-v3-flash"
 	defaultStartTimeout   = 15 * time.Second
 	defaultWriteTimeout   = 10 * time.Second
@@ -36,8 +37,8 @@ var (
 	_ tts.StreamSynthesizer = (*Client)(nil)
 )
 
-// Config holds credentials and transport settings. Endpoint must be the
-// region/workspace-specific wss://.../api-ws/v1/inference endpoint.
+// Config holds credentials and transport settings. Endpoint defaults to the
+// China DashScope URL; override it for another region or workspace-specific URL.
 // Models and voice identifiers are supplied by Alibaba Cloud, not remapped.
 type Config struct {
 	APIKey       string
@@ -51,8 +52,11 @@ type Config struct {
 type Client struct{ cfg Config }
 
 func New(cfg Config) (*Client, error) {
-	if strings.TrimSpace(cfg.APIKey) == "" || strings.TrimSpace(cfg.Endpoint) == "" {
-		return nil, invalid("APIKey and Endpoint are required")
+	if strings.TrimSpace(cfg.APIKey) == "" {
+		return nil, invalid("APIKey is required")
+	}
+	if cfg.Endpoint == "" {
+		cfg.Endpoint = DefaultEndpoint
 	}
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
