@@ -205,6 +205,9 @@ func (s *duplexStream) send(ctx context.Context, event uint32, body []byte) erro
 	if event == duplexStartConnection {
 		session = ""
 	}
+	if len(body) == 0 {
+		body = []byte("{}")
+	}
 	frame, err := encodeDuplexEvent(event, session, body)
 	if err != nil {
 		return err
@@ -291,6 +294,7 @@ func (s *duplexStream) initialize(ctx context.Context, timeout time.Duration) er
 	}
 	body, err := json.Marshal(map[string]any{
 		"event": duplexStartSession,
+		"namespace": "BidirectionalTTS",
 		"req_params": map[string]any{
 			"speaker":      s.voice,
 			"audio_params": map[string]any{"format": s.encoding, "sample_rate": s.format.SampleRate},
