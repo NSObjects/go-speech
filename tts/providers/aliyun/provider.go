@@ -36,6 +36,7 @@ const (
 var (
 	_ tts.Synthesizer       = (*Client)(nil)
 	_ tts.StreamSynthesizer = (*Client)(nil)
+	_ tts.DuplexSynthesizer = (*Client)(nil)
 )
 
 // Config holds credentials and transport settings. Endpoint defaults to the
@@ -186,6 +187,53 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	return stream, nil
 }
 
+// OpenDuplex opens a CosyVoice session for incremental text input.
+func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.DuplexStream, error) {
+	if c == nil {
+		return nil, invalid("nil client")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	req, encoding, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format})
+	if err != nil {
+		return nil, err
+	}
+	taskID, err := taskID()
+	if err != nil {
+		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "task_id", Err: err}
+	}
+	dialer := *websocket.DefaultDialer
+	if c.cfg.Dialer != nil {
+		dialer = *c.cfg.Dialer
+	}
+	if dialer.HandshakeTimeout == 0 {
+		dialer.HandshakeTimeout = c.cfg.StartTimeout
+	}
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	if c.cfg.WorkspaceID != "" {
+		headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
+	}
+	conn, response, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
+	if err != nil {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, dialFailure(err, response)
+	}
+	conn.SetReadLimit(8 << 20)
+	stream := newStream(conn, ctx, taskID, req.Format)
+	if err := stream.startSession(ctx, c.cfg.Model, req, encoding, c.cfg.StartTimeout); err != nil {
+		_ = stream.Close()
+		return nil, err
+	}
+	return stream, nil
+}
+
 // Synthesize collects the same streaming synthesis into a complete buffer.
 // The 64 MiB cap prevents accidental unbounded memory usage by batch callers.
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
@@ -286,7 +334,7 @@ func classifyTaskFailure(header serverHeader) error {
 	return &speecherr.Error{
 		Code: code, Provider: "aliyun", Operation: "task", RemoteCode: header.ErrorCode,
 		Retryable: retryable,
-		Err: fmt.Errorf("remote task %s: %s", header.ErrorCode, header.ErrorMessage),
+		Err:       fmt.Errorf("remote task %s: %s", header.ErrorCode, header.ErrorMessage),
 	}
 }
 

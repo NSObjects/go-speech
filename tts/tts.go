@@ -14,6 +14,12 @@ import (
 // Check with errors.Is(err, tts.ErrStreamClosed) regardless of the provider.
 var ErrStreamClosed = errors.New("tts: stream closed")
 
+// ErrInputClosed indicates text input has already ended.
+var ErrInputClosed = errors.New("tts: text input closed")
+
+// ErrDuplexUnsupported indicates a provider has no incremental-text implementation.
+var ErrDuplexUnsupported = errors.New("tts: duplex synthesis unsupported")
+
 // Request describes one complete text-to-speech synthesis.
 //
 // Voice is always a provider-specific voice identifier: it is not translated
