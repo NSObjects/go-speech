@@ -20,11 +20,11 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: |
-          gofmt -w asr/recognize.go asr/recognize_test.go asr/asr.go speech.go asr/providers/aliyun/recognize.go asr/providers/volcengine/recognize.go asr/providers/tencent/recognize.go
+          gofmt -w asr/recognize.go asr/recognize_test.go asr/asr.go speech.go speech_test.go asr/providers/aliyun/recognize.go asr/providers/volcengine/recognize.go asr/providers/tencent/recognize.go
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add asr/recognize.go asr/recognize_test.go asr/asr.go speech.go asr/providers/aliyun/recognize.go asr/providers/volcengine/recognize.go asr/providers/tencent/recognize.go
+            git add asr/recognize.go asr/recognize_test.go asr/asr.go speech.go speech_test.go asr/providers/aliyun/recognize.go asr/providers/volcengine/recognize.go asr/providers/tencent/recognize.go
             git commit -m "style(asr): gofmt short-audio implementation"
             git push origin HEAD:feat/asr-short-audio-recognize
           fi
