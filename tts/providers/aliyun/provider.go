@@ -23,8 +23,9 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const DefaultEndpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+
 const (
-	DefaultEndpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
 	ModelCosyVoiceV3Flash = "cosyvoice-v3-flash"
 	defaultStartTimeout   = 15 * time.Second
 	defaultWriteTimeout   = 10 * time.Second
