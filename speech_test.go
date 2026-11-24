@@ -9,6 +9,7 @@ import (
 
 	speech "github.com/NSObjects/go-speech"
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/audio"
 )
 
 func TestNewASRSupportedProviders(t *testing.T) {
@@ -30,7 +31,7 @@ func TestNewASRSupportedProviders(t *testing.T) {
 			},
 		},
 		{
-			name: "Aliyun value with default endpoint",
+			name:   "Aliyun value with default endpoint",
 			config: speech.AliyunASR{APIKey: "test-api-key"},
 		},
 		{
@@ -64,6 +65,12 @@ func TestNewASRSupportedProviders(t *testing.T) {
 			cancel()
 			if _, err := recognizer.OpenStream(ctx, asr.Config{}); !errors.Is(err, context.Canceled) {
 				t.Fatalf("OpenStream with canceled context: got %v", err)
+			}
+			if _, err := recognizer.Recognize(ctx, audio.Buffer{
+				Data:   []byte{0, 0},
+				Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+			}, asr.Config{}); !errors.Is(err, context.Canceled) {
+				t.Fatalf("Recognize with canceled context: got %v", err)
 			}
 		})
 	}
@@ -104,8 +111,8 @@ func TestNewASRRejectsNilConfig(t *testing.T) {
 func TestNewASRPreservesProviderErrors(t *testing.T) {
 	for _, cfg := range []speech.ASRConfig{
 		speech.TencentASR{AppID: "not-a-number", SecretID: "id", SecretKey: "secret"},
-		speech.AliyunASR{},                // APIKey required by adapter.
-		speech.VolcengineASR{},          // APIKey required by existing adapter.
+		speech.AliyunASR{},     // APIKey required by adapter.
+		speech.VolcengineASR{}, // APIKey required by existing adapter.
 	} {
 		client, err := speech.NewASR(cfg)
 		if err == nil || client != nil {

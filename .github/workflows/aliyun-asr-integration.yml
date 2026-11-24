@@ -82,6 +82,9 @@ jobs:
       - name: Live ASR task, audio, and final transcript
         run: go test -tags=integration -run '^TestAliyunLiveASR$' -count=1 -v -timeout 3m ./asr/providers/aliyun
 
+      - name: Short-audio Recognize (complete PCM input and final text)
+        run: go test -tags=integration -run '^TestAliyunLiveShortRecognize$' -count=1 -v -timeout 2m ./asr/providers/aliyun
+
       - name: Ogg Opus passthrough and raw Opus to Ogg remux (no transcoding)
         if: matrix.model == 'fun-asr-realtime'
         run: go test -tags=integration -run '^TestAliyunLiveOggPassthroughAndRemux$' -count=1 -v -timeout 4m ./asr/providers/aliyun

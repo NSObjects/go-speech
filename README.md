@@ -10,9 +10,9 @@
 
 | 厂商 | ASR | TTS |
 | --- | --- | --- |
-| 阿里云 | 流式识别 | 一次性合成、流式合成（CosyVoice） |
-| 火山引擎 | 流式识别 | 一次性合成、流式合成（Seed TTS） |
-| 腾讯云 | 流式识别 | 一次性合成、流式合成（WebSocket v2） |
+| 阿里云 | 短音频识别、流式识别 | 一次性合成、流式合成（CosyVoice） |
+| 火山引擎 | 短音频识别、流式识别 | 一次性合成、流式合成（Seed TTS） |
+| 腾讯云 | 短音频识别、流式识别 | 一次性合成、流式合成（WebSocket v2） |
 
 
 ## 安装
@@ -85,6 +85,31 @@ _ = result.Data // 完整音频字节
 
 ```bash
 ffmpeg -i input.wav -f s16le -acodec pcm_s16le -ac 1 -ar 16000 speech.pcm
+```
+
+直接识别完整短音频：
+
+```go
+client, err := speech.NewASR(speech.VolcengineASR{APIKey: apiKey})
+if err != nil {
+    return err
+}
+
+pcm, err := os.ReadFile("speech.pcm")
+if err != nil {
+    return err
+}
+
+result, err := client.Recognize(ctx, audio.Buffer{
+    Data: pcm,
+    Format: audio.Format{
+        Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1,
+    },
+}, asr.Config{})
+if err != nil {
+    return err
+}
+fmt.Println(result.Text)
 ```
 
 运行流式识别示例：

@@ -27,6 +27,12 @@ type Recognizer interface {
 	Recognize(ctx context.Context, input audio.Buffer, cfg Config) (Result, error)
 }
 
+// Client supports both whole-buffer and live streaming recognition.
+type Client interface {
+	Recognizer
+	StreamRecognizer
+}
+
 // StreamRecognizer opens streaming ASR sessions.
 type StreamRecognizer interface {
 	OpenStream(ctx context.Context, cfg Config) (Stream, error)
