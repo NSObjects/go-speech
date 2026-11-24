@@ -25,7 +25,6 @@ to match `asr.Config.Format`; the adapter does not resample or transcode.
 ```go
 client, err := aliyun.New(aliyun.Config{
     APIKey: os.Getenv("DASHSCOPE_API_KEY"),
-    Endpoint: os.Getenv("DASHSCOPE_WS_ENDPOINT"), // full wss://.../api-ws/v1/inference
     Model: aliyun.ModelQwenAudio31Streaming,
 })
 if err != nil { return err }
@@ -43,7 +42,7 @@ For Qwen-Audio 3.1 Message, set `IntermediateResults: true` to receive partial
 transcripts; it defaults to final results only. For children's conversations,
 leave `DisfluencyRemoval` disabled by default to preserve the original speech.
 
-Use a workspace-specific endpoint when possible. Keys stay on the backend.
+The default endpoint is the China DashScope service. Set `Endpoint` to the corresponding regional or workspace-specific URL when needed. Keys stay on the backend.
 Use `DASHSCOPE_API_KEY` from the environment; never commit credentials.
 
 See [official realtime ASR guide](https://help.aliyun.com/zh/model-studio/real-time-speech-recognition-user-guide).
