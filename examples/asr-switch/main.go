@@ -41,8 +41,8 @@ func run() error {
 			NeedVAD: true,
 		},
 		"aliyun": speech.AliyunASR{
-			APIKey:   os.Getenv("DASHSCOPE_API_KEY"),
-					},
+			APIKey: os.Getenv("DASHSCOPE_API_KEY"),
+		},
 		"volcengine": speech.VolcengineASR{APIKey: os.Getenv("VOLCENGINE_API_KEY")},
 	}
 	cfg, ok := configs[os.Getenv("ASR_PROVIDER")]
