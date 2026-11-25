@@ -1,4 +1,4 @@
-package seed3
+package volcengine
 
 import (
 	"bufio"
@@ -64,8 +64,14 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 		return nil, failure(speecherr.CodeUnavailable, "request", err)
 	}
 	if response.StatusCode != http.StatusOK {
-		cancel()
+		defer cancel()
 		defer func() { _ = response.Body.Close() }()
+		raw, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		if readErr == nil {
+			if e, decodeErr := decodeEvent(raw); decodeErr == nil && e.Event == "error" {
+				return nil, e.failure()
+			}
+		}
 		return nil, httpFailure(response.StatusCode)
 	}
 	scanner := bufio.NewScanner(response.Body)

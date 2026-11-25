@@ -3,7 +3,7 @@
 //
 // Example:
 //
-//	TTS_PROVIDER=volcengine VOLCENGINE_API_KEY=... TTS_VOICE=zh_female_vv_uranus_bigtts \
+//	TTS_PROVIDER=volcengine VOLCENGINE_API_KEY=... TTS_VOICE=multi_female_tuanzi_v3_uranus_bigtts \
 //	  go run ./examples/tts-switch '你好，欢迎使用语音合成。' output.mp3
 //
 // Set TTS_MODE=batch for one-shot synthesis; streaming is the default.
@@ -46,8 +46,8 @@ func configFor(name string) (speech.TTSConfig, error) {
 		}, nil
 	case "volcengine":
 		return speech.VolcengineTTS{
-			APIKey:     os.Getenv("VOLCENGINE_API_KEY"),
-			ResourceID: os.Getenv("VOLCENGINE_TTS_RESOURCE_ID"),
+			APIKey:  os.Getenv("VOLCENGINE_API_KEY"),
+			ModelID: os.Getenv("VOLCENGINE_TTS_MODEL_ID"),
 		}, nil
 	default:
 		return nil, errors.New("TTS_PROVIDER must be aliyun, tencent or volcengine")

@@ -11,7 +11,7 @@
 | 厂商 | ASR | TTS |
 | --- | --- | --- |
 | 阿里云 | 短音频识别、流式识别 | 一次性合成、流式合成（CosyVoice） |
-| 火山引擎 | 短音频识别、流式识别 | 一次性合成、流式合成（Seed TTS） |
+| 火山引擎 | 短音频识别、流式识别 | 一次性合成、流式合成（Seed-TTS 3.0） |
 | 腾讯云 | 短音频识别、流式识别 | 一次性合成、流式合成（WebSocket v2） |
 
 
@@ -39,8 +39,8 @@ cd go-speech
 ```bash
 export TTS_PROVIDER=volcengine
 export VOLCENGINE_API_KEY="your-api-key"
-export VOLCENGINE_TTS_RESOURCE_ID="seed-tts-2.0"
-export TTS_VOICE="zh_female_vv_uranus_bigtts"
+export VOLCENGINE_TTS_MODEL_ID="doubao-seed-tts-3.0"
+export TTS_VOICE="multi_female_tuanzi_v3_uranus_bigtts"
 
 go run ./examples/tts-switch "你好，欢迎使用 go-speech。" output.mp3
 ```
@@ -55,8 +55,8 @@ TTS_MODE=batch go run ./examples/tts-switch "你好。" output.mp3
 
 ```go
 client, err := speech.NewTTS(speech.VolcengineTTS{
-    APIKey:     apiKey,
-    ResourceID: "seed-tts-2.0",
+    APIKey:  apiKey,
+    ModelID: "doubao-seed-tts-3.0",
 })
 if err != nil {
     return err
@@ -64,7 +64,7 @@ if err != nil {
 
 result, err := client.Synthesize(ctx, tts.Request{
     Text:  "你好，欢迎使用 go-speech。",
-    Voice: "zh_female_vv_uranus_bigtts",
+    Voice: "multi_female_tuanzi_v3_uranus_bigtts",
     Format: audio.Format{
         Encoding:   audio.EncodingMP3,
         SampleRate: 24000,

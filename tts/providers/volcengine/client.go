@@ -1,6 +1,6 @@
-// Package seed3 implements Volcengine Seed-TTS 3.0 using HTTP JSONL and
+// Package volcengine implements Volcengine Seed-TTS 3.0 using HTTP JSONL and
 // WebSocket JSON events. It does not train voices or transcode audio.
-package seed3
+package volcengine
 
 import (
 	"context"

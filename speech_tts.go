@@ -7,7 +7,6 @@ import (
 	aliyuntts "github.com/NSObjects/go-speech/tts/providers/aliyun"
 	tencenttts "github.com/NSObjects/go-speech/tts/providers/tencent"
 	volctts "github.com/NSObjects/go-speech/tts/providers/volcengine"
-	"github.com/NSObjects/go-speech/tts/providers/volcengine/seed3"
 )
 
 // ErrInvalidTTSConfig indicates a nil or unsupported TTS configuration.
@@ -21,16 +20,14 @@ type TTSConfig interface {
 }
 
 type (
-	TencentTTS         tencenttts.Config
-	AliyunTTS          aliyuntts.Config
-	VolcengineTTS      volctts.Config
-	VolcengineSeed3TTS seed3.Config
+	TencentTTS    tencenttts.Config
+	AliyunTTS     aliyuntts.Config
+	VolcengineTTS volctts.Config
 )
 
-func (TencentTTS) isTTSConfig()         {}
-func (AliyunTTS) isTTSConfig()          {}
-func (VolcengineTTS) isTTSConfig()      {}
-func (VolcengineSeed3TTS) isTTSConfig() {}
+func (TencentTTS) isTTSConfig()    {}
+func (AliyunTTS) isTTSConfig()     {}
+func (VolcengineTTS) isTTSConfig() {}
 
 // TTSSynthesizer is retained as an alias for the shared tts.Client.
 // New code can use tts.Client directly; both names describe the same API.
@@ -52,12 +49,6 @@ func NewTTS(cfg TTSConfig) (tts.Client, error) {
 	case *AliyunTTS:
 		if c != nil {
 			return newAliyunTTS(aliyuntts.Config(*c))
-		}
-	case VolcengineSeed3TTS:
-		return newVolcengineSeed3TTS(seed3.Config(c))
-	case *VolcengineSeed3TTS:
-		if c != nil {
-			return newVolcengineSeed3TTS(seed3.Config(*c))
 		}
 	case VolcengineTTS:
 		return newVolcengineTTS(volctts.Config(c))
@@ -87,14 +78,6 @@ func newAliyunTTS(cfg aliyuntts.Config) (tts.Client, error) {
 
 func newVolcengineTTS(cfg volctts.Config) (tts.Client, error) {
 	client, err := volctts.New(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
-}
-
-func newVolcengineSeed3TTS(cfg seed3.Config) (tts.Client, error) {
-	client, err := seed3.New(cfg)
 	if err != nil {
 		return nil, err
 	}
