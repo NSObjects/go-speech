@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -14,63 +15,71 @@ import (
 	"github.com/NSObjects/go-speech/tts"
 )
 
-// TestVolcengineLiveTTS checks true paid Seed TTS v3 audio output and
-// SessionFinished status, not ASR accuracy or device playback.
-func TestVolcengineLiveTTS(t *testing.T) {
-	key := os.Getenv("VOLCENGINE_API_KEY")
-	if key == "" {
-		t.Fatal("VOLCENGINE_API_KEY secret is required for real Seed TTS")
+func TestVolcengineLiveSeed3(t *testing.T) {
+	key, voice := os.Getenv("VOLCENGINE_API_KEY"), os.Getenv("VOLCENGINE_TTS_VOICE")
+	if key == "" || voice == "" {
+		t.Skip("set VOLCENGINE_API_KEY and authorized Seed-TTS 3.0 VOLCENGINE_TTS_VOICE")
 	}
-	resource := os.Getenv("VOLCENGINE_TTS_RESOURCE_ID")
-	if resource == "" {
-		resource = ResourceSeedTTS2
-	}
-	voice := os.Getenv("VOLCENGINE_TTS_VOICE")
-	if voice == "" {
-		voice = "zh_female_vv_uranus_bigtts"
-	}
-	client, err := New(Config{APIKey: key, ResourceID: resource})
+	c, err := New(Config{APIKey: key, ModelID: os.Getenv("VOLCENGINE_TTS_MODEL_ID"), LanguageCode: "zh"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	req := tts.Request{
-		Text: "你好，欢迎使用语音合成。",
-		Voice: voice,
-		Format: audio.Format{
-			Encoding: audio.EncodingPCM16LE, SampleRate: 24000, Channels: 1,
-		},
-	}
-	s, err := client.SynthesizeStream(ctx, req)
+	format := audio.Format{Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1}
+	out, err := c.Synthesize(ctx, tts.Request{Text: "你好，欢迎使用语音合成。", Voice: voice, Format: format})
 	if err != nil {
-		t.Fatalf("Volcengine TTS real cloud connection or text upload: %v", err)
+		t.Fatal(err)
+	}
+	verifyLiveOpus(t, out.Data)
+	s, err := c.OpenDuplex(ctx, tts.DuplexRequest{Voice: voice, Format: format})
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer s.Close()
-	start := time.Now()
-	frames, total := 0, 0
+	send := make(chan error, 1)
+	go func() {
+		if err := s.SendText(ctx, "你好，"); err != nil {
+			send <- err
+			return
+		}
+		if err := s.SendText(ctx, "今天我们来讲个故事。"); err != nil {
+			send <- err
+			return
+		}
+		send <- s.CloseSend(ctx)
+	}()
+	var data []byte
 	for {
 		chunk, err := s.Recv(ctx)
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			t.Fatalf("Volcengine TTS real audio result: %v", err)
+			t.Fatal(err)
 		}
-		if chunk.Format != req.Format || len(chunk.Data) == 0 {
-			t.Fatalf("invalid audio chunk format=%+v bytes=%d", chunk.Format, len(chunk.Data))
-		}
-		frames++
-		total += len(chunk.Data)
+		data = append(data, chunk.Data...)
 	}
-	t.Logf("Volcengine TTS resource=%s voice=%s PCM24k frames=%d bytes=%d elapsed=%s",
-		resource, voice, frames, total, time.Since(start))
-	if frames == 0 || total < 1024 || total%2 != 0 {
-		t.Fatalf("real Seed TTS produced invalid/empty PCM: frames=%d bytes=%d", frames, total)
+	if err := <-send; err != nil {
+		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
-		if _, err := s.Recv(context.Background()); !errors.Is(err, io.EOF) {
-			t.Fatalf("unstable completed stream %d: %v", i, err)
-		}
+	verifyLiveOpus(t, data)
+}
+
+func verifyLiveOpus(t *testing.T, data []byte) {
+	t.Helper()
+	if len(data) < 100 || string(data[:4]) != "OggS" {
+		t.Fatal("provider did not return Ogg Opus")
+	}
+	path := t.TempDir() + "/live.ogg"
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Fatal("ffmpeg required to verify live output")
+	}
+	cmd := exec.Command("ffmpeg", "-v", "error", "-xerror", "-i", path, "-f", "null", "-")
+	if result, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("decode failed: %s: %v", result, err)
 	}
 }

@@ -16,7 +16,7 @@ func TestConfigForThreeTTSProviders(t *testing.T) {
 	t.Setenv("TENCENT_SECRET_ID", "tencent-id")
 	t.Setenv("TENCENT_SECRET_KEY", "tencent-key")
 	t.Setenv("VOLCENGINE_API_KEY", "volc-key")
-	t.Setenv("VOLCENGINE_TTS_RESOURCE_ID", "seed-tts-2.0")
+	t.Setenv("VOLCENGINE_TTS_MODEL_ID", "doubao-seed-tts-3.0")
 
 	for _, tc := range []struct {
 		name string
@@ -40,8 +40,8 @@ func TestConfigForThreeTTSProviders(t *testing.T) {
 		{
 			"volcengine",
 			speech.VolcengineTTS{
-				APIKey: "volc-key",
-				ResourceID: "seed-tts-2.0",
+				APIKey:  "volc-key",
+				ModelID: "doubao-seed-tts-3.0",
 			},
 		},
 	} {
@@ -54,4 +54,3 @@ func TestConfigForThreeTTSProviders(t *testing.T) {
 		t.Fatalf("unknown provider: config=%v, err=%v", cfg, err)
 	}
 }
-
