@@ -40,7 +40,7 @@ cd go-speech
 export TTS_PROVIDER=volcengine
 export VOLCENGINE_API_KEY="your-api-key"
 export VOLCENGINE_TTS_MODEL_ID="doubao-seed-tts-3.0"
-export TTS_VOICE="multi_female_tuanzi_v3_uranus_bigtts"
+export TTS_VOICE="your-seed3-voice-id"
 
 go run ./examples/tts-switch "你好，欢迎使用 go-speech。" output.mp3
 ```
@@ -64,7 +64,7 @@ if err != nil {
 
 result, err := client.Synthesize(ctx, tts.Request{
     Text:  "你好，欢迎使用 go-speech。",
-    Voice: "multi_female_tuanzi_v3_uranus_bigtts",
+    Voice: "your-seed3-voice-id",
     Format: audio.Format{
         Encoding:   audio.EncodingMP3,
         SampleRate: 24000,

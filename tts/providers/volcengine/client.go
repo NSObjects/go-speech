@@ -117,9 +117,9 @@ type outputFormat struct {
 // restricted to 48000 Hz by validateOutput.
 func SupportedAudio() audio.Capability {
 	return audio.Capability{
-		Encodings: []audio.Encoding{audio.EncodingMP3, audio.EncodingPCM16LE, audio.EncodingOpus},
+		Encodings:   []audio.Encoding{audio.EncodingMP3, audio.EncodingPCM16LE, audio.EncodingOpus},
 		SampleRates: []int{8000, 16000, 22050, 24000, 32000, 44100, 48000},
-		Channels: []int{1},
+		Channels:    []int{1},
 	}
 }
 

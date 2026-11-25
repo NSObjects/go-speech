@@ -54,4 +54,3 @@ func TestConfigForThreeTTSProviders(t *testing.T) {
 		t.Fatalf("unknown provider: config=%v, err=%v", cfg, err)
 	}
 }
-

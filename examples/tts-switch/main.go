@@ -3,7 +3,7 @@
 //
 // Example:
 //
-//	TTS_PROVIDER=volcengine VOLCENGINE_API_KEY=... TTS_VOICE=multi_female_tuanzi_v3_uranus_bigtts \
+//	TTS_PROVIDER=volcengine VOLCENGINE_API_KEY=... TTS_VOICE=your-seed3-voice-id \
 //	  go run ./examples/tts-switch '你好，欢迎使用语音合成。' output.mp3
 //
 // Set TTS_MODE=batch for one-shot synthesis; streaming is the default.
@@ -148,4 +148,3 @@ func run() error {
 	fmt.Printf("TTS: %s audio written to %s (%d bytes)\n", mode, outputPath, written)
 	return nil
 }
-
