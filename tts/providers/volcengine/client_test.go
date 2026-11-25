@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,5 +217,27 @@ func TestOpusFormatAndEndpointValidation(t *testing.T) {
 		if _, err := New(Config{APIKey: fixtureKey, Endpoint: endpoint}); err == nil {
 			t.Errorf("unsafe endpoint accepted: %s", endpoint)
 		}
+	}
+}
+
+func TestHTTPProviderErrorPreservesSafeDiagnostics(t *testing.T) {
+	client := fixtureClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = fmt.Fprintln(w, `{"event":"error","error":{"type":"authorization_error","code":"voice_access_denied","message":"do-not-log-input","request_id":"fixture-request","logid":"fixture-log"}}`)
+	}))
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err := client.SynthesizeStream(ctx, tts.Request{Text: "你好", Voice: fixtureVoice})
+	var remote *speecherr.Error
+	if !errors.As(err, &remote) || remote.Code != speecherr.CodeUnauthorized || remote.RemoteCode != "voice_access_denied" {
+		t.Fatalf("provider error=%v", err)
+	}
+	for _, want := range []string{"voice_access_denied", "fixture-request", "fixture-log"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing diagnostic %s: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "do-not-log-input") {
+		t.Fatal("provider message leaked")
 	}
 }

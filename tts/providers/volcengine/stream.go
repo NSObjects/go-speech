@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -18,9 +19,11 @@ const (
 )
 
 type remoteError struct {
-	Type  string `json:"type"`
-	Code  string `json:"code"`
-	LogID string `json:"logid"`
+	Type      string `json:"type"`
+	Code      string `json:"code"`
+	RequestID string `json:"request_id"`
+	LogID     string `json:"logid"`
+	WSLogID   string `json:"log_id"`
 }
 
 type event struct {
@@ -47,9 +50,32 @@ func (e event) failure() error {
 	case "rate_limit_exceeded", "concurrent_limit_exceeded":
 		code = speecherr.CodeRateLimited
 	}
-	// Do not echo arbitrary provider messages containing input text or secrets.
-	return &speecherr.Error{Code: code, Provider: "volcengine", Operation: "seed3_receive",
-		RemoteCode: e.Error.Code}
+	// Include only bounded diagnostic identifiers, never arbitrary messages
+	// that may echo the synthesis text or credentials.
+	logID := e.Error.LogID
+	if logID == "" {
+		logID = e.Error.WSLogID
+	}
+	return &speecherr.Error{
+		Code: code, Provider: "volcengine", Operation: "seed3_receive",
+		RemoteCode: diagnosticID(e.Error.Code),
+		Err: fmt.Errorf("type=%s code=%s request_id=%s log_id=%s",
+			diagnosticID(e.Error.Type), diagnosticID(e.Error.Code),
+			diagnosticID(e.Error.RequestID), diagnosticID(logID)),
+	}
+}
+
+func diagnosticID(value string) string {
+	if len(value) == 0 || len(value) > 128 {
+		return "-"
+	}
+	for _, ch := range value {
+		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' ||
+			ch >= '0' && ch <= '9' || ch == '_' || ch == '-' || ch == '.') {
+			return "-"
+		}
+	}
+	return value
 }
 
 func decodeEvent(raw []byte) (event, error) {
