@@ -73,5 +73,7 @@ jobs:
         run: |
           test -n "$VOLCENGINE_API_KEY" || { echo "Missing VOLCENGINE_API_KEY repository secret" >&2; exit 1; }
           test -n "$VOLCENGINE_TTS_VOICE" || { echo "Set VOLCENGINE_TTS_VOICE to an authorized Seed-TTS 3.0 voice" >&2; exit 1; }
+      - name: Install FFmpeg for decoded audio validation
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Real Seed-TTS 3.0 HTTP and WebSocket synthesis
         run: go test -tags=integration -run TestVolcengineLive -count=1 -v -timeout 3m ./tts/providers/volcengine
