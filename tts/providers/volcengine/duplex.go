@@ -22,6 +22,7 @@ type clientEvent struct {
 	OutputFormat  *outputFormat  `json:"output_format,omitempty"`
 	Content       string         `json:"content,omitempty"`
 	VoiceSettings *voiceSettings `json:"voice_settings,omitempty"`
+	advancedRequest
 }
 
 type duplex struct {
@@ -55,15 +56,30 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 	if err != nil {
 		return nil, err
 	}
-	voice, err := settings(req.Options)
+	native, err := nativeOptions(req.Options)
 	if err != nil {
 		return nil, err
 	}
-	var idBytes [16]byte
-	if _, err := rand.Read(idBytes[:]); err != nil {
+	voice, err := buildVoiceSettings(req.Options, native)
+	if err != nil {
 		return nil, err
 	}
-	id := hex.EncodeToString(idBytes[:])
+	extra, err := advanced(native, &output, true)
+	if err != nil {
+		return nil, err
+	}
+	language := c.cfg.LanguageCode
+	if native.LanguageCode != "" {
+		language = native.LanguageCode
+	}
+	id := native.SessionID
+	if id == "" {
+		var idBytes [16]byte
+		if _, err := rand.Read(idBytes[:]); err != nil {
+			return nil, err
+		}
+		id = hex.EncodeToString(idBytes[:])
+	}
 	startCtx, cancel := context.WithTimeout(ctx, c.cfg.StartTimeout)
 	defer cancel()
 	dialer := *websocket.DefaultDialer
@@ -99,7 +115,8 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 	d.stream = newStream(ctx, format, next, func() { _ = conn.Close() })
 	if err := d.initialize(startCtx, clientEvent{
 		Event: "init", SessionID: id, ModelID: c.cfg.ModelID,
-		LanguageCode: c.cfg.LanguageCode, OutputFormat: &output, VoiceSettings: voice,
+		LanguageCode: language, OutputFormat: &output, VoiceSettings: voice,
+		advancedRequest: extra,
 	}); err != nil {
 		_ = d.Close()
 		return nil, err

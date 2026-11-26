@@ -15,12 +15,15 @@ import (
 )
 
 type synthesisRequest struct {
-	Text          string         `json:"text,omitempty"`
-	SSML          string         `json:"ssml,omitempty"`
-	ModelID       string         `json:"model_id"`
-	LanguageCode  string         `json:"language_code"`
-	OutputFormat  outputFormat   `json:"output_format"`
-	VoiceSettings *voiceSettings `json:"voice_settings,omitempty"`
+	Text              string         `json:"text,omitempty"`
+	SSML              string         `json:"ssml,omitempty"`
+	ModelID           string         `json:"model_id"`
+	LanguageCode      string         `json:"language_code"`
+	OutputFormat      outputFormat   `json:"output_format"`
+	VoiceSettings     *voiceSettings `json:"voice_settings,omitempty"`
+	SessionID         string         `json:"session_id,omitempty"`
+	SilenceDurationMS *float64       `json:"silence_duration,omitempty"`
+	advancedRequest
 }
 
 // SynthesizeStream sends complete text and decodes HTTP JSONL incrementally.
@@ -35,13 +38,27 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	if err != nil {
 		return nil, err
 	}
-	voice, err := settings(req.Options)
+	native, err := nativeOptions(req.Options)
 	if err != nil {
 		return nil, err
 	}
+	voice, err := buildVoiceSettings(req.Options, native)
+	if err != nil {
+		return nil, err
+	}
+	extra, err := advanced(native, &output, false)
+	if err != nil {
+		return nil, err
+	}
+	language := c.cfg.LanguageCode
+	if native.LanguageCode != "" {
+		language = native.LanguageCode
+	}
 	body := synthesisRequest{
 		VoiceSettings: voice,
-		ModelID: c.cfg.ModelID, LanguageCode: c.cfg.LanguageCode, OutputFormat: output,
+		ModelID: c.cfg.ModelID, LanguageCode: language, OutputFormat: output,
+		SessionID: native.SessionID, SilenceDurationMS: native.SilenceDurationMS,
+		advancedRequest: extra,
 	}
 	switch req.TextFormat {
 	case "", tts.TextPlain, tts.TextInlineTag:
