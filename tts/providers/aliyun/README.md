@@ -100,3 +100,7 @@ Opus decoders use a 48 kHz decoding/granule timeline even if the synthesis
 request was for 24 kHz. In the integration test `ffprobe` checks the actual
 `opus` codec and mono channel count; `ffmpeg` checks that the complete
 stream decodes correctly. Opus is not re-encoded or remuxed by the SDK.
+
+## Native advanced request options
+
+Set `tts.Options.Provider` to `aliyun.Options` to configure `BitRateKbps` (MP3/Opus), `LanguageHint` (one native language code), Markdown filtering and AIGC metadata. AIGC tagging is restricted to documented models and WAV/MP3/Opus. These options also apply to duplex input. Word timestamps are not enabled until the SDK exposes alignment events. See the official client-event documentation for model and voice restrictions.

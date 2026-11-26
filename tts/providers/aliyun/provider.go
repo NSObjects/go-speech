@@ -162,6 +162,9 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	if err != nil {
 		return nil, err
 	}
+	if err := validateVoiceOptions(req, c.cfg.Model); err != nil {
+		return nil, err
+	}
 	taskID, err := taskID()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "task_id", Err: err}
@@ -210,6 +213,9 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 	}
 	req, encoding, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options})
 	if err != nil {
+		return nil, err
+	}
+	if err := validateVoiceOptions(req, c.cfg.Model); err != nil {
 		return nil, err
 	}
 	taskID, err := taskID()
