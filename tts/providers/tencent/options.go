@@ -1,10 +1,12 @@
 package tencent
 
 import (
+	"errors"
 	"math"
 	"net/url"
 	"strconv"
 
+	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 )
 
@@ -35,7 +37,7 @@ func voiceQuery(o tts.Options) (url.Values, error) {
 		return nil, invalid("provider options do not belong to tencent")
 	}
 	if o.Speed != nil || o.Instruction != "" {
-		return nil, unsupported("use native Tencent speed; natural-language instruction is unsupported")
+		return nil, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "tts", Err: errors.New("use native Tencent speed; natural-language instruction is unsupported")}
 	}
 	q := make(url.Values)
 	if v := native.Speed; v != nil {
