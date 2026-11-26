@@ -43,6 +43,13 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 	if c == nil {
 		return nil, invalid("nil client")
 	}
+	switch req.TextFormat {
+	case "", tts.TextPlain, tts.TextInlineTag:
+	case tts.TextSSML:
+		return nil, failure(speecherr.CodeUnsupported, "validate", tts.ErrUnsupportedTextFormat)
+	default:
+		return nil, invalid("unknown text format")
+	}
 	format, output, err := validateOutput(req.Voice, req.Format)
 	if err != nil {
 		return nil, err

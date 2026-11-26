@@ -151,6 +151,9 @@ func (s *Stream) startSession(ctx context.Context, model string, req tts.Request
 		"text_type": "PlainText", "voice": req.Voice,
 		"format": encoding, "sample_rate": req.Format.SampleRate,
 	}
+	if req.TextFormat == tts.TextSSML {
+		params["enable_ssml"] = true
+	}
 	start := command("run-task", s.taskID, map[string]any{
 		"task_group": "audio", "task": "tts", "function": "SpeechSynthesizer",
 		"model": model, "parameters": params, "input": map[string]any{},

@@ -100,6 +100,13 @@ func SupportedAudio() audio.Capability {
 }
 
 func validateRequest(req tts.Request) (tts.Request, string, error) {
+	switch req.TextFormat {
+	case "", tts.TextPlain:
+	case tts.TextSSML, tts.TextInlineTag:
+		return req, "", &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "tts", Err: tts.ErrUnsupportedTextFormat}
+	default:
+		return req, "", invalid("unknown text format")
+	}
 	if !utf8.ValidString(req.Text) || strings.TrimSpace(req.Text) == "" ||
 		utf8.RuneCountInString(req.Text) > maxTextRunes {
 		return req, "", invalid("Text must contain 1–10000 valid UTF-8 characters")
@@ -220,7 +227,7 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, codec, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format})
+	req, codec, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat})
 	if err != nil {
 		return nil, err
 	}

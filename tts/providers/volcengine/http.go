@@ -15,7 +15,8 @@ import (
 )
 
 type synthesisRequest struct {
-	Text         string       `json:"text"`
+	Text         string       `json:"text,omitempty"`
+	SSML         string       `json:"ssml,omitempty"`
 	ModelID      string       `json:"model_id"`
 	LanguageCode string       `json:"language_code"`
 	OutputFormat outputFormat `json:"output_format"`
@@ -33,9 +34,18 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	if err != nil {
 		return nil, err
 	}
-	data, err := json.Marshal(synthesisRequest{
-		Text: req.Text, ModelID: c.cfg.ModelID, LanguageCode: c.cfg.LanguageCode, OutputFormat: output,
-	})
+	body := synthesisRequest{
+		ModelID: c.cfg.ModelID, LanguageCode: c.cfg.LanguageCode, OutputFormat: output,
+	}
+	switch req.TextFormat {
+	case "", tts.TextPlain, tts.TextInlineTag:
+		body.Text = req.Text
+	case tts.TextSSML:
+		body.SSML = req.Text
+	default:
+		return nil, invalid("unknown text format")
+	}
+	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
