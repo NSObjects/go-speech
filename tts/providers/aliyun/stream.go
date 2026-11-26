@@ -151,6 +151,13 @@ func (s *Stream) startSession(ctx context.Context, model string, req tts.Request
 		"text_type": "PlainText", "voice": req.Voice,
 		"format": encoding, "sample_rate": req.Format.SampleRate,
 	}
+	voice, err := voiceParameters(req.Options)
+	if err != nil {
+		return err
+	}
+	for key, value := range voice {
+		params[key] = value
+	}
 	if req.TextFormat == tts.TextSSML {
 		params["enable_ssml"] = true
 	}

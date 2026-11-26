@@ -32,6 +32,7 @@ type Request struct {
 	Voice      string
 	Format     audio.Format
 	TextFormat TextFormat
+	Options    Options
 }
 
 // Synthesizer performs one-shot text-to-speech synthesis, returning the full

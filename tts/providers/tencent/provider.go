@@ -157,6 +157,13 @@ func signedEndpoint(cfg Config, req tts.Request, codec, sessionID string, now ti
 		"Codec":      {codec},
 		"SampleRate": {strconv.Itoa(req.Format.SampleRate)},
 	}
+	voice, err := voiceQuery(req.Options)
+	if err != nil {
+		return "", err
+	}
+	for key, values := range voice {
+		q[key] = values
+	}
 	keys := make([]string, 0, len(q))
 	for k := range q {
 		keys = append(keys, k)
@@ -227,7 +234,7 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, codec, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat})
+	req, codec, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options})
 	if err != nil {
 		return nil, err
 	}

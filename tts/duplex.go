@@ -12,6 +12,7 @@ type DuplexRequest struct {
 	Voice      string
 	Format     audio.Format
 	TextFormat TextFormat
+	Options    Options
 }
 
 // DuplexSynthesizer opens a session that accepts incremental text while

@@ -15,11 +15,12 @@ import (
 )
 
 type synthesisRequest struct {
-	Text         string       `json:"text,omitempty"`
-	SSML         string       `json:"ssml,omitempty"`
-	ModelID      string       `json:"model_id"`
-	LanguageCode string       `json:"language_code"`
-	OutputFormat outputFormat `json:"output_format"`
+	Text          string         `json:"text,omitempty"`
+	SSML          string         `json:"ssml,omitempty"`
+	ModelID       string         `json:"model_id"`
+	LanguageCode  string         `json:"language_code"`
+	OutputFormat  outputFormat   `json:"output_format"`
+	VoiceSettings *voiceSettings `json:"voice_settings,omitempty"`
 }
 
 // SynthesizeStream sends complete text and decodes HTTP JSONL incrementally.
@@ -34,7 +35,12 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	if err != nil {
 		return nil, err
 	}
+	voice, err := settings(req.Options)
+	if err != nil {
+		return nil, err
+	}
 	body := synthesisRequest{
+		VoiceSettings: voice,
 		ModelID: c.cfg.ModelID, LanguageCode: c.cfg.LanguageCode, OutputFormat: output,
 	}
 	switch req.TextFormat {
