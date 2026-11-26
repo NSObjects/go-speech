@@ -15,12 +15,13 @@ import (
 )
 
 type clientEvent struct {
-	Event        string        `json:"event"`
-	SessionID    string        `json:"session_id,omitempty"`
-	ModelID      string        `json:"model_id,omitempty"`
-	LanguageCode string        `json:"language_code,omitempty"`
-	OutputFormat *outputFormat `json:"output_format,omitempty"`
-	Content      string        `json:"content,omitempty"`
+	Event         string         `json:"event"`
+	SessionID     string         `json:"session_id,omitempty"`
+	ModelID       string         `json:"model_id,omitempty"`
+	LanguageCode  string         `json:"language_code,omitempty"`
+	OutputFormat  *outputFormat  `json:"output_format,omitempty"`
+	Content       string         `json:"content,omitempty"`
+	VoiceSettings *voiceSettings `json:"voice_settings,omitempty"`
 }
 
 type duplex struct {
@@ -51,6 +52,10 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 		return nil, invalid("unknown text format")
 	}
 	format, output, err := validateOutput(req.Voice, req.Format)
+	if err != nil {
+		return nil, err
+	}
+	voice, err := settings(req.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +99,7 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 	d.stream = newStream(ctx, format, next, func() { _ = conn.Close() })
 	if err := d.initialize(startCtx, clientEvent{
 		Event: "init", SessionID: id, ModelID: c.cfg.ModelID,
-		LanguageCode: c.cfg.LanguageCode, OutputFormat: &output,
+		LanguageCode: c.cfg.LanguageCode, OutputFormat: &output, VoiceSettings: voice,
 	}); err != nil {
 		_ = d.Close()
 		return nil, err

@@ -106,6 +106,9 @@ func SupportedAudio() audio.Capability {
 }
 
 func validateRequest(req tts.Request) (tts.Request, string, error) {
+	if _, err := voiceParameters(req.Options); err != nil {
+		return req, "", err
+	}
 	switch req.TextFormat {
 	case "", tts.TextPlain, tts.TextSSML:
 	case tts.TextInlineTag:
@@ -205,7 +208,7 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 	if cfg.TextFormat == tts.TextSSML {
 		return nil, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "aliyun", Operation: "tts", Err: tts.ErrUnsupportedTextFormat}
 	}
-	req, encoding, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat})
+	req, encoding, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options})
 	if err != nil {
 		return nil, err
 	}
