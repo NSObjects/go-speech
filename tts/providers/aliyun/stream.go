@@ -34,9 +34,18 @@ type Stream struct {
 	finished    bool
 	audioSeen   bool
 	terminalErr error
+	receiveMode uint8
 }
 
-var _ tts.Stream = (*Stream)(nil)
+var (
+	_ tts.Stream        = (*Stream)(nil)
+	_ tts.EventReceiver = (*Stream)(nil)
+)
+
+const (
+	receiveAudio uint8 = iota + 1
+	receiveEvents
+)
 
 func newStream(conn *websocket.Conn, ctx context.Context, id string, format audio.Format) *Stream {
 	s := &Stream{conn: conn, parent: ctx, taskID: id, format: format, done: make(chan struct{})}
@@ -273,21 +282,52 @@ func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
+	if s.receiveMode == receiveEvents {
+		return audio.Chunk{}, tts.ErrReceiveMode
+	}
+	s.receiveMode = receiveAudio
+	for {
+		e, err := s.recvEvent(ctx)
+		if err != nil {
+			return audio.Chunk{}, err
+		}
+		if e.Type == tts.EventAudio {
+			return *e.Audio, nil
+		}
+	}
+}
+
+// RecvEvent exposes audio and native alignment events in wire order.
+func (s *Stream) RecvEvent(ctx context.Context) (tts.Event, error) {
+	if s == nil {
+		return tts.Event{}, tts.ErrStreamClosed
+	}
+	s.readMu.Lock()
+	defer s.readMu.Unlock()
+	if s.receiveMode == receiveAudio {
+		return tts.Event{}, tts.ErrReceiveMode
+	}
+	s.receiveMode = receiveEvents
+	return s.recvEvent(ctx)
+}
+
+// recvEvent is the sole protocol reader; readMu must be held.
+func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 	if s.finished {
-		return audio.Chunk{}, io.EOF
+		return tts.Event{}, io.EOF
 	}
 	if s.terminalErr != nil {
-		return audio.Chunk{}, s.terminalErr
+		return tts.Event{}, s.terminalErr
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return audio.Chunk{}, s.fail(err)
+			return tts.Event{}, s.fail(err)
 		}
 		if err := s.parent.Err(); err != nil {
-			return audio.Chunk{}, s.fail(err)
+			return tts.Event{}, s.fail(err)
 		}
 		if s.closed() {
-			return audio.Chunk{}, s.fail(s.closeError(ctx))
+			return tts.Event{}, s.fail(s.closeError(ctx))
 		}
 		stop := context.AfterFunc(ctx, func() { _ = s.Close() })
 		deadline := time.Time{}
@@ -296,41 +336,50 @@ func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 		}
 		if err := s.conn.SetReadDeadline(deadline); err != nil {
 			stop()
-			return audio.Chunk{}, s.fail(s.networkError(ctx, "recv", err))
+			return tts.Event{}, s.fail(s.networkError(ctx, "recv", err))
 		}
 		typ, data, err := s.conn.ReadMessage()
 		stop()
 		if err != nil {
-			return audio.Chunk{}, s.fail(s.networkError(ctx, "recv", err))
+			return tts.Event{}, s.fail(s.networkError(ctx, "recv", err))
 		}
 		switch typ {
 		case websocket.BinaryMessage:
 			if len(data) != 0 {
 				s.audioSeen = true
-				return audio.Chunk{Data: data, Format: s.format}, nil
+				return tts.Event{Type: tts.EventAudio, Audio: &audio.Chunk{Data: data, Format: s.format}}, nil
 			}
 		case websocket.TextMessage:
 			ev, err := decodeEvent(data, s.taskID)
 			if err != nil {
-				return audio.Chunk{}, s.fail(err)
+				return tts.Event{}, s.fail(err)
 			}
 			switch ev.Event {
 			case "task-failed":
-				return audio.Chunk{}, s.fail(classifyTaskFailure(ev))
+				return tts.Event{}, s.fail(classifyTaskFailure(ev))
 			case "task-finished":
 				if !s.audioSeen {
-					return audio.Chunk{}, s.fail(protocol("synthesis completed without audio"))
+					return tts.Event{}, s.fail(protocol("synthesis completed without audio"))
 				}
 				s.finished = true
 				_ = s.Close()
-				return audio.Chunk{}, io.EOF
-			case "result-generated", "task-started":
-				// Sentence metadata; the matching audio arrives in binary frames.
+				return tts.Event{}, io.EOF
+			case "result-generated":
+				if s.receiveMode == receiveEvents {
+					a, err := decodeAlignment(data)
+					if err != nil {
+						return tts.Event{}, s.fail(err)
+					}
+					if a != nil {
+						return tts.Event{Type: tts.EventAlignment, Alignment: a}, nil
+					}
+				}
+			case "task-started":
 			default:
 				// Future optional notifications carry no audio; ignore them.
 			}
 		default:
-			return audio.Chunk{}, s.fail(protocol("unexpected WebSocket message type"))
+			return tts.Event{}, s.fail(protocol("unexpected WebSocket message type"))
 		}
 	}
 }

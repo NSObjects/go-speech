@@ -284,6 +284,13 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 }
 
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
+	q, err := voiceQuery(req.Options)
+	if err != nil {
+		return audio.Buffer{}, err
+	}
+	if q.Get("EnableSubtitle") == "true" {
+		return audio.Buffer{}, invalid("Synthesize returns audio only; use SynthesizeStream with RecvEvent for timestamps")
+	}
 	stream, err := c.SynthesizeStream(ctx, req)
 	if err != nil {
 		return audio.Buffer{}, err

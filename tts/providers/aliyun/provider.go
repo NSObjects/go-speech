@@ -256,6 +256,13 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 // Synthesize collects the same streaming synthesis into a complete buffer.
 // The 64 MiB cap prevents accidental unbounded memory usage by batch callers.
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
+	params, err := voiceParameters(req.Options)
+	if err != nil {
+		return audio.Buffer{}, err
+	}
+	if enabled, _ := params["word_timestamp_enabled"].(bool); enabled {
+		return audio.Buffer{}, invalid("Synthesize returns audio only; use SynthesizeStream with RecvEvent for timestamps")
+	}
 	s, err := c.SynthesizeStream(ctx, req)
 	if err != nil {
 		return audio.Buffer{}, err
