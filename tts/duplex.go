@@ -9,8 +9,9 @@ import (
 // DuplexRequest configures an incremental-text synthesis session.
 // Voice identifiers and output formats are specific to each provider.
 type DuplexRequest struct {
-	Voice  string
-	Format audio.Format
+	Voice      string
+	Format     audio.Format
+	TextFormat TextFormat
 }
 
 // DuplexSynthesizer opens a session that accepts incremental text while

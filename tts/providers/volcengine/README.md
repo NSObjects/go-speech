@@ -15,3 +15,7 @@ The duplex stream accepts fragments through SendText. An optional `Flush(context
 Official references: [HTTP streaming](https://docs.volcengine.com/docs/doubao-voice/seed-tts-3-0-http-streaming?lang=zh), [WebSocket](https://docs.volcengine.com/docs/doubao-voice/seed-tts-3-0-websocket?lang=zh).
 
 Migration: the previous ResourceID configuration field is removed; use optional ModelID (defaults to doubao-seed-tts-3.0). Endpoint is now an HTTPS origin. Existing 2.0 voice IDs must be replaced with authorized 3.0 voice IDs.
+
+## Text formats
+
+Set `tts.Request.TextFormat` to `tts.TextSSML` for complete SSML input via HTTP, or `tts.TextInlineTag` for native inline tags. The latter is also accepted by `tts.DuplexRequest` on WebSocket. SSML is rejected in duplex mode. The SDK passes inline tags unchanged; use only tags documented for the selected mode and keep each tag in one fragment until split-tag behavior is verified. Actual expression and SSML tag support depend on the model and voice.

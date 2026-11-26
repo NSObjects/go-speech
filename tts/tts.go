@@ -28,9 +28,10 @@ var ErrDuplexUnsupported = errors.New("tts: duplex synthesis unsupported")
 // differ across providers). An explicit unsupported format is rejected; no
 // adapter silently resamples or transcodes audio.
 type Request struct {
-	Text   string
-	Voice  string
-	Format audio.Format
+	Text       string
+	Voice      string
+	Format     audio.Format
+	TextFormat TextFormat
 }
 
 // Synthesizer performs one-shot text-to-speech synthesis, returning the full
