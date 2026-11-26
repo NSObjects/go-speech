@@ -28,6 +28,7 @@ type Options struct {
 	TextNormalization    *bool
 	EnableMarkdownFilter *bool
 	Watermark            *Watermark
+	EnableSubtitle       *bool
 	// SilenceDurationMS is HTTP-only, 0–30000 milliseconds.
 	SilenceDurationMS *float64
 }
@@ -128,6 +129,7 @@ type advancedRequest struct {
 	TextNormalization       *bool                    `json:"text_normalization,omitempty"`
 	EnableMarkdownFilter    *bool                    `json:"enable_markdown_filter,omitempty"`
 	Watermark               *Watermark               `json:"watermark,omitempty"`
+	EnableSubtitle          *bool                    `json:"enable_subtitle,omitempty"`
 }
 
 func advanced(native Options, output *outputFormat, duplex bool) (advancedRequest, error) {
@@ -164,5 +166,6 @@ func advanced(native Options, output *outputFormat, duplex bool) (advancedReques
 	req.TextNormalization = native.TextNormalization
 	req.EnableMarkdownFilter = native.EnableMarkdownFilter
 	req.Watermark = native.Watermark
+	req.EnableSubtitle = native.EnableSubtitle
 	return req, nil
 }
