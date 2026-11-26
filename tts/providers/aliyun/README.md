@@ -105,4 +105,4 @@ stream decodes correctly. Opus is not re-encoded or remuxed by the SDK.
 
 Set `tts.Options.Provider` to `aliyun.Options` to configure `BitRateKbps` (MP3/Opus), `LanguageHint` (one native language code), Markdown filtering and AIGC metadata. AIGC tagging is restricted to documented models and WAV/MP3/Opus. These options also apply to duplex input. Set `WordTimestampEnabled` to true to receive final sentence timing via `tts.EventReceiver.RecvEvent`. See the official client-event documentation for model and voice restrictions.
 
-Use one receive API per session: `Recv` for audio only, or `RecvEvent` for audio and alignment. Explicit timestamp enablement is rejected by audio-only `Synthesize`; use `SynthesizeStream` for complete-text input with metadata. Provider model/voice restrictions apply.
+Use one receive API per session: `Recv` for audio only, or `RecvEvent` for audio and alignment. Explicit timestamp enablement is rejected by audio-only `Synthesize`; use `tts.SynthesizeDetailed(ctx, client, req)` for a complete result or `SynthesizeStream` with `RecvEvent`. Provider model/voice restrictions apply.
