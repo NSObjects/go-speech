@@ -14,6 +14,9 @@ type Options struct {
 	Pitch  *float64
 	Seed   *int
 
+	// WordTimestampEnabled requests provider word timings; use RecvEvent.
+	WordTimestampEnabled *bool
+
 	// BitRateKbps is valid for MP3 and Ogg Opus, 6–510 kbps.
 	BitRateKbps int
 	// LanguageHint is one native language code; the wire field is an array.
@@ -63,6 +66,9 @@ func voiceParameters(o tts.Options) (map[string]any, error) {
 	}
 	if o.Instruction != "" {
 		params["instruction"] = o.Instruction
+	}
+	if native.WordTimestampEnabled != nil {
+		params["word_timestamp_enabled"] = *native.WordTimestampEnabled
 	}
 	if native.BitRateKbps != 0 {
 		if native.BitRateKbps < 6 || native.BitRateKbps > 510 {

@@ -50,4 +50,6 @@ type Word struct {
 	Text      string
 	StartTime time.Duration
 	EndTime   time.Duration
+	// Phoneme is a provider-reported phonetic representation, when available.
+	Phoneme string
 }

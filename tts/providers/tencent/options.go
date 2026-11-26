@@ -22,6 +22,8 @@ type Options struct {
 	// select the corresponding 200000000 or 200000400 VoiceType.
 	FastVoiceType string
 	EnableLatex   *bool
+	// EnableSubtitle requests provider word timings; use RecvEvent.
+	EnableSubtitle *bool
 }
 
 func (Options) TTSProviderOptions() {}
@@ -73,6 +75,9 @@ func voiceQuery(o tts.Options) (url.Values, error) {
 	}
 	if native.FastVoiceType != "" {
 		q.Set("FastVoiceType", native.FastVoiceType)
+	}
+	if native.EnableSubtitle != nil {
+		q.Set("EnableSubtitle", strconv.FormatBool(*native.EnableSubtitle))
 	}
 	if native.EnableLatex != nil {
 		q.Set("EnableLatex", strconv.FormatBool(*native.EnableLatex))

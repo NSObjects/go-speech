@@ -32,9 +32,18 @@ type Stream struct {
 	textSent    bool
 	finished    bool
 	terminalErr error
+	receiveMode uint8
 }
 
-var _ tts.Stream = (*Stream)(nil)
+var (
+	_ tts.Stream        = (*Stream)(nil)
+	_ tts.EventReceiver = (*Stream)(nil)
+)
+
+const (
+	receiveAudio uint8 = iota + 1
+	receiveEvents
+)
 
 func newStream(conn *websocket.Conn, ctx context.Context, id string, format audio.Format) *Stream {
 	s := &Stream{conn: conn, parent: ctx, sessionID: id, format: format, done: make(chan struct{})}
@@ -248,21 +257,52 @@ func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 	}
 	s.readMu.Lock()
 	defer s.readMu.Unlock()
+	if s.receiveMode == receiveEvents {
+		return audio.Chunk{}, tts.ErrReceiveMode
+	}
+	s.receiveMode = receiveAudio
+	for {
+		e, err := s.recvEvent(ctx)
+		if err != nil {
+			return audio.Chunk{}, err
+		}
+		if e.Type == tts.EventAudio {
+			return *e.Audio, nil
+		}
+	}
+}
+
+// RecvEvent exposes audio and native alignment events in wire order.
+func (s *Stream) RecvEvent(ctx context.Context) (tts.Event, error) {
+	if s == nil {
+		return tts.Event{}, tts.ErrStreamClosed
+	}
+	s.readMu.Lock()
+	defer s.readMu.Unlock()
+	if s.receiveMode == receiveAudio {
+		return tts.Event{}, tts.ErrReceiveMode
+	}
+	s.receiveMode = receiveEvents
+	return s.recvEvent(ctx)
+}
+
+// recvEvent is the sole protocol reader; readMu must be held.
+func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 	if s.terminalErr != nil {
-		return audio.Chunk{}, s.terminalErr
+		return tts.Event{}, s.terminalErr
 	}
 	if s.finished {
-		return audio.Chunk{}, io.EOF
+		return tts.Event{}, io.EOF
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return audio.Chunk{}, s.fail(err)
+			return tts.Event{}, s.fail(err)
 		}
 		if err := s.parent.Err(); err != nil {
-			return audio.Chunk{}, s.fail(err)
+			return tts.Event{}, s.fail(err)
 		}
 		if s.closed() {
-			return audio.Chunk{}, s.fail(s.closeError(ctx))
+			return tts.Event{}, s.fail(s.closeError(ctx))
 		}
 		var deadline time.Time
 		if d, ok := ctx.Deadline(); ok {
@@ -270,25 +310,37 @@ func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
 		}
 		typ, data, err := s.readFrame(ctx, deadline)
 		if err != nil {
-			return audio.Chunk{}, s.fail(err)
+			return tts.Event{}, s.fail(err)
 		}
 		switch typ {
 		case websocket.BinaryMessage:
 			if len(data) != 0 {
-				return audio.Chunk{Data: data, Format: s.format}, nil
+				return tts.Event{Type: tts.EventAudio, Audio: &audio.Chunk{Data: data, Format: s.format}}, nil
 			}
 		case websocket.TextMessage:
 			ev, err := decodeEvent(data, s.sessionID)
 			if err != nil {
-				return audio.Chunk{}, s.fail(err)
+				return tts.Event{}, s.fail(err)
+			}
+			var alignment *tts.Alignment
+			if s.receiveMode == receiveEvents {
+				alignment, err = decodeAlignment(data)
+				if err != nil {
+					return tts.Event{}, s.fail(err)
+				}
 			}
 			if ev.Final == 1 {
 				s.finished = true
 				_ = s.Close()
-				return audio.Chunk{}, io.EOF
+			}
+			if alignment != nil {
+				return tts.Event{Type: tts.EventAlignment, Alignment: alignment}, nil
+			}
+			if s.finished {
+				return tts.Event{}, io.EOF
 			}
 		default:
-			return audio.Chunk{}, s.fail(protocol("unexpected WebSocket message type"))
+			return tts.Event{}, s.fail(protocol("unexpected WebSocket message type"))
 		}
 	}
 }
