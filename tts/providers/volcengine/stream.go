@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sync"
+	"time"
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/speecherr"
@@ -27,12 +29,46 @@ type remoteError struct {
 }
 
 type event struct {
-	Event     string       `json:"event"`
-	SessionID string       `json:"session_id,omitempty"`
-	Audio     []byte       `json:"audio,omitempty"`
-	IsFinal   bool         `json:"is_final,omitempty"`
-	Reason    string       `json:"reason,omitempty"`
-	Error     *remoteError `json:"error,omitempty"`
+	Event     string            `json:"event"`
+	SessionID string            `json:"session_id,omitempty"`
+	Audio     []byte            `json:"audio,omitempty"`
+	IsFinal   bool              `json:"is_final,omitempty"`
+	Reason    string            `json:"reason,omitempty"`
+	Error     *remoteError      `json:"error,omitempty"`
+	Text      string            `json:"text,omitempty"`
+	Words     []timedWord       `json:"words,omitempty"`
+	Phonemes  []json.RawMessage `json:"phonemes,omitempty"`
+}
+
+type timedWord struct {
+	Word      string   `json:"word"`
+	StartTime *float64 `json:"startTime"`
+	EndTime   *float64 `json:"endTime"`
+}
+
+// AlignmentDetails preserves native phonemes because the service does not
+// specify a stable schema for individual phoneme objects.
+type AlignmentDetails struct {
+	Phonemes []json.RawMessage
+}
+
+func (e event) alignment() (*tts.Alignment, error) {
+	a := &tts.Alignment{Text: e.Text}
+	for _, w := range e.Words {
+		if w.StartTime == nil || w.EndTime == nil ||
+			*w.StartTime < 0 || *w.EndTime < *w.StartTime ||
+			*w.EndTime >= float64(math.MaxInt64)/float64(time.Second) {
+			return nil, protocol("invalid alignment timestamps")
+		}
+		a.Words = append(a.Words, tts.Word{
+			Text: w.Word, StartTime: time.Duration(*w.StartTime * float64(time.Second)),
+			EndTime: time.Duration(*w.EndTime * float64(time.Second)),
+		})
+	}
+	if e.Phonemes != nil {
+		a.Provider = AlignmentDetails{Phonemes: e.Phonemes}
+	}
+	return a, nil
 }
 
 func (e event) failure() error {
@@ -99,6 +135,7 @@ type stream struct {
 	ready     bool
 	audioSeen bool
 	terminal  error
+	mode      receiveMode
 }
 
 func newStream(ctx context.Context, format audio.Format, next func() (event, error), closeFn func()) *stream {
@@ -143,17 +180,53 @@ func (s *stream) contextError(ctx context.Context) error {
 	return nil
 }
 
-func (s *stream) fail(err error) (audio.Chunk, error) {
+type receiveMode uint8
+
+const (
+	receiveAudio receiveMode = iota + 1
+	receiveEvents
+)
+
+var _ tts.EventReceiver = (*stream)(nil)
+
+func (s *stream) fail(err error) (tts.Event, error) {
 	s.terminal = err
 	_ = s.Close()
-	return audio.Chunk{}, err
+	return tts.Event{}, err
 }
 
 func (s *stream) Recv(ctx context.Context) (audio.Chunk, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.mode == receiveEvents {
+		return audio.Chunk{}, tts.ErrReceiveMode
+	}
+	s.mode = receiveAudio
+	for {
+		e, err := s.recvEvent(ctx)
+		if err != nil {
+			return audio.Chunk{}, err
+		}
+		if e.Type == tts.EventAudio {
+			return *e.Audio, nil
+		}
+	}
+}
+
+func (s *stream) RecvEvent(ctx context.Context) (tts.Event, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mode == receiveAudio {
+		return tts.Event{}, tts.ErrReceiveMode
+	}
+	s.mode = receiveEvents
+	return s.recvEvent(ctx)
+}
+
+// recvEvent is called with mu held; it is the single protocol reader.
+func (s *stream) recvEvent(ctx context.Context) (tts.Event, error) {
 	if s.terminal != nil {
-		return audio.Chunk{}, s.terminal
+		return tts.Event{}, s.terminal
 	}
 	if err := s.contextError(ctx); err != nil {
 		return s.fail(err)
@@ -184,16 +257,27 @@ func (s *stream) Recv(ctx context.Context) (audio.Chunk, error) {
 				return s.fail(protocol("invalid audio event"))
 			}
 			s.audioSeen = true
-			return audio.Chunk{Format: s.format, Data: e.Audio}, nil
+			chunk := &audio.Chunk{Format: s.format, Data: e.Audio}
+			return tts.Event{Type: tts.EventAudio, Audio: chunk}, nil
 		case "alignment":
-			continue
+			if s.mode == receiveAudio {
+				continue
+			}
+			if !s.ready {
+				return s.fail(protocol("alignment before ready"))
+			}
+			a, err := e.alignment()
+			if err != nil {
+				return s.fail(err)
+			}
+			return tts.Event{Type: tts.EventAlignment, Alignment: a}, nil
 		case "final":
 			if !s.ready || !e.IsFinal {
 				return s.fail(protocol("invalid final event"))
 			}
 			switch e.Reason {
 			case flushedReason:
-				continue
+				return tts.Event{Type: tts.EventBatchCompleted}, nil
 			case closedReason:
 				if !s.audioSeen {
 					return s.fail(protocol("no synthesized audio"))
