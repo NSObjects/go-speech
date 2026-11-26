@@ -19,3 +19,9 @@ Migration: the previous ResourceID configuration field is removed; use optional 
 ## Text formats
 
 Set `tts.Request.TextFormat` to `tts.TextSSML` for complete SSML input via HTTP, or `tts.TextInlineTag` for native inline tags. The latter is also accepted by `tts.DuplexRequest` on WebSocket. SSML is rejected in duplex mode. The SDK passes inline tags unchanged; use only tags documented for the selected mode and keep each tag in one fragment until split-tag behavior is verified. Actual expression and SSML tag support depend on the model and voice.
+
+## Advanced request options
+
+Use `tts.Options{Provider: volcengine.Options{...}}` on either request type. Native options include an ordered instruction list, language override, pronunciation/replacement rules, text normalization, Markdown filtering, watermark configuration and output bit rate in bps. `SessionID` is caller-owned: reuse only for serial requests in the same conversation, not unrelated or concurrent calls. Server context lifetime is not guaranteed. HTTP-only `SilenceDurationMS` appends silence at the end; duplex rejects it. Do not mix the native instruction list with the common `Instruction` field. Optional boolean pointers preserve explicit false.
+
+Subtitle output is deferred until alignment events are exposed to callers.
