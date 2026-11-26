@@ -18,6 +18,10 @@ type Options struct {
 	EmotionCategory  string
 	EmotionIntensity *int
 	SegmentRate      *int
+	// FastVoiceType is the native one-sentence voice clone ID. Voice must
+	// select the corresponding 200000000 or 200000400 VoiceType.
+	FastVoiceType string
+	EnableLatex   *bool
 }
 
 func (Options) TTSProviderOptions() {}
@@ -66,6 +70,12 @@ func voiceQuery(o tts.Options) (url.Values, error) {
 			return nil, invalid("segment rate must be within [0, 2]")
 		}
 		q.Set("SegmentRate", strconv.Itoa(*v))
+	}
+	if native.FastVoiceType != "" {
+		q.Set("FastVoiceType", native.FastVoiceType)
+	}
+	if native.EnableLatex != nil {
+		q.Set("EnableLatex", strconv.FormatBool(*native.EnableLatex))
 	}
 	return q, nil
 }

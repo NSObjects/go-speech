@@ -55,3 +55,7 @@ and terminal EOF. A genuine Tencent TTS API smoke test requires an
 activated TTS product and account entitlement: ASR credentials alone do not
 prove that Tencent TTS is enabled. No successful live Tencent TTS synthesis
 is claimed from the ASR CI workflow.
+
+## Native advanced request options
+
+Set `tts.Options.Provider` to `tencent.Options` to select `FastVoiceType` with `Request.Voice` (or `DuplexRequest.Voice`) equal to 200000000 or 200000400 for one-sentence cloning. `EnableLatex` is optional; it is only supported by certain Chinese super-natural 2.0 voices and may increase latency. Both parameters are included in the signed query. Timestamp enablement awaits the SDK event interface.

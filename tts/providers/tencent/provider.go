@@ -161,6 +161,17 @@ func signedEndpoint(cfg Config, req tts.Request, codec, sessionID string, now ti
 	if err != nil {
 		return "", err
 	}
+	fastVoice := voice.Get("FastVoiceType")
+	switch req.Voice {
+	case "200000000", "200000400":
+		if fastVoice == "" || strings.TrimSpace(fastVoice) != fastVoice {
+			return "", invalid("cloned VoiceType requires FastVoiceType")
+		}
+	default:
+		if fastVoice != "" {
+			return "", invalid("FastVoiceType requires VoiceType 200000000 or 200000400")
+		}
+	}
 	for key, values := range voice {
 		q[key] = values
 	}
