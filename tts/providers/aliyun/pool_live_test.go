@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"os"
+	"sync/atomic"
 	"strings"
 	"testing"
 	"time"
@@ -21,9 +23,15 @@ func TestAliyunLivePool(t *testing.T) {
 	if key == "" || endpoint == "" {
 		t.Fatal("Aliyun live credentials required")
 	}
+	var dials atomic.Int32
+	dialer := *websocket.DefaultDialer
+	dialer.NetDialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dials.Add(1)
+		return (&net.Dialer{}).DialContext(ctx, network, addr)
+	}
 	client, err := New(Config{
 		APIKey: key, Endpoint: endpoint, Model: os.Getenv("DASHSCOPE_TTS_MODEL"),
-		Pool: &transport.PoolConfig{MaxOpen: 1},
+		Pool: &transport.PoolConfig{MaxOpen: 1}, Dialer: &dialer,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +42,19 @@ func TestAliyunLivePool(t *testing.T) {
 	req := testRequest()
 	if voice := os.Getenv("DASHSCOPE_TTS_VOICE"); voice != "" {
 		req.Voice = voice
+	}
+	warm, stop := context.WithTimeout(ctx, 10*time.Second)
+	if err := client.Warmup(warm, "", 1); err != nil {
+		stop()
+		t.Fatal("warmup:", err)
+	}
+	stop()
+	if err := client.Warmup(ctx, "", 1); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Second)
+	if dials.Load() != 1 {
+		t.Fatal("warmup did not open exactly one socket")
 	}
 	var conn *websocket.Conn
 	req.Text = "你好，欢迎使用语音合成。"
@@ -49,6 +70,9 @@ func TestAliyunLivePool(t *testing.T) {
 			t.Fatal("physical connection not reused")
 		}
 		conn = session.conn
+		if dials.Load() != 1 {
+			t.Fatal("synthesis did not use prewarmed socket")
+		}
 		total := 0
 		for {
 			chunk, err := stream.Recv(ctx)

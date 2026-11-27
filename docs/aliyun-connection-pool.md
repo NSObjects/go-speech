@@ -33,3 +33,15 @@ idle timeout and ten-minute maximum lifetime. The idle timeout must be at most
 A remote disconnect can still occur before the idle timeout and will be
 reported to the caller. Close releases idle sockets and rejects new pooled
 acquisitions; active tasks finish or are canceled through their own contexts.
+
+## Explicit TTS warmup
+
+With a pooled client, assert `tts.Prewarmer` and call
+`Warmup(ctx, "", 1)`. CosyVoice uses a voice-independent WebSocket;
+the voice parameter is ignored. The call targets idle capacity rather
+than opening an additional socket every time. It does not start synthesis,
+wait for occupied slots, evict idle sockets, or schedule replenishment.
+A successful call is best effort; idle expiry and concurrent acquisition
+can consume capacity before synthesis. The caller context bounds warmup
+and does not own a successfully warmed socket. A failed dial is returned
+without retry.
