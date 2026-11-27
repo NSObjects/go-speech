@@ -93,7 +93,7 @@ func (c *Client) features() capability.Features {
 		tts.FeatureSeed: {Status: capability.Unknown, Parameters: []capability.Parameter{{Field: "Options.Provider.Seed", Kind: capability.Integer, Range: &capability.NumericRange{Min: minSeed, Max: maxSeed}}}},
 		tts.FeatureWatermark: {Status: capability.FromBool(supportsAIGCTag(c.cfg.Model)), Parameters: []capability.Parameter{{Field: "Options.Provider.EnableAIGCTag", Kind: capability.Bool}, {Field: "Options.Provider.AIGCPropagator", Kind: capability.String}, {Field: "Options.Provider.AIGCPropagateID", Kind: capability.String}}, Notes: "Not PCM."},
 		tts.FeatureSilence: {Status: capability.Unsupported},
-		tts.FeatureVoiceClone: {Status: capability.Unknown, Notes: "Use provider-issued voice ID; training API not implemented."},
+		tts.FeatureVoiceClone: {Status: capability.Unknown, Notes: "Use provider-issued voice ID; enrollment and design are available in voice/providers/aliyun."},
 		tts.FeatureLatex: {Status: capability.Unsupported},
 		tts.FeatureSegmentRate: {Status: capability.Unsupported},
 		tts.FeatureSimilarityBoost: {Status: capability.Unsupported},
