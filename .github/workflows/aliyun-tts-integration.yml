@@ -20,7 +20,7 @@ permissions:
 jobs:
   live-tts:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 9
     env:
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       DASHSCOPE_WS_ENDPOINT: ${{ vars.DASHSCOPE_WS_ENDPOINT }}
@@ -49,4 +49,4 @@ jobs:
             }
           fi
       - name: Real CosyVoice PCM MP3 WAV Ogg Opus streaming and batch checks
-        run: go test -tags=integration -run '^TestAliyunLive(CosyVoice(EncodedFormats|Opus)?|Duplex)$' -count=1 -v -timeout 4m ./tts/providers/aliyun
+        run: go test -tags=integration -run '^TestAliyunLive(CosyVoice(EncodedFormats|Opus)?|Duplex|Advanced)$' -count=1 -v -timeout 6m ./tts/providers/aliyun
