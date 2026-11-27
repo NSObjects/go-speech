@@ -8,6 +8,15 @@ import (
 	"github.com/NSObjects/go-speech/tts"
 )
 
+const (
+	minMultiplier = 0.5
+	maxMultiplier = 2
+	minPitch = -12
+	maxPitch = 12
+	minSilenceMS = 0
+	maxSilenceMS = 30000
+)
+
 // Options exposes Seed-TTS 3.0 native voice controls.
 // Volume is a multiplier; Pitch is a semitone offset.
 type Options struct {
@@ -71,11 +80,11 @@ func settings(o tts.Options) (*voiceSettings, error) {
 
 func buildVoiceSettings(o tts.Options, native Options) (*voiceSettings, error) {
 	for _, v := range []*float64{o.Speed, native.Volume} {
-		if v != nil && (math.IsNaN(*v) || *v < 0.5 || *v > 2) {
+		if v != nil && (math.IsNaN(*v) || *v < minMultiplier || *v > maxMultiplier) {
 			return nil, invalid("speed and volume must be within [0.5, 2]")
 		}
 	}
-	if native.Pitch != nil && (*native.Pitch < -12 || *native.Pitch > 12) {
+	if native.Pitch != nil && (*native.Pitch < minPitch || *native.Pitch > maxPitch) {
 		return nil, invalid("pitch must be within [-12, 12]")
 	}
 	if o.Instruction != "" && len(native.Instructions) != 0 {
@@ -150,7 +159,7 @@ func advanced(native Options, output *outputFormat, duplex bool) (advancedReques
 		if duplex {
 			return req, invalid("silence duration is supported only for complete text")
 		}
-		if math.IsNaN(*v) || *v < 0 || *v > 30000 {
+		if math.IsNaN(*v) || *v < minSilenceMS || *v > maxSilenceMS {
 			return req, invalid("silence duration must be within [0, 30000] ms")
 		}
 	}

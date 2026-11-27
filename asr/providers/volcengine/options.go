@@ -6,6 +6,11 @@ import (
 	"github.com/NSObjects/go-speech/asr"
 )
 
+const (
+	minAccelerateScore = 0
+	maxAccelerateScore = 20
+)
+
 // Options configures the optimized bigmodel_async endpoint per session.
 // Pointer fields override constructor defaults only when supplied.
 type Options struct {
@@ -98,7 +103,7 @@ func (c Config) applyOptions(o asr.Options, req map[string]any) (string, bool, e
 		req["ssd_version"] = "200"
 	}
 	if v := native.AccelerateScore; v != nil {
-		if !enabled(native.EnableAccelerateText) || *v < 0 || *v > 20 {
+		if !enabled(native.EnableAccelerateText) || *v < minAccelerateScore || *v > maxAccelerateScore {
 			return "", false, argumentError("AccelerateScore requires EnableAccelerateText and must be within [0, 20]")
 		}
 		req["accelerate_score"] = *v
