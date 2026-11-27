@@ -140,5 +140,9 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 	if recvErr != nil {
 		return Result{}, recvErr
 	}
-	return Result{Text: strings.Join(parts, ""), Language: lang, Utterances: utterances}, nil
+	result := Result{Text: strings.Join(parts, ""), Language: lang, Utterances: utterances}
+	if metadata, ok := stream.(SessionMetadataReceiver); ok {
+		result.Provider = metadata.SessionMetadata()
+	}
+	return result, nil
 }

@@ -22,6 +22,8 @@ type Result struct {
 	Language string
 	// Utterances contains available final-segment metadata in receive order.
 	Utterances []Utterance
+	// Provider contains optional provider-native session metadata.
+	Provider any
 }
 
 // Recognizer provides one-shot recognition of an entire audio buffer.
@@ -66,6 +68,12 @@ type Event struct {
 	SpeakerID *int
 	// Utterance is optional detailed metadata for this transcript segment.
 	Utterance *Utterance
+}
+
+// SessionMetadataReceiver optionally exposes provider-native session metadata.
+// Read after draining Recv to EOF to obtain the final snapshot.
+type SessionMetadataReceiver interface {
+	SessionMetadata() any
 }
 
 // Stream is a bidirectional recognition session. A caller may Send and Recv
