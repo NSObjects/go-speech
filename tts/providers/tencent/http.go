@@ -363,6 +363,11 @@ func decodeHTTPResult(raw []byte, status int, session string, f audio.Format) (H
 			return HTTPResult{}, protocol("invalid WAV response or format mismatch")
 		}
 	}
+	if f.Encoding == audio.EncodingMP3 {
+		if encoding, err := audio.Detect(r.Audio); err != nil || encoding != audio.EncodingMP3 {
+			return HTTPResult{}, protocol("invalid MP3 response or format mismatch")
+		}
+	}
 	if len(r.Subtitles) > 100000 {
 		return HTTPResult{}, protocol("too many subtitles")
 	}

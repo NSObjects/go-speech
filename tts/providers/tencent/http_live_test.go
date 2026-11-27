@@ -37,4 +37,29 @@ func TestTencentLiveHTTPTextToVoice(t *testing.T) {
 		t.Fatal("subtitle request returned no alignment")
 	}
 	t.Logf("real TextToVoice returned %d WAV bytes and %d subtitles", len(r.Audio.Data), len(r.Subtitles))
+
+	// Verify the two remaining native codecs with short independent requests.
+	for _, encoding := range []audio.Encoding{audio.EncodingPCM16LE, audio.EncodingMP3} {
+		t.Run(string(encoding), func(t *testing.T) {
+			f := audio.Format{Encoding: encoding, SampleRate: 16000, Channels: 1}
+			got, err := c.Synthesize(ctx, tts.Request{Text: "你好，语音测试。", Voice: "101001", Format: f})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Format != f || len(got.Data) < 512 {
+				t.Fatal("empty or mismatched native audio")
+			}
+			if err := audio.ValidateBuffer(got); err != nil {
+				t.Fatal(err)
+			}
+			if encoding == audio.EncodingPCM16LE {
+				// Headerless PCM cannot be identified by magic bytes. Reject
+				// recognizable encoded containers instead of silently relabeling.
+				if kind, err := audio.Detect(got.Data); err == nil && kind == audio.EncodingWAV {
+					t.Fatal("PCM request returned WAV container")
+				}
+			}
+			t.Logf("real TextToVoice returned %d %s bytes", len(got.Data), encoding)
+		})
+	}
 }

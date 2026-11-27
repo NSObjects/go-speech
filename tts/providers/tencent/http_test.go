@@ -124,3 +124,37 @@ func TestHTTPTextLimitsAndFormats(t *testing.T) {
 		t.Fatalf("inline tag = %v", err)
 	}
 }
+
+func TestHTTPMP3ResponseFormat(t *testing.T) {
+	f := audio.Format{Encoding: audio.EncodingMP3, SampleRate: 16000, Channels: 1}
+	wav, err := audio.EncodeWAVPCM16(audio.Buffer{Data: []byte{1, 2}, Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		data []byte
+		ok   bool
+	}{
+		{"mp3_frame_header", []byte{0xff, 0xf3, 0x80, 0x00}, true},
+		{"wav_mismatch", wav.Data, false},
+		{"unknown", []byte{1, 2, 3, 4}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(map[string]any{"Response": map[string]any{
+				"SessionId": "session", "RequestId": "trace", "Audio": tc.data,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := decodeHTTPResult(raw, http.StatusOK, "session", f)
+			if tc.ok {
+				if err != nil || got.Audio.Format != f {
+					t.Fatalf("valid MP3 signature: %v", err)
+				}
+			} else if !speecherr.IsCode(err, speecherr.CodeProtocol) {
+				t.Fatalf("mismatched audio: %v", err)
+			}
+		})
+	}
+}
