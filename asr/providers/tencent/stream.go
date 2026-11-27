@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
@@ -35,6 +36,7 @@ type Stream struct {
 	queue       []asr.Event // readMu; one server message may contain multiple sentences
 
 	terminalMu      sync.Mutex    // terminalErr can be set by Send, CloseSend, or Recv
+	encoding        audio.Encoding // immutable after OpenStream handshake; zero is PCM for internal tests
 	readIdleTimeout time.Duration // immutable after OpenStream handshake
 	details         bool          // immutable
 	returnEmpty     bool          // immutable
@@ -200,7 +202,8 @@ func (s *Stream) write(ctx context.Context, typ int, data []byte) error {
 	return s.conn.WriteMessage(typ, data)
 }
 
-// Send sends complete PCM16LE samples. Tencent's real-time service expects
+// Send sends complete PCM16LE samples or a fragment of a continuous WAV file.
+// Tencent's real-time service expects
 // approximately real-time pacing; the SDK does not artificially sleep or
 // silently resample caller-supplied audio.
 func (s *Stream) Send(ctx context.Context, data []byte) error {
@@ -220,7 +223,10 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	if err := ctx.Err(); err != nil {
 		return s.failWrite(err)
 	}
-	if len(data) == 0 || len(data)%2 != 0 {
+	if len(data) == 0 {
+		return argumentError("audio chunk must not be empty")
+	}
+	if s.encoding != audio.EncodingWAV && len(data)%2 != 0 {
 		return argumentError("PCM16LE audio must contain complete 16-bit samples")
 	}
 	if err := s.write(ctx, websocket.BinaryMessage, data); err != nil {

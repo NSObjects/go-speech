@@ -221,3 +221,29 @@ func TestRecognizePreservesEmptyFinalMetadata(t *testing.T) {
 		t.Fatalf("empty final metadata lost: %+v", empty)
 	}
 }
+
+func TestRecognizeStreamWAVPreservesContainerAndPaces(t *testing.T) {
+	input, err := audio.EncodeWAVPCM16(validBuffer(2560))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newFakeStream()
+	s.events <- Event{Type: EventFinal, Text: "你好"}
+	c := &fakeShortRecognizer{stream: s}
+	start := time.Now()
+	got, err := RecognizeStream(context.Background(), c, input, Config{})
+	if err != nil || got.Text != "你好" {
+		t.Fatalf("WAV recognition: %v", err)
+	}
+	if string(s.audio) != string(input.Data) || c.cfg.Format != input.Format || s.sent != 3 {
+		t.Fatal("WAV bytes or request metadata changed")
+	}
+	if time.Since(start) < 100*time.Millisecond {
+		t.Fatal("WAV upload was not paced")
+	}
+	input.Format.SampleRate = 8000
+	c = &fakeShortRecognizer{err: errors.New("must not open")}
+	if _, err := RecognizeStream(context.Background(), c, input, Config{}); !errors.Is(err, ErrInvalidShortAudio) {
+		t.Fatalf("WAV metadata mismatch: %v", err)
+	}
+}

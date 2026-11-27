@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/capability"
 	"github.com/NSObjects/go-speech/speecherr"
 )
@@ -20,6 +21,7 @@ func (c *Client) Capabilities() asr.Capabilities {
 	capability := SupportedAudio(c.cfg.EngineModel)
 	if c.cfg.InputSampleRate != 0 {
 		capability.SampleRates = []int{c.cfg.InputSampleRate}
+		capability.Encodings = []audio.Encoding{audio.EncodingPCM16LE}
 	}
 	return asr.Capabilities{Provider: "tencent", Model: c.cfg.EngineModel, Protocol: "asr/v2", Audio: capability, Batch: true, Streaming: true, Features: c.features()}
 }
@@ -52,9 +54,13 @@ func (c *Client) prepare(req asr.Config) (Client, Options, url.Values, string, e
 	capability := SupportedAudio(c.cfg.EngineModel)
 	if c.cfg.InputSampleRate != 0 {
 		capability.SampleRates = []int{c.cfg.InputSampleRate}
+		capability.Encodings = []audio.Encoding{audio.EncodingPCM16LE}
 	}
 	if err := capability.Validate(req.Format); err != nil {
 		return Client{}, Options{}, nil, "", &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "start", Err: err}
+	}
+	if req.Format.Encoding == audio.EncodingWAV {
+		extra.Set("voice_format", "12")
 	}
 	if req.Language != "" {
 		return Client{}, Options{}, nil, "", unsupportedError("language is selected by EngineModel; per-request Language is not supported")

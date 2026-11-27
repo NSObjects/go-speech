@@ -21,12 +21,19 @@ Tencent's large-model 2.0 engines require the appropriate billing entitlement.
 
 ## Audio compatibility and lifecycle
 
-The provider accepts mono PCM16LE at the engine's native rate:
+The provider accepts mono PCM16LE and PCM16 WAV at the engine's native rate:
 16 kHz for `16k_...` engines, 8 kHz for `8k_...`. For explicit 8 kHz
 PCM input to a 16 kHz engine, set `Config.InputSampleRate = 8000` and pass
 `audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 8000, Channels: 1}`.
 The signed URL includes Tencent's `input_sample_rate=8000`; Tencent handles
 upsampling. **The SDK does not resample or convert the bytes.**
+
+Use `audio.EncodingWAV` for one continuous RIFF/WAVE file containing
+16-bit PCM; the signed `voice_format` is 12. Send original container
+fragments in order, not a new header per fragment. `Recognize` validates
+complete WAV metadata and paces the original container bytes. The explicit
+8 kHz upsampling override is PCM-only. `Hy-ASR-3.0-preview` is also PCM-only.
+Model/account availability remains provider-dependent.
 
 ## Optional Tencent-side sentence segmentation
 
