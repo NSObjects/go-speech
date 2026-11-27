@@ -35,6 +35,7 @@ func TestTencentLiveDuplex(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	start := time.Now()
 	stream, err := client.OpenDuplex(ctx, tts.DuplexRequest{
 		Voice: voice,
 		Format: audio.Format{
@@ -47,6 +48,15 @@ func TestTencentLiveDuplex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.Close()
+	t.Logf("READY after %s", time.Since(start))
+	// Establish the one-shot session before text is ready, as a caller
+	// would while ASR/LLM is working. No heartbeat or extra task.
+	select {
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	case <-time.After(5 * time.Second):
+	}
+	start = time.Now()
 	if err := stream.SendText(ctx, "你好，"); err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +74,9 @@ func TestTencentLiveDuplex(t *testing.T) {
 		}
 		if err != nil {
 			t.Fatal(err)
+		}
+		if total == 0 {
+			t.Logf("PREOPEN_FIRST_AUDIO after 5s idle, elapsed from text=%s", time.Since(start))
 		}
 		total += len(chunk.Data)
 	}

@@ -51,6 +51,14 @@ A raw Opus packet is **not** an Ogg Opus stream. Use the optional pure-Go
 `audio/codec/opus.OggMuxer` if you need to encapsulate raw packets before
 passing them to the provider; the provider never transforms input implicitly.
 
+## Connection lifecycle
+
+Each OpenStream creates a new WebSocket and request identity. A real-cloud
+post-final reuse probe received WebSocket close 1000 ("finish last sequence")
+when attempting a second init on the same connection. Completed sockets
+are not pooled. Open a session when audio is ready to arrive; do not
+hold idle ASR sessions indefinitely.
+
 ## Streaming semantics
 
 The optimized streaming endpoint may omit `start_time` on its first

@@ -14,6 +14,8 @@ Create and activate Tencent Cloud ASR service credentials. Configure:
 The SDK generates a **new** `voice_id` and nonce per stream, creates a
 sorted-query HMAC-SHA1 signature, and sends it only in the WSS handshake.
 Never log signed WebSocket URLs: they carry authentication material.
+The server closes the completed recognition connection; the SDK does not
+pool or reuse a signed voice_id. Open a new session when audio is ready.
 The default engine is `16k_zh`, selected by `Config.EngineModel`.
 Tencent's large-model 2.0 engines require the appropriate billing entitlement.
 

@@ -247,7 +247,15 @@ go vet ./...
 
 ## 连接池
 
-阿里 ASR、TTS 和火山 Seed-TTS 3.0 双向流式支持可选的 WebSocket 连接复用。默认关闭连接池，按需设置 `Pool`：
+连接池按 Client 隔离，默认关闭。支持范围：
+
+| 厂商 | ASR 连接复用 | TTS 连接复用 | TTS 显式预热 |
+| --- | --- | --- | --- |
+| 阿里云 | 支持 | 支持 | `Warmup(ctx, "", count)` |
+| 火山引擎 | 不支持 | 仅 Seed-TTS 3.0 WebSocket 双向流式 | `Warmup(ctx, voiceID, count)` |
+| 腾讯云 | 不支持 | 不支持 | 提前调用 `OpenDuplex` |
+
+按需设置 `Pool`：
 
 ```go
 client, err := speech.NewTTS(speech.AliyunTTS{
@@ -263,7 +271,19 @@ if err != nil {
 defer client.(io.Closer).Close()
 ```
 
-在多次调用间复用客户端。连接池按需建立连接，不自动预热、补充空闲连接或重试任务。详见 [阿里连接池](docs/aliyun-connection-pool.md) 和 [火山双向流式连接池](tts/providers/volcengine/README.md#optional-duplex-connection-reuse)。
+在多次调用间复用客户端。阿里云 TTS 与火山双向流式 TTS 实现可选接口 `tts.Prewarmer`，启用连接池后可显式预热：
+
+```go
+if warmer, ok := client.(tts.Prewarmer); ok {
+    if err := warmer.Warmup(ctx, "", 1); err != nil {
+        return err
+    }
+}
+```
+
+火山需传实际音色 ID。预热数量是目标空闲连接数，而非每次新增数量；预热仅建立 WebSocket，不启动合成任务，不保证后续一定有空闲连接。腾讯可提前打开实际请求的双向流式会话，使用同一会话发送文本并接收音频。会话绑定传入的 Context，未使用也须关闭。
+
+连接池不自动预热、补充空闲连接、保活或重试任务。详见 [连接管理](docs/connection-management.md)、[阿里连接池](docs/aliyun-connection-pool.md) 和 [火山双向流式连接池](tts/providers/volcengine/README.md#optional-duplex-connection-reuse)。
 
 ## 错误处理
 

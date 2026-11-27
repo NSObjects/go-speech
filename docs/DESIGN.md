@@ -113,7 +113,7 @@ discards the socket; there is no automatic task replay or idle prefill.
 
 Clients with pooling implement `io.Closer`; close the client at shutdown
 and close each stream after use. Pool limits apply per client. See
-[Aliyun pool settings](aliyun-connection-pool.md) and [Seed-TTS pool settings](../tts/providers/volcengine/README.md#optional-duplex-connection-reuse).
+[connection management and provider support](connection-management.md). Aliyun and Seed-TTS TTS clients expose optional explicit `tts.Prewarmer`; Tencent TTS instead supports opening the actual duplex session before text is available. Tencent ASR/TTS and Volcengine bigmodel_async ASR do not reuse completed sockets.
 
 ## Voice management and local capabilities
 
