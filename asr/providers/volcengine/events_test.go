@@ -235,19 +235,46 @@ func TestNestedPayloadDoesNotDiscardEndOfStreamFlag(t *testing.T) {
 }
 
 func TestRecvStableTerminalStateWhenCallContextCanceledLater(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	endpoint := mockEndpoint(t, func(ws *websocket.Conn, _ *http.Request) {
+		_, _, _ = ws.ReadMessage()
+		_, _, _ = ws.ReadMessage()
+	})
+	client, err := New(Config{APIKey: "key", Endpoint: endpoint})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	ctx, cancel := context.WithCancel(parent)
 	cancel()
 	for _, tc := range []struct {
 		name string
-		s    *Stream
 		want error
 	}{
-		{"finished", &Stream{finished: true}, io.EOF},
-		{"failed", &Stream{terminalErr: io.ErrUnexpectedEOF}, io.ErrUnexpectedEOF},
+		{"finished", io.EOF},
+		{"failed", io.ErrUnexpectedEOF},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			stream, err := client.OpenStream(parent, asr.Config{
+				Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			s := stream.(*Stream)
+			if tc.want == io.EOF {
+				s.readMu.Lock()
+				err := s.complete()
+				s.readMu.Unlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				_ = s.fail(tc.want)
+			}
 			for i := 0; i < 2; i++ {
-				_, err := tc.s.Recv(ctx)
+				_, err := s.Recv(ctx)
 				if !errors.Is(err, tc.want) {
 					t.Fatalf("read %d: got %v, want %v", i, err, tc.want)
 				}

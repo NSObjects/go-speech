@@ -3,6 +3,8 @@ package tts
 import (
 	"context"
 	"errors"
+
+	"github.com/NSObjects/go-speech/speecherr"
 )
 
 // ErrSynthesisCanceled indicates a provider-confirmed cancellation, not
@@ -43,4 +45,23 @@ type Canceler interface {
 // No synthesis task is started and no background replenishment is scheduled.
 type Prewarmer interface {
 	Warmup(ctx context.Context, voice string, count int) error
+}
+
+// Warmup prepares idle connections on a client that implements Prewarmer.
+// Both complete-text and duplex client interfaces can be passed directly.
+// The provider validates its pool configuration, voice and count. A client
+// without Prewarmer support returns CodeUnsupported; errors are not ignored.
+// No capability query, synthesis request, retry or fallback is performed.
+func Warmup(ctx context.Context, client any, voice string, count int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if client == nil {
+		return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Operation: "tts_warmup", Err: errors.New("nil synthesizer")}
+	}
+	warmer, ok := client.(Prewarmer)
+	if !ok {
+		return &speecherr.Error{Code: speecherr.CodeUnsupported, Operation: "tts_warmup", Err: errors.New("connection warmup unsupported")}
+	}
+	return warmer.Warmup(ctx, voice, count)
 }

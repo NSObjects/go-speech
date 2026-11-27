@@ -3,6 +3,7 @@ package tts
 import (
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/capability"
+	"github.com/NSObjects/go-speech/transport"
 )
 
 // Capabilities describes the SDK's implemented protocol paths. It does not
@@ -25,6 +26,9 @@ type Capabilities struct {
 	// formats, not whether every model/voice interprets the markup.
 	CompleteTextFormats []TextFormat
 	DuplexTextFormats   []TextFormat
+
+	// Pool describes optional WebSocket reuse for this client.
+	Pool transport.PoolCapabilities
 
 	// Features describes selected advanced controls; absent entries are unknown.
 	Features capability.Features

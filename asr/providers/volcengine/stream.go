@@ -211,7 +211,10 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	}()
 	for {
 		if err := s.terminalFailure(); err != nil {
-			return asr.Event{}, err
+			// A cancellation callback may have published the error but not
+			// yet closed the transport. Wait for the idempotent close before
+			// exposing a terminal result to the caller.
+			return asr.Event{}, s.fail(err)
 		}
 		// Only a provider-confirmed final response may drain queued events
 		// after the connection closes. An active stream must honor Close and
@@ -248,7 +251,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		typ, data, readErr := s.conn.ReadMessage()
 		stop()
 		if cause := s.terminalFailure(); cause != nil {
-			return asr.Event{}, cause
+			return asr.Event{}, s.fail(cause)
 		}
 		if readErr != nil {
 			result := s.transportError(ctx, "recv", readErr)
@@ -423,7 +426,8 @@ func (s *Stream) complete() error {
 	if s.terminalErr != nil {
 		err := s.terminalErr
 		s.terminalMu.Unlock()
-		return err
+		// The concurrent failure may still be closing the transport.
+		return s.fail(err)
 	}
 	s.terminalSuccess = true
 	s.terminalMu.Unlock()

@@ -7,6 +7,7 @@ import (
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/NSObjects/go-speech/capability"
+	"github.com/NSObjects/go-speech/transport"
 )
 
 var (
@@ -22,6 +23,7 @@ func (c *Client) Capabilities() tts.Capabilities {
 		Provider: "volcengine", Model: c.cfg.ModelID, Protocol: "seed-tts-http-jsonl/ws", Audio: SupportedAudio(),
 		Batch: true, Streaming: true, Duplex: true, Events: true, Flush: true,
 		Features: c.features(),
+		Pool: transport.PoolCapabilities{Supported: true, Enabled: c.pool.Enabled(), Warmup: true, VoiceSpecific: true, Duplex: true},
 		CompleteTextFormats: []tts.TextFormat{tts.TextPlain, tts.TextSSML, tts.TextInlineTag},
 		DuplexTextFormats:   []tts.TextFormat{tts.TextPlain, tts.TextInlineTag},
 	}
