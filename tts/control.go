@@ -33,3 +33,14 @@ type Resetter interface {
 type Canceler interface {
 	Cancel(ctx context.Context) error
 }
+
+// Prewarmer optionally prepares idle WebSocket connections for future TTS
+// requests. Warmup is synchronous and best effort; count is a target idle
+// count, not an additional dial count. A nil result does not guarantee that
+// capacity is available when a later request arrives. Requires pooling.
+// Voice is required for providers with voice-specific endpoints (Seed-TTS);
+// providers with voice-independent endpoints (CosyVoice) ignore it.
+// No synthesis task is started and no background replenishment is scheduled.
+type Prewarmer interface {
+	Warmup(ctx context.Context, voice string, count int) error
+}

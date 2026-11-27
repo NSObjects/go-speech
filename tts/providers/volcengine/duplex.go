@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -39,6 +40,7 @@ type duplex struct {
 var (
 	_ tts.DuplexStream = (*duplex)(nil)
 	_ tts.Flusher      = (*duplex)(nil)
+	_ tts.Prewarmer    = (*Client)(nil)
 )
 
 // OpenDuplex opens the JSON text-event protocol and waits for ready before
@@ -62,24 +64,9 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 	}
 	startCtx, cancel := context.WithTimeout(ctx, c.cfg.StartTimeout)
 	defer cancel()
-	dialer := *websocket.DefaultDialer
-	if c.cfg.Dialer != nil {
-		dialer = *c.cfg.Dialer
-	}
-	header := http.Header{"X-Api-Key": []string{c.cfg.APIKey}}
 	endpoint := c.endpoint(req.Voice, "streaming-input", true)
 	conn, err := c.pool.AcquireKey(startCtx, endpoint, func(dialCtx context.Context) (*websocket.Conn, error) {
-		conn, response, err := dialer.DialContext(dialCtx, endpoint, header)
-		if err != nil {
-			if response != nil && response.Body != nil {
-				_ = response.Body.Close()
-			}
-			if response != nil && dialCtx.Err() == nil {
-				return nil, httpFailure(response.StatusCode)
-			}
-			return nil, startFailure(ctx, dialCtx, "connect", err)
-		}
-		return conn, nil
+		return c.dial(ctx, dialCtx, endpoint)
 	})
 	if err != nil {
 		var classified *speecherr.Error
@@ -261,4 +248,39 @@ func (d *duplex) Flush(ctx context.Context) error {
 		return d.failWrite(err)
 	}
 	return nil
+}
+
+// Warmup prepares up to count idle WebSockets for the supplied voice.
+func (c *Client) Warmup(ctx context.Context, voice string, count int) error {
+	if c == nil {
+		return invalid("nil client")
+	}
+	if _, _, err := validateOutput(voice, audio.Format{}); err != nil {
+		return err
+	}
+	start, cancel := context.WithTimeout(ctx, c.cfg.StartTimeout)
+	defer cancel()
+	endpoint := c.endpoint(voice, "streaming-input", true)
+	return c.pool.WarmupKey(start, endpoint, func(dialCtx context.Context) (*websocket.Conn, error) {
+		return c.dial(ctx, dialCtx, endpoint)
+	})
+}
+
+func (c *Client) dial(parent, ctx context.Context, endpoint string) (*websocket.Conn, error) {
+	dialer := *websocket.DefaultDialer
+	if c.cfg.Dialer != nil {
+		dialer = *c.cfg.Dialer
+	}
+	header := http.Header{"X-Api-Key": []string{c.cfg.APIKey}}
+	conn, response, err := dialer.DialContext(ctx, endpoint, header)
+	if err != nil {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		if response != nil && ctx.Err() == nil {
+			return nil, httpFailure(response.StatusCode)
+		}
+		return nil, startFailure(parent, ctx, "connect", err)
+	}
+	return conn, nil
 }

@@ -41,6 +41,7 @@ var (
 	_ tts.Synthesizer       = (*Client)(nil)
 	_ tts.StreamSynthesizer = (*Client)(nil)
 	_ tts.DuplexSynthesizer = (*Client)(nil)
+	_ tts.Prewarmer         = (*Client)(nil)
 )
 
 // Config holds credentials and transport settings. Endpoint defaults to the
@@ -210,31 +211,7 @@ func (c *Client) openSession(ctx context.Context, req tts.Request, codec string,
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "task_id", Err: err}
 	}
-	dialer := *websocket.DefaultDialer
-	if c.cfg.Dialer != nil {
-		dialer = *c.cfg.Dialer
-	}
-	if dialer.HandshakeTimeout == 0 {
-		dialer.HandshakeTimeout = c.cfg.StartTimeout
-	}
-	headers := http.Header{}
-	headers.Set("Authorization", "Bearer "+c.cfg.APIKey)
-	if c.cfg.WorkspaceID != "" {
-		headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
-	}
-	conn, err := c.pool.Acquire(ctx, func(ctx context.Context) (*websocket.Conn, error) {
-		conn, response, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
-		if err != nil {
-			if response != nil && response.Body != nil {
-				_ = response.Body.Close()
-			}
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			return nil, dialFailure(err, response)
-		}
-		return conn, nil
-	})
+	conn, err := c.pool.Acquire(ctx, c.dial)
 	if err != nil {
 		return nil, err
 	}
@@ -348,4 +325,40 @@ func (c *Client) Close() error {
 		return nil
 	}
 	return c.pool.Close()
+}
+
+// Warmup prepares up to count idle, voice-independent WebSockets.
+func (c *Client) Warmup(ctx context.Context, _ string, count int) error {
+	if c == nil {
+		return invalid("nil client")
+	}
+	start, cancel := context.WithTimeout(ctx, c.cfg.StartTimeout)
+	defer cancel()
+	return c.pool.WarmupKey(start, "", count, c.dial)
+}
+
+func (c *Client) dial(ctx context.Context) (*websocket.Conn, error) {
+	dialer := *websocket.DefaultDialer
+	if c.cfg.Dialer != nil {
+	dialer = *c.cfg.Dialer
+	}
+	if dialer.HandshakeTimeout == 0 {
+	dialer.HandshakeTimeout = c.cfg.StartTimeout
+	}
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	if c.cfg.WorkspaceID != "" {
+	headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
+	}
+	conn, response, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
+	if err != nil {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, dialFailure(err, response)
+	}
+	return conn, nil
 }

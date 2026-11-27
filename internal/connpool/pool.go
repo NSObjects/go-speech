@@ -14,6 +14,9 @@ import (
 
 var ErrClosed = errors.New("connection pool closed")
 
+var ErrDisabled = errors.New("connection pool disabled")
+var ErrInvalidWarmupCount = errors.New("warmup count must be between zero and MaxIdle")
+
 type idleConn struct {
 	conn  *websocket.Conn
 	until time.Time
@@ -30,6 +33,8 @@ type Pool struct {
 	keys    map[*websocket.Conn]string
 	idle    []*idleConn
 	changed chan struct{}
+	warming map[string]int
+	pending int
 }
 
 func New(cfg *transport.PoolConfig) (*Pool, error) {
@@ -59,7 +64,7 @@ func New(cfg *transport.PoolConfig) (*Pool, error) {
 	if c.MaxLifetime == 0 {
 		c.MaxLifetime = 10 * time.Minute
 	}
-	return &Pool{cfg: c, born: make(map[*websocket.Conn]time.Time), keys: make(map[*websocket.Conn]string), changed: make(chan struct{})}, nil
+	return &Pool{cfg: c, born: make(map[*websocket.Conn]time.Time), keys: make(map[*websocket.Conn]string), warming: make(map[string]int), changed: make(chan struct{})}, nil
 }
 
 func (p *Pool) signal() {
@@ -149,6 +154,83 @@ func (p *Pool) AcquireKey(ctx context.Context, key string, dial func(context.Con
 	}
 }
 
+// WarmupKey makes a bounded, synchronous best-effort attempt to reach count
+// idle connections for key. It never waits for capacity, evicts another key,
+// sends protocol tasks, or retries failed dials. Concurrent warmups reserve
+// capacity before dialing. Foreground requests may consume warmed sockets.
+func (p *Pool) WarmupKey(ctx context.Context, key string, count int, dial func(context.Context) (*websocket.Conn, error)) error {
+	if p == nil {
+		return ErrDisabled
+	}
+	if count < 0 || count > p.cfg.MaxIdle {
+		return ErrInvalidWarmupCount
+	}
+	if p.cfg.AcquireTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.cfg.AcquireTimeout)
+		defer cancel()
+	}
+	for attempt := 0; attempt < count; attempt++ {
+		p.mu.Lock()
+		if err := ctx.Err(); err != nil {
+			p.mu.Unlock()
+			return err
+		}
+		if p.closed {
+			p.mu.Unlock()
+			return ErrClosed
+		}
+		matching := p.warming[key]
+		for i := len(p.idle) - 1; i >= 0; i-- {
+			e := p.idle[i]
+			if !time.Now().Before(e.until) {
+				p.removeIdle(i)
+				p.drop(e.conn)
+				continue
+			}
+			if p.keys[e.conn] == key {
+				matching++
+			}
+		}
+		if matching >= count || p.open >= p.cfg.MaxOpen || len(p.idle)+p.pending >= p.cfg.MaxIdle {
+			p.mu.Unlock()
+			return nil
+		}
+		p.open++
+		p.pending++
+		p.warming[key]++
+		p.mu.Unlock()
+
+		conn, err := dial(ctx)
+		p.mu.Lock()
+		p.pending--
+		p.warming[key]--
+		if p.warming[key] == 0 {
+			delete(p.warming, key)
+		}
+		if err == nil {
+			err = ctx.Err()
+		}
+		if err == nil && p.closed {
+			err = ErrClosed
+		}
+		if err != nil {
+			p.open--
+			p.signal()
+			p.mu.Unlock()
+			if conn != nil {
+				_ = conn.Close()
+			}
+			return err
+		}
+		p.born[conn] = time.Now()
+		p.keys[conn] = key
+		p.releaseLocked(conn, true)
+		p.mu.Unlock()
+	}
+	return nil
+}
+
 // removeIdle removes an idle entry and stops its timer while holding mu.
 func (p *Pool) removeIdle(i int) {
 	p.idle[i].timer.Stop()
@@ -175,6 +257,10 @@ func (p *Pool) Release(conn *websocket.Conn, reusable bool) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.releaseLocked(conn, reusable)
+}
+
+func (p *Pool) releaseLocked(conn *websocket.Conn, reusable bool) {
 	born, ok := p.born[conn]
 	if !ok {
 		return
