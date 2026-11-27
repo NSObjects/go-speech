@@ -37,9 +37,6 @@ func mp3Frames(data []byte) ([][]byte, error) {
 			return nil, argumentError("invalid or oversized ID3v2 tag")
 		}
 	}
-	if end-start >= 128 && string(data[end-128:end-125]) == "TAG" {
-		end -= 128
-	}
 	frames := make([][]byte, 0, min((end-start)/72, maxFrames))
 	for offset := start; offset < end; {
 		if len(frames) == maxFrames {
@@ -57,8 +54,11 @@ func mp3Frames(data []byte) ([][]byte, error) {
 		if offset == start {
 			from = 0
 		}
-		if next == end {
-			to = len(data)
+		// Recognize ID3v1 only at a verified MPEG frame boundary, not
+		// by searching inside arbitrary compressed audio bytes.
+		if end-next == 128 && string(data[next:next+3]) == "TAG" {
+			next = end
+			to = end
 		}
 		frames = append(frames, data[from:to])
 		offset = next
