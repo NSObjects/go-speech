@@ -19,13 +19,22 @@ import (
 // against the pinned public PCM fixture. It does not evaluate label accuracy
 // or require a neutral recording to contain an emotional utterance.
 func TestTencentLiveEmotionMetadata(t *testing.T) {
-	raw, err := os.ReadFile(os.Getenv("TENCENT_TEST_16K_PCM_FILE"))
+	raw, err := os.ReadFile(os.Getenv("TENCENT_TEST_8K_PCM_FILE"))
 	if err != nil || len(raw) < 3200 || len(raw)%2 != 0 {
-		t.Fatalf("invalid 16k PCM fixture: bytes=%d err=%v", len(raw), err)
+		t.Fatalf("invalid 8k PCM fixture: bytes=%d err=%v", len(raw), err)
 	}
+	for _, engine := range []string{"8k_zh", "8k_zh_large"} {
+		t.Run(engine, func(t *testing.T) {
+			probeTencentEmotion(t, engine, raw)
+		})
+	}
+}
+
+func probeTencentEmotion(t *testing.T, engine string, raw []byte) {
+	t.Helper()
 	client, err := New(Config{
 		AppID: os.Getenv("TENCENT_APP_ID"), SecretID: os.Getenv("TENCENT_SECRET_ID"),
-		SecretKey: os.Getenv("TENCENT_SECRET_KEY"), EngineModel: "16k_zh_en", NeedVAD: true,
+		SecretKey: os.Getenv("TENCENT_SECRET_KEY"), EngineModel: engine, NeedVAD: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +43,7 @@ func TestTencentLiveEmotionMetadata(t *testing.T) {
 	defer cancel()
 	mode := 1 // Native metadata; do not insert labels into the transcript.
 	result, err := client.Recognize(ctx, audio.Buffer{
-		Data: raw, Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+		Data: raw, Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 8000, Channels: 1},
 	}, asr.Config{Options: asr.Options{
 		UtteranceDetails: true,
 		Provider:         Options{EmotionRecognition: &mode},

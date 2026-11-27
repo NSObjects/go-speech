@@ -82,14 +82,6 @@ jobs:
       - name: Short-audio Recognize (complete PCM input and final text)
         run: go test -tags=integration -run '^TestTencentLiveShortRecognize$' -count=1 -v -timeout 2m ./asr/providers/tencent
 
-      - name: Real Tencent Cloud legacy emotion metadata (paid)
-        run: |
-          set -euo pipefail
-          go test -tags=integration -run '^TestTencentLiveEmotionMetadata$' -count=1 -v -timeout 2m ./asr/providers/tencent | tee "$RUNNER_TEMP/tencent-emotion.log"
-          if grep -q 'NOT VALIDATED:' "$RUNNER_TEMP/tencent-emotion.log"; then
-            echo "### Tencent ASR emotion: request accepted; label schema unconfirmed" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
       - name: Real Tencent Cloud per-request hotword hints
         run: go test -tags=integration -run TestTencentLiveRequestHints -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud concurrent streaming sessions
@@ -122,6 +114,15 @@ jobs:
               echo "Result: **FAIL** — automatic strict cloud gate failed; see test logs."
             } >> "${GITHUB_STEP_SUMMARY}"
             exit 1
+          fi
+
+      # Run this diagnostic after the established ASR gates.
+      - name: Real Tencent Cloud legacy emotion metadata (paid)
+        run: |
+          set -euo pipefail
+          go test -tags=integration -run '^TestTencentLiveEmotionMetadata$' -count=1 -v -timeout 4m ./asr/providers/tencent | tee "$RUNNER_TEMP/tencent-emotion.log"
+          if grep -q 'NOT VALIDATED:' "$RUNNER_TEMP/tencent-emotion.log"; then
+            echo "### Tencent ASR emotion: requests accepted; label schema unconfirmed" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # Strict, paid speaker-enabled V2 ASR gate. A pinned 16kHz sample from the
