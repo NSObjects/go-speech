@@ -13,6 +13,8 @@ const (
 	Processing State = "processing"
 	Rejected   State = "rejected"
 	Failed     State = "failed"
+	// Trained means training completed; deployment is not confirmed.
+	Trained State = "trained"
 )
 
 // Usable reports whether the provider reports a synthesis-ready state.

@@ -15,7 +15,7 @@ type TaskType int
 
 const (
 	Basic TaskType = 0
-	Fast TaskType = 5
+	Fast  TaskType = 5
 )
 
 func (t TaskType) valid() bool { return t == Basic || t == Fast }
@@ -30,14 +30,14 @@ func validText(s string) bool {
 }
 
 type TrainingTextRequest struct {
-	TaskType TaskType `json:"TaskType,omitempty"`
-	Domain *int `json:"Domain,omitempty"`
-	TextLanguage *int `json:"TextLanguage,omitempty"`
+	TaskType     TaskType `json:"TaskType,omitempty"`
+	Domain       *int     `json:"Domain,omitempty"`
+	TextLanguage *int     `json:"TextLanguage,omitempty"`
 }
 
 type TrainingText struct {
 	TextID string `json:"TextId"`
-	Text string `json:"Text"`
+	Text   string `json:"Text"`
 }
 
 type TrainingTextResult struct {
@@ -63,7 +63,7 @@ func (c *Client) GetTrainingText(ctx context.Context, req TrainingTextRequest) (
 type DetectionType int
 
 const (
-	Environment DetectionType = 1
+	Environment  DetectionType = 1
 	SoundQuality DetectionType = 2
 )
 
@@ -81,27 +81,27 @@ func (f SampleFormat) valid() bool {
 }
 
 type DetectionRequest struct {
-	TextID string `json:"TextId"`
-	Audio []byte `json:"AudioData"`
-	Type DetectionType `json:"TypeId"`
-	Format SampleFormat `json:"Codec,omitempty"`
-	SampleRate int `json:"SampleRate,omitempty"`
-	TaskType TaskType `json:"TaskType,omitempty"`
+	TextID     string        `json:"TextId"`
+	Audio      []byte        `json:"AudioData"`
+	Type       DetectionType `json:"TypeId"`
+	Format     SampleFormat  `json:"Codec,omitempty"`
+	SampleRate int           `json:"SampleRate,omitempty"`
+	TaskType   TaskType      `json:"TaskType,omitempty"`
 }
 
 type DetectionWord struct {
 	PronAccuracy *float64 `json:"PronAccuracy"`
-	PronFluency *float64 `json:"PronFluency"`
-	Tag *int `json:"Tag"`
-	Word string `json:"Word"`
+	PronFluency  *float64 `json:"PronFluency"`
+	Tag          *int     `json:"Tag"`
+	Word         string   `json:"Word"`
 }
 
 type DetectionResult struct {
 	Metadata
-	AudioID string `json:"AudioId"`
-	Code *int `json:"DetectionCode"`
-	Message string `json:"DetectionMsg"`
-	Tips []DetectionWord `json:"DetectionTip"`
+	AudioID string          `json:"AudioId"`
+	Code    *int            `json:"DetectionCode"`
+	Message string          `json:"DetectionMsg"`
+	Tips    []DetectionWord `json:"DetectionTip"`
 }
 
 // Passed reports a positive provider detection result, not a locally
@@ -145,19 +145,19 @@ func (c *Client) Detect(ctx context.Context, req DetectionRequest) (DetectionRes
 // CloneRequest submits previously detected audio IDs, not audio bytes.
 // SessionID is supplied by the caller and should be unique for each task.
 type CloneRequest struct {
-	SessionID string `json:"SessionId"`
-	VoiceName string `json:"VoiceName"`
-	VoiceGender int `json:"VoiceGender"`
-	VoiceLanguage int `json:"VoiceLanguage"`
-	AudioIDs []string `json:"AudioIdList"`
-	SampleRate int `json:"SampleRate,omitempty"`
-	Format SampleFormat `json:"Codec,omitempty"`
-	CallbackURL string `json:"CallbackUrl,omitempty"`
-	ModelType int `json:"ModelType,omitempty"`
-	TaskType TaskType `json:"TaskType,omitempty"`
-	VPRAudioID string `json:"VPRAudioId,omitempty"`
-	EnableVoiceEnhance *int `json:"EnableVoiceEnhance,omitempty"`
-	EngineType string `json:"EngineType,omitempty"`
+	SessionID          string       `json:"SessionId"`
+	VoiceName          string       `json:"VoiceName"`
+	VoiceGender        int          `json:"VoiceGender"`
+	VoiceLanguage      int          `json:"VoiceLanguage"`
+	AudioIDs           []string     `json:"AudioIdList"`
+	SampleRate         int          `json:"SampleRate,omitempty"`
+	Format             SampleFormat `json:"Codec,omitempty"`
+	CallbackURL        string       `json:"CallbackUrl,omitempty"`
+	ModelType          int          `json:"ModelType,omitempty"`
+	TaskType           TaskType     `json:"TaskType,omitempty"`
+	VPRAudioID         string       `json:"VPRAudioId,omitempty"`
+	EnableVoiceEnhance *int         `json:"EnableVoiceEnhance,omitempty"`
+	EngineType         string       `json:"EngineType,omitempty"`
 }
 
 type CloneResult struct {
@@ -208,15 +208,17 @@ func (c *Client) Clone(ctx context.Context, req CloneRequest) (CloneResult, erro
 
 type TaskResult struct {
 	Metadata
-	TaskID string `json:"TaskId"`
-	Status *int `json:"Status"`
-	StatusText string `json:"StatusStr"`
-	VoiceType *int64 `json:"VoiceType"`
+	TaskID        string `json:"TaskId"`
+	Status        *int   `json:"Status"`
+	StatusText    string `json:"StatusStr"`
+	VoiceType     *int64 `json:"VoiceType"`
 	FastVoiceType string `json:"FastVoiceType"`
-	ErrorMessage string `json:"ErrorMsg"`
-	ExpireTime string `json:"ExpireTime"`
+	ErrorMessage  string `json:"ErrorMsg"`
+	ExpireTime    string `json:"ExpireTime"`
 }
 
+// State describes the training task, not deployment or expiry. Use Query
+// to check whether the resulting voice is deployed.
 func (r TaskResult) State() voice.State {
 	if r.Status == nil {
 		return voice.Unknown
@@ -225,7 +227,7 @@ func (r TaskResult) State() voice.State {
 	case 0, 1:
 		return voice.Processing
 	case 2:
-		return voice.Ready
+		return voice.Trained
 	case 3:
 		return voice.Failed
 	default:
@@ -251,20 +253,20 @@ func (c *Client) QueryTask(ctx context.Context, id string) (TaskResult, error) {
 }
 
 type VoiceRef struct {
-	VoiceType int64 `json:"VoiceType"`
-	TaskType TaskType `json:"TaskType,omitempty"`
-	FastVoiceType string `json:"FastVoiceType,omitempty"`
+	VoiceType     int64    `json:"VoiceType"`
+	TaskType      TaskType `json:"TaskType,omitempty"`
+	FastVoiceType string   `json:"FastVoiceType,omitempty"`
 }
 
 type VoiceInfo struct {
-	VoiceType *int64 `json:"VoiceType"`
-	VoiceName string `json:"VoiceName"`
-	VoiceGender *int `json:"VoiceGender"`
-	TaskType *int `json:"TaskType"`
-	TaskID string `json:"TaskID"`
-	DateCreated string `json:"DateCreated"`
-	IsDeployed *bool `json:"IsDeployed"`
-	ExpireTime string `json:"ExpireTime"`
+	VoiceType     *int64 `json:"VoiceType"`
+	VoiceName     string `json:"VoiceName"`
+	VoiceGender   *int   `json:"VoiceGender"`
+	TaskType      *int   `json:"TaskType"`
+	TaskID        string `json:"TaskID"`
+	DateCreated   string `json:"DateCreated"`
+	IsDeployed    *bool  `json:"IsDeployed"`
+	ExpireTime    string `json:"ExpireTime"`
 	FastVoiceType string `json:"FastVoiceType"`
 }
 

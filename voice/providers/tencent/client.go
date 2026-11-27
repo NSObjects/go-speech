@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	DefaultEndpoint = "https://vrs.tencentcloudapi.com"
-	version = "2020-08-24"
-	contentType = "application/json; charset=utf-8"
+	DefaultEndpoint  = "https://vrs.tencentcloudapi.com"
+	version          = "2020-08-24"
+	contentType      = "application/json; charset=utf-8"
 	maxResponseBytes = 8 << 20
 )
 
@@ -40,7 +40,7 @@ type Config struct {
 }
 
 type Client struct {
-	cfg Config
+	cfg  Config
 	base *url.URL
 	http *http.Client
 }
