@@ -1,5 +1,5 @@
 // Package aliyun implements Alibaba Cloud CosyVoice TTS over the DashScope
-// WebSocket task protocol. Each synthesis owns its own WebSocket connection.
+// WebSocket task protocol, with optional serial connection reuse.
 // Audio bytes are passed through unchanged; no resampling or transcoding.
 package aliyun
 
@@ -16,9 +16,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
+	"github.com/NSObjects/go-speech/transport"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
 )
@@ -29,8 +31,8 @@ const (
 	ModelCosyVoiceV3Flash = "cosyvoice-v3-flash"
 	defaultStartTimeout   = 15 * time.Second
 	defaultWriteTimeout   = 10 * time.Second
-	maxTextRunes          = 20000
 	maxSessionTextRunes   = 200000
+	maxTextRunes          = 20000
 	maxBatchAudio         = 64 << 20
 )
 
@@ -50,9 +52,13 @@ type Config struct {
 	WorkspaceID  string
 	StartTimeout time.Duration
 	Dialer       *websocket.Dialer
+	Pool         *transport.PoolConfig
 }
 
-type Client struct{ cfg Config }
+type Client struct {
+	cfg  Config
+	pool *connpool.Pool
+}
 
 func New(cfg Config) (*Client, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
@@ -82,7 +88,12 @@ func New(cfg Config) (*Client, error) {
 		copied := *cfg.Dialer
 		cfg.Dialer = &copied
 	}
-	return &Client{cfg: cfg}, nil
+	pool, err := connpool.New(cfg.Pool)
+	if err != nil {
+		return nil, invalid(err.Error())
+	}
+	cfg.Pool = nil // Pool retains its own immutable settings.
+	return &Client{cfg: cfg, pool: pool}, nil
 }
 
 // SupportedAudio describes CosyVoice WebSocket output formats. EncodingOpus
@@ -202,18 +213,24 @@ func (c *Client) openSession(ctx context.Context, req tts.Request, codec string,
 	if c.cfg.WorkspaceID != "" {
 		headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
 	}
-	conn, response, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
+	conn, err := c.pool.Acquire(ctx, func(ctx context.Context) (*websocket.Conn, error) {
+		conn, response, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
+		if err != nil {
+			if response != nil && response.Body != nil {
+				_ = response.Body.Close()
+			}
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, dialFailure(err, response)
+		}
+		return conn, nil
+	})
 	if err != nil {
-		if response != nil && response.Body != nil {
-			_ = response.Body.Close()
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, dialFailure(err, response)
+		return nil, err
 	}
 	conn.SetReadLimit(8 << 20)
-	stream := newStream(conn, ctx, taskID, req.Format)
+	stream := newStream(conn, ctx, taskID, req.Format, c.pool)
 	if err := stream.startSession(ctx, c.cfg.Model, req, codec, params, c.cfg.StartTimeout); err != nil {
 		_ = stream.Close()
 		return nil, err
@@ -303,4 +320,13 @@ func decodeEvent(data []byte, task string) (serverHeader, error) {
 		return serverHeader{}, protocol("missing event or mismatched task_id")
 	}
 	return event.Header, nil
+}
+
+// Close releases idle pooled connections and rejects new pooled acquisitions.
+// In-flight tasks may finish; unpooled clients have no persistent resources.
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+	return c.pool.Close()
 }

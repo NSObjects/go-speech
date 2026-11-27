@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -23,6 +24,7 @@ import (
 // failures remain stable across subsequent Recv calls.
 type Stream struct {
 	conn        *websocket.Conn
+	pool        *connpool.Pool
 	parent      context.Context
 	taskID      string
 	format      audio.Format
@@ -52,8 +54,11 @@ const (
 	receiveEvents
 )
 
-func newStream(conn *websocket.Conn, ctx context.Context, id string, format audio.Format) *Stream {
+func newStream(conn *websocket.Conn, ctx context.Context, id string, format audio.Format, pools ...*connpool.Pool) *Stream {
 	s := &Stream{conn: conn, parent: ctx, taskID: id, format: format, done: make(chan struct{})}
+	if len(pools) != 0 {
+		s.pool = pools[0]
+	}
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -67,12 +72,21 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.closeOnce.Do(func() {
-		close(s.done)
-		_ = s.conn.Close()
-	})
+	s.release(false)
 	return nil
 }
+// release resolves ownership once. Old context callbacks cannot close a
+// connection after this stream has returned it to the pool.
+func (s *Stream) release(reusable bool) {
+	s.closeOnce.Do(func() {
+		close(s.done)
+		if reusable {
+			reusable = s.conn.SetReadDeadline(time.Time{}) == nil && s.conn.SetWriteDeadline(time.Time{}) == nil
+		}
+		s.pool.Release(s.conn, reusable)
+	})
+}
+
 func (s *Stream) closed() bool {
 	select {
 	case <-s.done:
@@ -100,6 +114,23 @@ func (s *Stream) fail(err error) error {
 	first := s.terminalErr
 	s.terminalMu.Unlock()
 	_ = s.Close()
+	return first
+}
+
+// complete arbitrates the first terminal result and only reuses a socket
+// after the final writer has stopped. Called under readMu.
+func (s *Stream) complete(ctx context.Context, result error) error {
+	if s.pool != nil {
+		s.writeMu.Lock()
+		defer s.writeMu.Unlock()
+	}
+	s.terminalMu.Lock()
+	if s.terminalErr == nil {
+		s.terminalErr = result
+	}
+	first := s.terminalErr
+	s.terminalMu.Unlock()
+	s.release(s.pool != nil && first == result && s.inputClosed && ctx.Err() == nil && s.parent.Err() == nil)
 	return first
 }
 
@@ -402,12 +433,12 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 				return tts.Event{}, s.fail(classifyTaskFailure(ev))
 			case "task-finished":
 				if s.cancelSent.Load() {
-					return tts.Event{}, s.fail(tts.ErrSynthesisCanceled)
+					return tts.Event{}, s.complete(ctx, tts.ErrSynthesisCanceled)
 				}
 				if !s.audioSeen {
 					return tts.Event{}, s.fail(protocol("synthesis completed without audio"))
 				}
-				err := s.fail(io.EOF)
+				err := s.complete(ctx, io.EOF)
 				s.finished = errors.Is(err, io.EOF)
 				return tts.Event{}, err
 			case "result-generated":

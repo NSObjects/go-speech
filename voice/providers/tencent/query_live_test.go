@@ -4,9 +4,12 @@ package tencent
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/NSObjects/go-speech/speecherr"
 )
 
 func TestTencentLiveVoiceQueries(t *testing.T) {
@@ -23,11 +26,20 @@ func TestTencentLiveVoiceQueries(t *testing.T) {
 		name := "basic"
 		if kind == Fast {
 			name = "fast"
+			// GetVRSVoiceTypes is limited to one request per second.
+			// Space distinct list queries; never retry a rejected request.
+			timer := time.NewTimer(1100 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				t.Fatal(ctx.Err())
+			case <-timer.C:
+			}
 		}
 		t.Run(name, func(t *testing.T) {
 			list, err := c.List(ctx, kind)
 			if err != nil {
-				t.Fatalf("list failed: %T (inspect provider console)", err)
+				failVoiceQuery(t, "list", err)
 			}
 			if list.RequestID == "" {
 				t.Fatal("missing request ID")
@@ -47,7 +59,7 @@ func TestTencentLiveVoiceQueries(t *testing.T) {
 					}
 					detail, err := c.Query(ctx, ref)
 					if err != nil {
-						t.Fatalf("detail query failed: %T (inspect provider console)", err)
+						failVoiceQuery(t, "detail query", err)
 					}
 					if detail.RequestID == "" {
 						t.Fatal("missing detail request ID")
@@ -63,7 +75,7 @@ func TestTencentLiveVoiceQueries(t *testing.T) {
 						}
 						task, err := c.QueryTask(ctx, taskID)
 						if err != nil {
-							t.Fatalf("task query failed: %T (inspect provider console)", err)
+							failVoiceQuery(t, "task query", err)
 						}
 						if task.RequestID == "" || task.Status == nil || task.TaskID != taskID {
 							t.Fatal("invalid task detail response")
@@ -76,4 +88,20 @@ func TestTencentLiveVoiceQueries(t *testing.T) {
 			})
 		})
 	}
+}
+
+// Report only structured diagnostic fields, not remote messages, credentials,
+// authorization headers, or the response body.
+func failVoiceQuery(t *testing.T, stage string, err error) {
+	t.Helper()
+	var classified *speecherr.Error
+	var remote *RemoteError
+	if errors.As(err, &classified) {
+		if errors.As(err, &remote) {
+			t.Fatalf("%s failed: code=%s operation=%q http_status=%d remote_code=%q request_id=%q",
+				stage, classified.Code, classified.Operation, remote.HTTPStatus, remote.Code, remote.RequestID)
+		}
+		t.Fatalf("%s failed: code=%s operation=%q cause_type=%T", stage, classified.Code, classified.Operation, classified.Err)
+	}
+	t.Fatalf("%s failed: %T canceled=%t deadline=%t", stage, err, errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded))
 }

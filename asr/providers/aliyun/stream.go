@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
@@ -26,30 +27,34 @@ var (
 // Stream is a task-specific WebSocket session. It permits one concurrent sender
 // and one concurrent receiver. A canceled Send/Recv context closes the session.
 type Stream struct {
-	conn        *websocket.Conn
-	parent      context.Context
-	taskID      string
-	done        chan struct{}
-	once        sync.Once
-	writeMu     sync.Mutex
-	readMu      sync.Mutex
-	terminalMu  sync.Mutex
-	sendClosed  bool  // writeMu
-	sentAudio   bool  // writeMu: true after successful audio upload
-	finished    bool  // readMu
-	terminalErr error // terminalMu: first terminal failure remains observable
-	terminalSuccess bool // terminalMu: provider completion cannot be overwritten
-	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
-	details       bool // immutable after OpenStream
-	model         string // immutable after OpenStream
-	usageMu       sync.Mutex
-	usage         *Usage
+	conn            *websocket.Conn
+	pool            *connpool.Pool
+	parent          context.Context
+	taskID          string
+	done            chan struct{}
+	once            sync.Once
+	writeMu         sync.Mutex
+	readMu          sync.Mutex
+	terminalMu      sync.Mutex
+	sendClosed      bool   // writeMu
+	sentAudio       bool   // writeMu: true after successful audio upload
+	finished        bool   // readMu
+	terminalErr     error  // terminalMu: first terminal failure remains observable
+	terminalSuccess bool   // terminalMu: provider completion cannot be overwritten
+	pcmFrameBytes   int    // 0 for encoded formats; immutable after OpenStream
+	details         bool   // immutable after OpenStream
+	model           string // immutable after OpenStream
+	usageMu         sync.Mutex
+	usage           *Usage
 }
 
 var _ asr.Stream = (*Stream)(nil)
 
-func newStream(conn *websocket.Conn, ctx context.Context, taskID string) *Stream {
+func newStream(conn *websocket.Conn, ctx context.Context, taskID string, pools ...*connpool.Pool) *Stream {
 	s := &Stream{conn: conn, parent: ctx, taskID: taskID, done: make(chan struct{})}
+	if len(pools) != 0 {
+		s.pool = pools[0]
+	}
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -65,9 +70,21 @@ func (s *Stream) Close() error {
 		return nil
 	}
 	_ = s.recordFailure(s.closeError(context.Background()))
-	s.once.Do(func() { close(s.done); _ = s.conn.Close() })
+	s.release(false)
 	return nil
 }
+// release resolves ownership once. Old context callbacks cannot close a
+// connection after this stream has returned it to the pool.
+func (s *Stream) release(reusable bool) {
+	s.once.Do(func() {
+		close(s.done)
+		if reusable {
+			reusable = s.conn.SetReadDeadline(time.Time{}) == nil && s.conn.SetWriteDeadline(time.Time{}) == nil
+		}
+		s.pool.Release(s.conn, reusable)
+	})
+}
+
 func (s *Stream) closed() bool {
 	select {
 	case <-s.done:
@@ -237,7 +254,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			}
 		case "task-finished":
 			s.recordUsage(ev.Payload.Usage, true)
-			if err := s.complete(); err != nil {
+			if err := s.complete(ctx); err != nil {
 				return asr.Event{}, err
 			}
 			return asr.Event{}, io.EOF
@@ -282,7 +299,11 @@ func (s *Stream) recordFailure(err error) error {
 // complete is called under readMu after validating the terminal frame.
 // Publish success before closing the transport, so late cancellation or
 // write errors cannot turn a completed recognition into a failure.
-func (s *Stream) complete() error {
+func (s *Stream) complete(ctx context.Context) error {
+	if s.pool != nil {
+		s.writeMu.Lock()
+		defer s.writeMu.Unlock()
+	}
 	s.terminalMu.Lock()
 	if s.terminalErr != nil {
 		err := s.terminalErr
@@ -292,7 +313,7 @@ func (s *Stream) complete() error {
 	s.terminalSuccess = true
 	s.terminalMu.Unlock()
 	s.finished = true
-	_ = s.Close()
+	s.release(s.pool != nil && s.sendClosed && ctx.Err() == nil && s.parent.Err() == nil)
 	return nil
 }
 
