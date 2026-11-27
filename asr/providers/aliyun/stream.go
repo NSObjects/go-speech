@@ -38,6 +38,7 @@ type Stream struct {
 	finished    bool  // readMu
 	terminalErr error // terminalMu: first terminal failure remains observable
 	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
+	details       bool // immutable after OpenStream
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -215,13 +216,13 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 				if sentence.Text == "" {
 					continue
 				}
-				return asr.Event{Type: asr.EventFinal, Text: sentence.Text}, nil
+				return s.sentenceEvent(asr.EventFinal, sentence), nil
 			}
 			if sentence.Text != "" {
-				return asr.Event{Type: asr.EventPartial, Text: sentence.Text}, nil
+				return s.sentenceEvent(asr.EventPartial, sentence), nil
 			}
 			if sentence.SentenceBegin {
-				return asr.Event{Type: asr.EventSpeechStart}, nil
+				return s.sentenceEvent(asr.EventSpeechStart, sentence), nil
 			}
 		case "task-finished":
 			s.finished = true
@@ -318,10 +319,16 @@ type responseHeader struct {
 	ErrorMessage string `json:"error_message"`
 }
 type responseSentence struct {
-	Text          string `json:"text"`
-	SentenceBegin bool   `json:"sentence_begin"`
-	SentenceEnd   bool   `json:"sentence_end"`
-	Heartbeat     bool   `json:"heartbeat"`
+	Text          string         `json:"text"`
+	SentenceBegin bool           `json:"sentence_begin"`
+	SentenceEnd   bool           `json:"sentence_end"`
+	Heartbeat     bool           `json:"heartbeat"`
+	SentenceID    *int64         `json:"sentence_id"`
+	BeginTime     *int64         `json:"begin_time"`
+	EndTime       *int64         `json:"end_time"`
+	Emotion       string         `json:"emo_tag"`
+	Confidence    *float64       `json:"emo_confidence"`
+	Words         []responseWord `json:"words"`
 }
 type responsePayload struct {
 	Output struct {

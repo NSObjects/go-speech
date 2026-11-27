@@ -110,14 +110,19 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if cfg.Options != (asr.Options{}) {
-		return nil, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "aliyun", Operation: "start", Err: errors.New("advanced ASR options are not yet supported")}
-	}
 	format, err := mapAudioFormat(cfg.Format)
 	if err != nil {
 		return nil, err
 	}
+	native, err := nativeOptions(cfg.Options)
+	if err != nil {
+		return nil, err
+	}
 	params, err := c.cfg.parameters(cfg, format)
+	if err != nil {
+		return nil, err
+	}
+	input, err := c.cfg.contextInput(native.Context)
 	if err != nil {
 		return nil, err
 	}
@@ -149,12 +154,13 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 		return nil, dialError(err, resp)
 	}
 	s := newStream(conn, ctx, taskID)
+	s.details = cfg.Options.UtteranceDetails
 	if cfg.Format.Encoding == audio.EncodingPCM16LE {
 		s.pcmFrameBytes = cfg.Format.Channels * 2 // signed 16-bit samples per channel
 	}
 	cmd := taskMessage{
 		Header:  commandHeader{Action: "run-task", TaskID: taskID, Streaming: "duplex"},
-		Payload: taskPayload{TaskGroup: "audio", Task: "asr", Function: "recognition", Model: c.cfg.Model, Parameters: params, Input: map[string]any{}},
+		Payload: taskPayload{TaskGroup: "audio", Task: "asr", Function: "recognition", Model: c.cfg.Model, Parameters: params, Input: input},
 	}
 	if err = s.writeJSON(ctx, cmd); err != nil {
 		_ = s.Close()
