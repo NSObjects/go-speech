@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "voice/**"
+      - "internal/tc3/**"
       - "speecherr/**"
       - "go.mod"
       - "go.sum"

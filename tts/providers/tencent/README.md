@@ -69,3 +69,34 @@ Use one receive API per session: `Recv` for audio only, or `RecvEvent` for audio
 ## Native reset
 
 Duplex streams implement `tts.Resetter`. Reset sends ACTION_RESET without ending input, clearing server-side pending text only. Already-started synthesis is unaffected. SendText or CloseSend may follow Reset. A successful write is not a server acknowledgment; the SDK neither drops already-received audio nor simulates a cancellation.
+
+## Native complete-text HTTP synthesis
+
+Use `NewHTTP(HTTPConfig{SecretID: id, SecretKey: key})` for the Cloud API
+`TextToVoice` (2019-08-23). It implements `tts.Synthesizer`, not streaming
+or duplex; register it as `tts.Provider.Batch` independently of WSv2.
+The default is mono 16 kHz WAV. PCM and MP3 are also native options.
+Use `tts.TextSSML` to pass supported markup unchanged; voice-specific
+restrictions and text-length limits apply (150 Chinese characters or 500 English letters per official protocol; the service decides mixed text and SSML limits). No fallback or local text splitting. Cloud error codes are retained, including entitlement, resource-pack exhaustion and request limits.
+
+```go
+c, err := tencent.NewHTTP(tencent.HTTPConfig{
+    SecretID: id, SecretKey: key,
+})
+if err != nil { return err }
+out, err := c.Synthesize(ctx, tts.Request{
+    Voice: "101001",
+    Text:  `<speak>你好<break time="500ms"/>世界</speak>`,
+    TextFormat: tts.TextSSML,
+})
+```
+
+Use `HTTPOptions` to select native `ProjectID`, `ModelType` (1),
+`PrimaryLanguage` (1 Chinese, 2 English), and the shared `Options`.
+For subtitles, enable `EnableSubtitle` and use `c.SynthesizeDetailed`;
+it returns native nullable phonemes, indices, request/session IDs and common
+alignment data. No markup translation or audio conversion is performed.
+
+Official protocol: https://cloud.tencent.com/document/api/1073/37995
+SSML: https://cloud.tencent.com/document/product/1073/49575
+Voice restrictions: https://cloud.tencent.com/document/product/1073/92668

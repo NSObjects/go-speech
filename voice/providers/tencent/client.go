@@ -4,9 +4,6 @@ package tencent
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NSObjects/go-speech/internal/tc3"
 	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 )
@@ -25,7 +23,7 @@ import (
 const (
 	DefaultEndpoint  = "https://vrs.tencentcloudapi.com"
 	version          = "2020-08-24"
-	contentType      = "application/json; charset=utf-8"
+	contentType      = tc3.ContentType
 	maxResponseBytes = 8 << 20
 )
 
@@ -73,31 +71,8 @@ func New(cfg Config) (*Client, error) {
 	}}, nil
 }
 
-func digest(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-func hmacSum(key []byte, text string) []byte {
-	h := hmac.New(sha256.New, key)
-	_, _ = h.Write([]byte(text))
-	return h.Sum(nil)
-}
-
-// authorization implements Cloud API TC3 signing, not the WebSocket HMAC-SHA1
-// scheme. Bind the action, host and exact serialized request bytes.
 func authorization(id, key, host, action string, now time.Time, body []byte) string {
-	const signed = "content-type;host;x-tc-action"
-	const algorithm = "TC3-HMAC-SHA256"
-	date := now.UTC().Format("2006-01-02")
-	scope := date + "/vrs/tc3_request"
-	headers := "content-type:" + contentType + "\nhost:" + strings.ToLower(host) + "\nx-tc-action:" + strings.ToLower(action) + "\n"
-	canonical := "POST\n/\n\n" + headers + "\n" + signed + "\n" + digest(body)
-	toSign := algorithm + "\n" + strconv.FormatInt(now.Unix(), 10) + "\n" + scope + "\n" + digest([]byte(canonical))
-	secretDate := hmacSum([]byte("TC3"+key), date)
-	secretService := hmacSum(secretDate, "vrs")
-	secretSigning := hmacSum(secretService, "tc3_request")
-	return algorithm + " Credential=" + id + "/" + scope + ", SignedHeaders=" + signed + ", Signature=" + hex.EncodeToString(hmacSum(secretSigning, toSign))
+	return tc3.Authorization(id, key, host, action, "vrs", now, body)
 }
 
 type Metadata struct {
