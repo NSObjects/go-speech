@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 )
 
 func TestVoiceOperations(t *testing.T) {
+	var mu sync.Mutex
 	var ids []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Api-Request-Id")
@@ -22,12 +24,14 @@ func TestVoiceOperations(t *testing.T) {
 			!regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(id) {
 			t.Error("invalid request headers")
 		}
+		mu.Lock()
 		for _, previous := range ids {
 			if id == previous {
 				t.Error("request ID reused")
 			}
 		}
 		ids = append(ids, id)
+		mu.Unlock()
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)

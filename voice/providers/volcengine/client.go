@@ -108,8 +108,8 @@ func (c *Client) call(ctx context.Context, op string, body any) (Result, error) 
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	if c == nil {
-		return Result{}, invalid("nil client")
+	if c == nil || c.base == nil || c.http == nil {
+		return Result{}, invalid("uninitialized client")
 	}
 	data, err := json.Marshal(body)
 	if err != nil {

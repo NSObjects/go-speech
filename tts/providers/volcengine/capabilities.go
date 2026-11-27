@@ -150,7 +150,7 @@ func (c *Client) features() capability.Features {
 		tts.FeatureSeed: {Status: capability.Unsupported},
 		tts.FeatureWatermark: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.Watermark", Kind: capability.Object}}},
 		tts.FeatureSilence: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.SilenceDurationMS", Kind: capability.Number, Unit: "ms", Range: &capability.NumericRange{Min: minSilenceMS, Max: maxSilenceMS}}}, Notes: "Complete text only."},
-		tts.FeatureVoiceClone: {Status: capability.Unknown, Notes: "Use a provider-issued voice ID; training API not implemented."},
+		tts.FeatureVoiceClone: {Status: capability.Unknown, Notes: "Use a provider-issued voice ID; enrollment and design are available in voice/providers/volcengine."},
 		tts.FeatureLatex: {Status: capability.Unsupported},
 		tts.FeatureSegmentRate: {Status: capability.Unsupported},
 		tts.FeatureSimilarityBoost: {Status: capability.Unknown, Parameters: []capability.Parameter{{Field: "Options.Provider.SimilarityBoost", Kind: capability.Bool}}},
