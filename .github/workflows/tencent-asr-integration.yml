@@ -98,19 +98,20 @@ jobs:
 
       # Test-only protocol probe: ASR documentation specifies opus + uint16
       # length + packet, but does not specify the length byte order.
+      - name: Install libopus runtime for protocol fixture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopus0
+          python3 -c 'import ctypes; ctypes.CDLL("libopus.so.0")'
       - name: Prepare native 40ms Opus probe fixture
         run: |
           python3 - <<'PY'
           import ctypes as c
-          import ctypes.util
           import os
           import struct
           from pathlib import Path
 
-          library = ctypes.util.find_library("opus")
-          if not library:
-              raise SystemExit("libopus runtime is required for the native Opus probe")
-          lib = c.CDLL(library)
+          lib = c.CDLL("libopus.so.0")
           lib.opus_encoder_create.argtypes = [c.c_int32, c.c_int, c.c_int, c.POINTER(c.c_int)]
           lib.opus_encoder_create.restype = c.c_void_p
           lib.opus_encode.argtypes = [c.c_void_p, c.POINTER(c.c_int16), c.c_int, c.POINTER(c.c_ubyte), c.c_int32]
