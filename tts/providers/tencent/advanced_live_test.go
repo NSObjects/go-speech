@@ -42,11 +42,25 @@ func TestTencentLiveAdvanced(t *testing.T) {
 			t.Fatalf("audio format = %+v", r.Audio.Format)
 		}
 		verifyAdvancedPCM(t, r.Audio.Data)
-		n := 0
+		n, silence := 0, 0
 		for _, a := range r.Alignments {
+			details, ok := a.Provider.(AlignmentDetails)
+			if !ok || len(details.Indices) != len(a.Words) {
+				t.Fatal("native subtitle indices lost")
+			}
 			for _, w := range a.Words {
-				if w.Text == "" || w.StartTime < 0 || w.EndTime < w.StartTime {
-					t.Fatalf("invalid alignment: %+v", w)
+				if w.StartTime < 0 || w.EndTime < w.StartTime {
+					t.Fatalf("invalid alignment timestamps: %+v", w)
+				}
+				// Real Tencent responses may contain a textless SIL phoneme.
+				// Preserve its timing, but it is not a spoken word and
+				// cannot satisfy the positive-duration text assertion.
+				if w.Text == "" {
+					if w.Phoneme != "SIL" {
+						t.Fatalf("unexpected textless alignment: %+v", w)
+					}
+					silence++
+					continue
 				}
 				if w.EndTime > w.StartTime {
 					n++
@@ -56,7 +70,7 @@ func TestTencentLiveAdvanced(t *testing.T) {
 		if n == 0 {
 			t.Fatal("subtitle requested but no positive-duration word timing returned")
 		}
-		t.Logf("provider returned %d timed words and %d PCM bytes", n, len(r.Audio.Data))
+		t.Logf("provider returned %d timed words, %d textless SIL entries and %d PCM bytes", n, silence, len(r.Audio.Data))
 	})
 	t.Run("reset", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
