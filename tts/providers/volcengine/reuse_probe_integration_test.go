@@ -124,15 +124,39 @@ func TestVolcengineLiveReuseProbe(t *testing.T) {
 		}
 		data, reason, err := probeDrain(conn)
 		t.Logf("INTERRUPT_OBSERVED elapsed=%s post_interrupt_audio_bytes=%d final_reason=%q error=%v", time.Since(start), len(data), reason, err)
-		// FLUSHED alone does not acknowledge cancellation; it can also
-		// mean ordinary completion. Never claim safe reuse from it.
-		if err == nil && reason == closedReason {
-			if err := probeInit(t, conn, init); err != nil {
-				t.Logf("INTERRUPT_REINIT_NOT_ESTABLISHED error=%v", err)
-			} else {
-				t.Log("INTERRUPT_REINIT_READY observed; audio isolation still unverified")
-			}
+		// A distinct INTERRUPTED final was observed in the first real
+		// experiment. Do not confuse an ordinary FLUSHED with cancellation.
+		if err != nil || reason != "TTS_STREAM_FINAL_REASON_INTERRUPTED" {
+			t.Log("INTERRUPT_REUSE_NOT_ESTABLISHED: no explicit interrupt final")
+			return
 		}
+		// Switch PCM to Ogg Opus, so stale PCM after re-init cannot silently
+		// pass a full encoded-stream validation. Reuse the exact socket.
+		_, nextInit, err := c.prepareDuplex(tts.DuplexRequest{Voice: voice, Format: audio.Format{
+			Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1,
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := probeInit(t, conn, nextInit); err != nil {
+			t.Logf("INTERRUPT_REUSE_NOT_ESTABLISHED phase=reinit error=%v", err)
+			return
+		}
+		if err := probeSend(conn, clientEvent{Event: "text", Content: "打断已经结束，这是一个新的语音任务。"}); err != nil {
+			t.Logf("INTERRUPT_REUSE_NOT_ESTABLISHED phase=text error=%v", err)
+			return
+		}
+		if err := probeSend(conn, clientEvent{Event: "close"}); err != nil {
+			t.Logf("INTERRUPT_REUSE_NOT_ESTABLISHED phase=close error=%v", err)
+			return
+		}
+		data, reason, err = probeDrain(conn)
+		if err != nil || reason != closedReason {
+			t.Logf("INTERRUPT_REUSE_NOT_ESTABLISHED phase=final reason=%q error=%v", reason, err)
+			return
+		}
+		verifyLiveOpus(t, data)
+		t.Logf("INTERRUPT_REUSE_OBSERVED new session returned decodable Ogg Opus and CLOSED on same socket; bytes=%d", len(data))
 	})
 }
 
