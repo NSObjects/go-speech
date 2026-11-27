@@ -45,7 +45,10 @@ func TestVolcengineLivePool(t *testing.T) {
 	if err := c.Warmup(ctx, voice, 1); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(2 * time.Second)
+	// Validate a fresh (not previously used) connection near the default
+	// idle budget, without adding an extra synthesis request.
+	t.Logf("waiting 8s after fresh warmup")
+	time.Sleep(8 * time.Second)
 	if dials.Load() != 1 {
 		t.Fatal("warmup did not open exactly one socket")
 	}

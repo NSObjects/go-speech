@@ -150,7 +150,7 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 		return conn, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, connpool.ClassifyError(ctx, "aliyun", "pool_acquire", err)
 	}
 	s := newStream(conn, ctx, taskID, c.pool)
 	s.details = cfg.Options.UtteranceDetails

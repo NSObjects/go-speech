@@ -131,12 +131,17 @@ func (p *Pool) AcquireKey(ctx context.Context, key string, dial func(context.Con
 				err = ErrClosed
 			}
 			if err != nil {
-				p.open--
-				p.signal()
+				// Keep the reservation until a late successful dial has
+				// actually closed. Otherwise another acquisition could
+				// transiently exceed MaxOpen physical sockets.
 				p.mu.Unlock()
 				if conn != nil {
 					_ = conn.Close()
 				}
+				p.mu.Lock()
+				p.open--
+				p.signal()
+				p.mu.Unlock()
 				return nil, err
 			}
 			p.born[conn] = time.Now()
@@ -215,12 +220,14 @@ func (p *Pool) WarmupKey(ctx context.Context, key string, count int, dial func(c
 			err = ErrClosed
 		}
 		if err != nil {
-			p.open--
-			p.signal()
 			p.mu.Unlock()
 			if conn != nil {
 				_ = conn.Close()
 			}
+			p.mu.Lock()
+			p.open--
+			p.signal()
+			p.mu.Unlock()
 			return err
 		}
 		p.born[conn] = time.Now()

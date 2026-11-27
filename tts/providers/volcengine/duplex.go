@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -69,6 +70,9 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 		return c.dial(ctx, dialCtx, endpoint)
 	})
 	if err != nil {
+		if c.pool != nil {
+			err = connpool.ClassifyError(ctx, "volcengine", "pool_acquire", err)
+		}
 		var classified *speecherr.Error
 		if errors.As(err, &classified) {
 			return nil, err
@@ -261,9 +265,10 @@ func (c *Client) Warmup(ctx context.Context, voice string, count int) error {
 	start, cancel := context.WithTimeout(ctx, c.cfg.StartTimeout)
 	defer cancel()
 	endpoint := c.endpoint(voice, "streaming-input", true)
-	return c.pool.WarmupKey(start, endpoint, count, func(dialCtx context.Context) (*websocket.Conn, error) {
+	err := c.pool.WarmupKey(start, endpoint, count, func(dialCtx context.Context) (*websocket.Conn, error) {
 		return c.dial(ctx, dialCtx, endpoint)
 	})
+	return connpool.ClassifyError(ctx, "volcengine", "pool_warmup", err)
 }
 
 func (c *Client) dial(parent, ctx context.Context, endpoint string) (*websocket.Conn, error) {

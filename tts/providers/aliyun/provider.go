@@ -203,7 +203,7 @@ func (c *Client) openSession(ctx context.Context, req tts.Request, codec string,
 	}
 	conn, err := c.pool.Acquire(ctx, c.dial)
 	if err != nil {
-		return nil, err
+		return nil, connpool.ClassifyError(ctx, "aliyun", "pool_acquire", err)
 	}
 	conn.SetReadLimit(8 << 20)
 	stream := newStream(conn, ctx, taskID, req.Format, c.pool)
@@ -292,7 +292,7 @@ func (c *Client) Warmup(ctx context.Context, _ string, count int) error {
 	}
 	start, cancel := context.WithTimeout(ctx, c.cfg.StartTimeout)
 	defer cancel()
-	return c.pool.WarmupKey(start, "", count, c.dial)
+	return connpool.ClassifyError(ctx, "aliyun", "pool_warmup", c.pool.WarmupKey(start, "", count, c.dial))
 }
 
 func (c *Client) dial(ctx context.Context) (*websocket.Conn, error) {

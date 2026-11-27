@@ -36,7 +36,15 @@ A server can disconnect before the configured idle timeout; failures are
 returned without automatic task replay.
 
 Client Close releases idle sockets, prevents new pooled acquisitions and
-lets active tasks finish or be canceled by their own contexts.
+lets active tasks finish or be canceled by their own contexts. A dial that
+finishes after Close is rejected and its socket closed before its capacity
+reservation is released.
+
+Pool-specific failures are exposed through `speecherr.Error`: closed pool
+is `CodeUnavailable` (not retryable), disabled warmup is `CodeUnsupported`,
+invalid warmup count is `CodeInvalidArgument`, and a pool-local acquisition
+deadline is `CodeTimeout`. Caller context cancellation/deadlines and
+underlying causes remain observable. No failure triggers automatic retry.
 
 ## Warmup and pre-open
 
@@ -65,6 +73,9 @@ when audio is about to arrive, respecting the provider's audio deadlines.
   live experiment. The local idle policy uses a margin, not a guaranteed
   service timeout. Post-interruption reuse was not established.
 - Aliyun and Seed-TTS: [fresh socket warmup validation](https://github.com/NSObjects/go-speech/pull/132).
+  A later audit verified fresh idle waits of 25s for Aliyun and 8s for
+  Seed-TTS before first synthesis, with no additional TCP dial. These
+  observations do not guarantee the server's maximum idle lifetime.
 - Volcengine bigmodel_async ASR: [post-final experiment](https://github.com/NSObjects/go-speech/actions/runs/45964803903/job/140390836694).
   The first recognition completed and the server closed the socket with
   code 1000 and reason "finish last sequence" on attempted second init.
