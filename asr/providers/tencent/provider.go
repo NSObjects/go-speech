@@ -114,15 +114,17 @@ func New(cfg Config) (*Client, error) {
 	return &Client{cfg: cfg}, nil
 }
 
-// SupportedAudio reports implemented PCM and WAV transport for the selected engine.
-// The Tencent voice_format=10 Opus protocol uses proprietary frame prefixes,
-// not audio.EncodingOpus's Ogg container, so it is deliberately not advertised.
+// SupportedAudio reports locally implemented formats for the selected engine.
+// Native framed Opus is currently restricted to the live-verified 16k_zh model.
 func SupportedAudio(engine string) audio.Capability {
 	rate := 16000
 	if strings.HasPrefix(engine, "8k_") {
 		rate = 8000
 	}
 	encodings := []audio.Encoding{audio.EncodingPCM16LE, audio.EncodingWAV}
+	if engine == "16k_zh" {
+		encodings = append(encodings, EncodingOpusFrames)
+	}
 	if engine == "Hy-ASR-3.0-preview" {
 		encodings = []audio.Encoding{audio.EncodingPCM16LE}
 	}

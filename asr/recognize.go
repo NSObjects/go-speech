@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
+	"slices"
 	"strings"
 	"time"
 
@@ -69,6 +71,46 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 		chunkSize = max(chunkSize/frameBytes, 1) * frameBytes
 	}
 
+	chunks := func(yield func([]byte) bool) {
+		for offset := 0; offset < len(input.Data); offset += chunkSize {
+			if !yield(input.Data[offset:min(offset+chunkSize, len(input.Data))]) {
+				return
+			}
+		}
+	}
+	var interval time.Duration
+	if paced {
+		interval = shortAudioPCMFrame
+	}
+	return recognizeChunks(ctx, client, cfg, chunks, interval)
+}
+
+// RecognizePacketStream collects a short recognition from complete, already
+// framed audio packets. Adapters use this instead of arbitrary byte splitting
+// when their protocol requires packet boundaries. Each packet represents
+// interval of audio; packets are sent in order at that cadence. The adapter
+// remains responsible for validating the native packet format.
+func RecognizePacketStream(ctx context.Context, client StreamRecognizer, cfg Config, packets [][]byte, interval time.Duration) (Result, error) {
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
+	if err := cfg.Format.Validate(); err != nil {
+		return Result{}, fmt.Errorf("%w: %w", ErrInvalidShortAudio, err)
+	}
+	if len(packets) == 0 || interval <= 0 || interval > maxShortAudioDuration || int64(len(packets)) > int64(maxShortAudioDuration/interval) {
+		return Result{}, fmt.Errorf("%w: invalid packet duration or audio exceeds 60 seconds", ErrInvalidShortAudio)
+	}
+	total := 0
+	for _, packet := range packets {
+		if len(packet) == 0 || len(packet) > MaxShortAudioBytes-total {
+			return Result{}, fmt.Errorf("%w: empty packet or audio exceeds byte limit", ErrInvalidShortAudio)
+		}
+		total += len(packet)
+	}
+	return recognizeChunks(ctx, client, cfg, slices.Values(packets), interval)
+}
+
+func recognizeChunks(ctx context.Context, client StreamRecognizer, cfg Config, chunks iter.Seq[[]byte], interval time.Duration) (Result, error) {
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream, err := client.OpenStream(sessionCtx, cfg)
@@ -81,13 +123,12 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 	go func() {
 		var sendErr error
 		var ticker *time.Ticker
-		if paced {
-			ticker = time.NewTicker(shortAudioPCMFrame)
+		if interval > 0 {
+			ticker = time.NewTicker(interval)
 			defer ticker.Stop()
 		}
-		for offset := 0; offset < len(input.Data); offset += chunkSize {
-			end := min(offset+chunkSize, len(input.Data))
-			if sendErr = stream.Send(sessionCtx, input.Data[offset:end]); sendErr != nil {
+		for chunk := range chunks {
+			if sendErr = stream.Send(sessionCtx, chunk); sendErr != nil {
 				break
 			}
 			if ticker != nil {

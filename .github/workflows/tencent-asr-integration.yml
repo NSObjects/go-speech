@@ -96,6 +96,55 @@ jobs:
       - name: Real Tencent Cloud native WAV WebSocket recognition
         run: go test -tags=integration -run '^TestTencentLiveWAVRecognize$' -count=1 -v -timeout 2m ./asr/providers/tencent
 
+      # Independent native Opus fixture: real-cloud verification confirmed LE.
+      - name: Install libopus runtime for protocol fixture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopus0
+          python3 -c 'import ctypes; ctypes.CDLL("libopus.so.0")'
+      - name: Prepare native 40ms Opus fixture
+        run: |
+          python3 - <<'PY'
+          import ctypes as c
+          import os
+          import struct
+          from pathlib import Path
+
+          lib = c.CDLL("libopus.so.0")
+          lib.opus_encoder_create.argtypes = [c.c_int32, c.c_int, c.c_int, c.POINTER(c.c_int)]
+          lib.opus_encoder_create.restype = c.c_void_p
+          lib.opus_encode.argtypes = [c.c_void_p, c.POINTER(c.c_int16), c.c_int, c.POINTER(c.c_ubyte), c.c_int32]
+          lib.opus_encode.restype = c.c_int32
+          lib.opus_encoder_destroy.argtypes = [c.c_void_p]
+          lib.opus_encoder_destroy.restype = None
+
+          raw = Path(os.environ["TENCENT_TEST_16K_PCM_FILE"]).read_bytes()
+          if not raw or len(raw) % 2:
+              raise SystemExit("invalid PCM fixture")
+          raw += bytes((-len(raw)) % 1280)
+          code = c.c_int()
+          enc = lib.opus_encoder_create(16000, 1, 2048, c.byref(code))
+          if not enc or code.value != 0:
+              raise SystemExit(f"opus_encoder_create failed: {code.value}")
+          result = bytearray()
+          try:
+              for off in range(0, len(raw), 1280):
+                  samples = (c.c_int16 * 640)(*struct.unpack("<640h", raw[off:off+1280]))
+                  output = (c.c_ubyte * 4000)()
+                  n = lib.opus_encode(enc, samples, 640, output, len(output))
+                  if not 0 < n <= 1275:
+                      raise SystemExit(f"opus_encode returned {n}")
+                  result += b"opus" + struct.pack("<H", n) + bytes(output[:n])
+          finally:
+              lib.opus_encoder_destroy(enc)
+          Path(os.environ["RUNNER_TEMP"], "tencent-opus-le.frames").write_bytes(result)
+          print(f"encoded {len(raw)//1280} 40ms packets, {len(result)} framed bytes")
+          PY
+      - name: Real Tencent native Opus Recognize and OpenStream
+        env:
+          TENCENT_TEST_OPUS_LE_FILE: ${{ runner.temp }}/tencent-opus-le.frames
+        run: go test -tags=integration -run '^TestTencentLiveNativeOpus$' -count=1 -v -timeout 2m ./asr/providers/tencent
+
       - name: Real Tencent Cloud per-request hotword hints
         run: go test -tags=integration -run TestTencentLiveRequestHints -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud concurrent streaming sessions

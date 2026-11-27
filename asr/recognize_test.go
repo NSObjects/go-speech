@@ -247,3 +247,34 @@ func TestRecognizeStreamWAVPreservesContainerAndPaces(t *testing.T) {
 		t.Fatalf("WAV metadata mismatch: %v", err)
 	}
 }
+
+func TestRecognizePacketStreamPreservesPackets(t *testing.T) {
+	s := newFakeStream()
+	s.events <- Event{Type: EventFinal, Text: "你好"}
+	c := &fakeShortRecognizer{stream: s}
+	cfg := Config{Format: validBuffer(2).Format}
+	packets := [][]byte{{1, 2, 3}, {4, 5}}
+	start := time.Now()
+	got, err := RecognizePacketStream(context.Background(), c, cfg, packets, 40*time.Millisecond)
+	if err != nil || got.Text != "你好" || s.sent != 2 || string(s.audio) != string([]byte{1, 2, 3, 4, 5}) || !s.closeSend {
+		t.Fatalf("packet recognition: result=%+v err=%v", got, err)
+	}
+	if time.Since(start) < 65*time.Millisecond {
+		t.Fatal("packet upload was not paced")
+	}
+	for _, tc := range []struct {
+		packets  [][]byte
+		interval time.Duration
+	}{
+		{nil, time.Millisecond},
+		{[][]byte{nil}, time.Millisecond},
+		{packets, 0},
+		{packets, 31 * time.Second},
+		{[][]byte{make([]byte, MaxShortAudioBytes+1)}, time.Millisecond},
+	} {
+		c := &fakeShortRecognizer{err: errors.New("must not open")}
+		if _, err := RecognizePacketStream(context.Background(), c, cfg, tc.packets, tc.interval); !errors.Is(err, ErrInvalidShortAudio) {
+			t.Fatalf("invalid packets: %v", err)
+		}
+	}
+}
