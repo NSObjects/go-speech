@@ -25,7 +25,7 @@ func TestTencentLiveEmotionMetadata(t *testing.T) {
 	}
 	client, err := New(Config{
 		AppID: os.Getenv("TENCENT_APP_ID"), SecretID: os.Getenv("TENCENT_SECRET_ID"),
-		SecretKey: os.Getenv("TENCENT_SECRET_KEY"), EngineModel: "16k_zh", NeedVAD: true,
+		SecretKey: os.Getenv("TENCENT_SECRET_KEY"), EngineModel: "16k_zh_en", NeedVAD: true,
 	})
 	if err != nil {
 		t.Fatal(err)
