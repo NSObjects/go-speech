@@ -214,3 +214,5 @@ Advanced feature queries use `client.(asr.CapabilityProvider).Capabilities().Fea
 火山 Seed-TTS 3.0 音色注册、查询与设计使用独立的 [`voice/providers/volcengine`](voice/providers/volcengine) Client；返回的 SpeakerID 可传入 TTS 的 Voice 字段。详见该包的使用说明。
 
 阿里 CosyVoice / Qwen Audio 音色复刻、设计、查询、更新及删除使用 [`voice/providers/aliyun`](voice/providers/aliyun)，音色绑定创建时指定的目标模型。
+
+腾讯 VRS 使用 [`voice/providers/tencent`](voice/providers/tencent) 获取训练文本、检测录音、提交训练任务及查询任务和音色。使用返回的 VoiceType / FastVoiceType 合成语音。
