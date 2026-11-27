@@ -13,6 +13,7 @@ import (
 
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/internal/connpool"
+	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
@@ -407,33 +408,10 @@ func protocolError(op string, err error) error {
 	return &speecherr.Error{Code: speecherr.CodeProtocol, Provider: "aliyun", Operation: op, Err: err}
 }
 func taskFailure(h responseHeader) error {
-	// Classify the stable DashScope error_code before using remote prose.
-	// In particular, quota exhaustion requires account remediation, while
-	// request-rate throttling may recover when the caller backs off.
-	remote := strings.ToLower(strings.TrimSpace(h.ErrorCode))
-	code := speecherr.CodeInternal
-	retryable := false
-	switch {
-	case remote == "invalidapikey" || remote == "invalid_api_key" ||
-		remote == "authenticationfailed" ||
-		remote == "accessdenied" || remote == "access_denied":
-		code = speecherr.CodeUnauthorized
-	case remote == "invalidparameter" || strings.HasPrefix(remote, "invalidparameter.") ||
-		remote == "modelnotfound" || remote == "notfound":
-		code = speecherr.CodeInvalidArgument
-	case remote == "throttling" || remote == "throttling.ratequota" || remote == "throttling.burstrate" ||
-		remote == "limit_requests" || remote == "limit_burst_rate":
-		code, retryable = speecherr.CodeRateLimited, true
-	case remote == "throttling.allocationquota" || remote == "insufficient_quota" ||
-		remote == "arrearage":
-		code = speecherr.CodeRateLimited
-	case remote == "serviceunavailable" || remote == "service_unavailable":
-		code, retryable = speecherr.CodeUnavailable, true
-	case remote == "internalerror":
-		code = speecherr.CodeInternal
-	default:
-		// Unrecognized vendor codes may still carry a useful diagnostic.
-		// Never infer a retry merely from a message or an unknown code.
+	code, retryable, known := errclass.DashScope(h.ErrorCode)
+	if !known {
+		// Preserve the historical ASR diagnostic classification for unknown
+		// codes, but never infer retryability from provider prose.
 		desc := strings.ToLower(h.ErrorMessage)
 		switch {
 		case strings.Contains(desc, "authentication") || strings.Contains(desc, "permission denied"):
@@ -450,8 +428,8 @@ func taskFailure(h responseHeader) error {
 	return &speecherr.Error{
 		Code: code, Provider: "aliyun", Operation: "task",
 		RemoteCode: h.ErrorCode,
-		Err:        fmt.Errorf("remote error %q: %s", h.ErrorCode, h.ErrorMessage),
-		Retryable:  retryable,
+		Err: fmt.Errorf("remote error %q: %s", h.ErrorCode, h.ErrorMessage),
+		Retryable: retryable,
 	}
 }
 func (s *Stream) awaitStarted(ctx context.Context) error {

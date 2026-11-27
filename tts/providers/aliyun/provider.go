@@ -19,6 +19,7 @@ import (
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/connpool"
+	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/transport"
 	"github.com/NSObjects/go-speech/tts"
@@ -297,54 +298,22 @@ func protocol(msg string) error {
 	return &speecherr.Error{Code: speecherr.CodeProtocol, Provider: "aliyun", Operation: "tts", Err: errors.New(msg)}
 }
 func dialFailure(err error, resp *http.Response) error {
-	code := speecherr.CodeUnavailable
+	code, retryable := errclass.Dial(err, resp)
 	if resp != nil {
-		switch resp.StatusCode {
-		case 400:
-			code = speecherr.CodeInvalidArgument
-		case 401, 403:
-			code = speecherr.CodeUnauthorized
-		case 429:
-			code = speecherr.CodeRateLimited
-		}
-		// Only the status code is included; never echo credentials, headers
-		// or the untrusted remote response body.
 		err = fmt.Errorf("WebSocket handshake HTTP %d: %w", resp.StatusCode, err)
 	}
 	return &speecherr.Error{
-		Code: code, Provider: "aliyun", Operation: "connect", Err: err,
-		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited,
+		Code: code, Provider: "aliyun", Operation: "connect",
+		Err: err, Retryable: retryable,
 	}
 }
 
 func classifyTaskFailure(header serverHeader) error {
-	// Prefer the provider's machine-readable code. Human-readable messages
-	// are not stable and must not make exhausted quota look retryable.
-	remote := strings.ToLower(strings.TrimSpace(header.ErrorCode))
-	code := speecherr.CodeInternal
-	retryable := false
-	switch {
-	case strings.Contains(remote, "invalidapikey"), strings.Contains(remote, "accessdenied"),
-		strings.Contains(remote, "unauthorized"), strings.Contains(remote, "permission"),
-		strings.Contains(remote, "authentication"):
-		code = speecherr.CodeUnauthorized
-	case strings.Contains(remote, "quota"), strings.Contains(remote, "allocation"),
-		strings.Contains(remote, "billing"), strings.Contains(remote, "balance"):
-		code = speecherr.CodeRateLimited
-	case strings.Contains(remote, "throttl"), strings.Contains(remote, "ratelimit"),
-		strings.Contains(remote, "too_many_requests"):
-		code, retryable = speecherr.CodeRateLimited, true
-	case strings.Contains(remote, "timeout"):
-		code, retryable = speecherr.CodeTimeout, true
-	case strings.Contains(remote, "unavailable"), strings.Contains(remote, "servererror"):
-		code, retryable = speecherr.CodeUnavailable, true
-	case strings.Contains(remote, "invalidparameter"), strings.Contains(remote, "modelnotfound"):
-		code = speecherr.CodeInvalidArgument
-	}
+	code, retryable, _ := errclass.DashScope(header.ErrorCode)
 	return &speecherr.Error{
 		Code: code, Provider: "aliyun", Operation: "task", RemoteCode: header.ErrorCode,
 		Retryable: retryable,
-		Err:       fmt.Errorf("remote task %s: %s", header.ErrorCode, header.ErrorMessage),
+		Err: fmt.Errorf("remote task %s: %s", header.ErrorCode, header.ErrorMessage),
 	}
 }
 

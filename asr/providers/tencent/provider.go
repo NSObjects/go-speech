@@ -22,6 +22,7 @@ import (
 
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
@@ -290,28 +291,14 @@ func protocolError(message string) error {
 // connectError deliberately does not expose the signed WebSocket URL (whose
 // query contains an authentication signature and SecretID) via error strings.
 func connectError(err error, resp *http.Response) error {
-	code := speecherr.CodeUnavailable
+	code, retryable := errclass.Dial(err, resp)
 	message := "WebSocket connection failed"
 	if resp != nil {
 		message = fmt.Sprintf("WebSocket handshake HTTP %d", resp.StatusCode)
-		switch resp.StatusCode {
-		case http.StatusBadRequest:
-			code = speecherr.CodeInvalidArgument
-		case http.StatusUnauthorized, http.StatusForbidden:
-			code = speecherr.CodeUnauthorized
-		case http.StatusTooManyRequests:
-			code = speecherr.CodeRateLimited
-		}
-	} else {
-		var ne net.Error
-		if errors.As(err, &ne) && ne.Timeout() {
-			code = speecherr.CodeTimeout
-		}
 	}
 	return &speecherr.Error{
 		Code: code, Provider: "tencent", Operation: "connect",
-		Err:       errors.New(message),
-		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeTimeout || code == speecherr.CodeRateLimited,
+		Err: errors.New(message), Retryable: retryable,
 	}
 }
 

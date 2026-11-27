@@ -16,6 +16,7 @@ import (
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/connpool"
+	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/transport"
 	"github.com/gorilla/websocket"
@@ -218,27 +219,11 @@ func mapAudioFormat(f audio.Format) (string, error) {
 	}
 }
 func dialError(err error, resp *http.Response) error {
-	code := speecherr.CodeUnavailable
+	code, retryable := errclass.Dial(err, resp)
 	if resp != nil {
-		switch resp.StatusCode {
-		case http.StatusUnauthorized, http.StatusForbidden:
-			code = speecherr.CodeUnauthorized
-		case http.StatusTooManyRequests:
-			code = speecherr.CodeRateLimited
-		case http.StatusBadRequest:
-			code = speecherr.CodeInvalidArgument
-		}
+		err = fmt.Errorf("WebSocket handshake HTTP %d: %w", resp.StatusCode, err)
 	}
-	if resp == nil {
-		// A WebSocket dial may return an i/o timeout without wrapping
-		// context.DeadlineExceeded. Preserve that distinction for callers.
-		var network net.Error
-		if errors.Is(err, context.DeadlineExceeded) ||
-			(errors.As(err, &network) && network.Timeout()) {
-			code = speecherr.CodeTimeout
-		}
-	}
-	return &speecherr.Error{Code: code, Provider: "aliyun", Operation: "connect", Err: err, Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout}
+	return &speecherr.Error{Code: code, Provider: "aliyun", Operation: "connect", Err: err, Retryable: retryable}
 }
 func wrapNetwork(ctx context.Context, op string, err error) error {
 	if e := ctx.Err(); e != nil {

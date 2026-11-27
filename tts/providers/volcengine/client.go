@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -192,14 +193,7 @@ func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer,
 }
 
 func httpFailure(status int) error {
-	code := speecherr.CodeUnavailable
-	switch status {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		code = speecherr.CodeUnauthorized
-	case http.StatusTooManyRequests:
-		code = speecherr.CodeRateLimited
-	case http.StatusBadRequest, http.StatusNotFound:
-		code = speecherr.CodeInvalidArgument
-	}
+	code, _ := errclass.HTTPStatus(status)
+	// Seed-TTS retains its conservative non-retryable policy.
 	return failure(code, "request", fmt.Errorf("HTTP %d", status))
 }
