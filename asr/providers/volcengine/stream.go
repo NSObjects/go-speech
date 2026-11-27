@@ -426,7 +426,8 @@ func (s *Stream) complete() error {
 	if s.terminalErr != nil {
 		err := s.terminalErr
 		s.terminalMu.Unlock()
-		return err
+		// The concurrent failure may still be closing the transport.
+		return s.fail(err)
 	}
 	s.terminalSuccess = true
 	s.terminalMu.Unlock()

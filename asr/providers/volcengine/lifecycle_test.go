@@ -191,3 +191,36 @@ func TestConcurrentIndependentStreams(t *testing.T) {
 		}
 	}
 }
+
+// A final response racing with a recorded cancellation must not return the
+// failure before transport teardown completes.
+func TestCompleteObservedTerminalFailureClosesTransport(t *testing.T) {
+	endpoint := mockEndpoint(t, func(ws *websocket.Conn, _ *http.Request) {
+		_, _, _ = ws.ReadMessage()
+		_, _, _ = ws.ReadMessage()
+	})
+	client, err := New(Config{APIKey: "key", Endpoint: endpoint})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stream, err := client.OpenStream(ctx, asr.Config{
+		Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	s := stream.(*Stream)
+	_ = s.recordFailure(context.Canceled)
+	s.readMu.Lock()
+	err = s.complete()
+	s.readMu.Unlock()
+	if err != context.Canceled || !s.closed() {
+		t.Fatalf("completion after cancellation: %v, closed=%v", err, s.closed())
+	}
+	if _, err := s.Recv(ctx); err != context.Canceled {
+		t.Fatalf("terminal error changed: %v", err)
+	}
+}
