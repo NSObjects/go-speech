@@ -140,7 +140,7 @@ func TestEndWindowResourceAndRequestOverrides(t *testing.T) {
 				if ok {
 					t.Fatal("zero override did not clear constructor window")
 				}
-			} else if !ok || string(value) != fmt.Sprint(window/time.Millisecond) {
+			} else if !ok || string(value) != fmt.Sprint(int64(window/time.Millisecond)) {
 				t.Fatalf("wrong wire window: %s", value)
 			}
 		}
