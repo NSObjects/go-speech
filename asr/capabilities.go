@@ -6,12 +6,13 @@ import "github.com/NSObjects/go-speech/audio"
 // not remote entitlements, model availability or recognition quality.
 // Audio is a coarse format filter; use ValidateConfig for actual combinations.
 type Capabilities struct {
-	Provider  string
-	Model     string
-	Protocol  string
-	Audio     audio.Capability
-	Batch     bool
-	Streaming bool
+	Provider   string
+	Model      string
+	ResourceID string
+	Protocol   string
+	Audio      audio.Capability
+	Batch      bool
+	Streaming  bool
 }
 
 // CapabilityProvider is optional on ASR clients.

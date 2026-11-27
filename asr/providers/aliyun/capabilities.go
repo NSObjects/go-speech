@@ -6,7 +6,7 @@ import (
 
 var (
 	_ asr.CapabilityProvider = (*Client)(nil)
-	_ asr.ConfigValidator     = (*Client)(nil)
+	_ asr.ConfigValidator    = (*Client)(nil)
 )
 
 func (c *Client) Capabilities() asr.Capabilities {

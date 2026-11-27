@@ -18,7 +18,7 @@ func (c *Client) Capabilities() tts.Capabilities {
 		Provider: "aliyun", Model: c.cfg.Model, Protocol: "dashscope-task", Audio: SupportedAudio(),
 		Batch: true, Streaming: true, Duplex: true, Events: true, Cancel: true,
 		CompleteTextFormats: []tts.TextFormat{tts.TextPlain, tts.TextSSML},
-		DuplexTextFormats: []tts.TextFormat{tts.TextPlain},
+		DuplexTextFormats:   []tts.TextFormat{tts.TextPlain},
 	}
 }
 

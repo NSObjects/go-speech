@@ -21,7 +21,7 @@ func (c *Client) Capabilities() tts.Capabilities {
 		Provider: "volcengine", Model: c.cfg.ModelID, Protocol: "seed-tts-http-jsonl/ws", Audio: SupportedAudio(),
 		Batch: true, Streaming: true, Duplex: true, Events: true, Flush: true,
 		CompleteTextFormats: []tts.TextFormat{tts.TextPlain, tts.TextSSML, tts.TextInlineTag},
-		DuplexTextFormats: []tts.TextFormat{tts.TextPlain, tts.TextInlineTag},
+		DuplexTextFormats:   []tts.TextFormat{tts.TextPlain, tts.TextInlineTag},
 	}
 }
 

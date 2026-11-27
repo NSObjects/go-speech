@@ -11,13 +11,13 @@ type Capabilities struct {
 	Protocol string
 	Audio    audio.Capability
 
-	Batch             bool
-	Streaming         bool
-	Duplex            bool
-	Events            bool
-	Flush             bool
-	Reset             bool
-	Cancel            bool
+	Batch     bool
+	Streaming bool
+	Duplex    bool
+	Events    bool
+	Flush     bool
+	Reset     bool
+	Cancel    bool
 	// CompleteTextFormats and DuplexTextFormats describe accepted request
 	// formats, not whether every model/voice interprets the markup.
 	CompleteTextFormats []TextFormat

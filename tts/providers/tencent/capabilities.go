@@ -20,7 +20,7 @@ func (c *Client) Capabilities() tts.Capabilities {
 		Provider: "tencent", Model: "", Protocol: "stream_wsv2", Audio: SupportedAudio(),
 		Batch: true, Streaming: true, Duplex: true, Events: true, Reset: true,
 		CompleteTextFormats: []tts.TextFormat{tts.TextPlain},
-		DuplexTextFormats: []tts.TextFormat{tts.TextPlain},
+		DuplexTextFormats:   []tts.TextFormat{tts.TextPlain},
 	}
 }
 

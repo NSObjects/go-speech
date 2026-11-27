@@ -9,7 +9,7 @@ import (
 
 var (
 	_ asr.CapabilityProvider = (*Client)(nil)
-	_ asr.ConfigValidator     = (*Client)(nil)
+	_ asr.ConfigValidator    = (*Client)(nil)
 )
 
 func (c *Client) Capabilities() asr.Capabilities {
@@ -17,7 +17,7 @@ func (c *Client) Capabilities() asr.Capabilities {
 		return asr.Capabilities{}
 	}
 	capability := SupportedAudio()
-	return asr.Capabilities{Provider: "volcengine", Model: c.cfg.ResourceID, Protocol: "bigmodel_async", Audio: capability, Batch: true, Streaming: true}
+	return asr.Capabilities{Provider: "volcengine", Model: "bigmodel", ResourceID: c.cfg.ResourceID, Protocol: "bigmodel_async", Audio: capability, Batch: true, Streaming: true}
 }
 
 func (c *Client) ValidateConfig(cfg asr.Config) error {
