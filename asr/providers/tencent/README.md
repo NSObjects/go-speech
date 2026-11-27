@@ -46,6 +46,14 @@ encoder configuration. `Recognize` accepts concatenated native frames and
 sends them at 40ms intervals, bounded to 60 seconds. No Ogg parsing, resampling
 or codec dependency is added. Other engines are not advertised until verified.
 
+`audio.EncodingMP3` is available for `16k_zh` at 16 kHz mono via
+`voice_format=8`. Send the original MP3 bytes in playback order at real-time
+cadence. For complete short audio, `Recognize` validates MPEG-2 Layer III
+frame headers, accepts variable bitrates and bounded ID3v2/ID3v1 metadata,
+and sends one complete 576-sample frame every 36ms. Free-format bitrates,
+other metadata formats, and inputs over 60 seconds are rejected. No decoding
+or transcoding is performed.
+
 ## Optional Tencent-side sentence segmentation
 
 On supported legacy real-time engines, configure `VADSilenceTime` and

@@ -64,6 +64,8 @@ func (c *Client) prepare(req asr.Config) (Client, Options, url.Values, string, e
 		extra.Set("voice_format", "12")
 	case EncodingOpusFrames:
 		extra.Set("voice_format", "10")
+	case audio.EncodingMP3:
+		extra.Set("voice_format", "8")
 	}
 	if req.Language != "" {
 		return Client{}, Options{}, nil, "", unsupportedError("language is selected by EngineModel; per-request Language is not supported")
