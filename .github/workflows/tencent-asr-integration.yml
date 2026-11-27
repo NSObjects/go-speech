@@ -164,6 +164,16 @@ jobs:
           TENCENT_TEST_AAC_FILE: ${{ runner.temp }}/tencent-native.aac
         run: go test -tags=integration -run '^TestTencentLiveNativeAAC$' -count=1 -v -timeout 2m ./asr/providers/tencent
 
+      # Diagnostic only: Tencent documents Speex/SP but not its container.
+      - name: Prepare 16k mono Ogg Speex protocol fixture
+        run: |
+          ffmpeg -hide_banner -loglevel error -y -f s16le -ar 16000 -ac 1 -i "$TENCENT_TEST_16K_PCM_FILE" -c:a libspeex -ar 16000 -ac 1 -frames_per_packet 1 -page_duration 200000 -f ogg "$RUNNER_TEMP/tencent-speex.spx"
+          test -s "$RUNNER_TEMP/tencent-speex.spx"
+      - name: Probe real Tencent ASR Ogg Speex compatibility
+        env:
+          TENCENT_TEST_SPEEX_FILE: ${{ runner.temp }}/tencent-speex.spx
+        run: go test -tags=integration -run '^TestTencentLiveOggSpeexProbe$' -count=1 -v -timeout 2m ./asr/providers/tencent
+
       - name: Real Tencent Cloud per-request hotword hints
         run: go test -tags=integration -run TestTencentLiveRequestHints -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud concurrent streaming sessions
