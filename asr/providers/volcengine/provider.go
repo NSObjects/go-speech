@@ -132,9 +132,9 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 			"result_type": c.cfg.ResultType,
 		},
 	}
-	if c.cfg.EndWindowSize != 0 {
-		// Volcengine takes milliseconds. Omit the field to keep the provider default.
-		req["request"].(map[string]any)["end_window_size"] = int64(c.cfg.EndWindowSize / time.Millisecond)
+	resultType, details, err := c.cfg.applyOptions(request.Options, req["request"].(map[string]any))
+	if err != nil {
+		return nil, err
 	}
 	if len(request.Hints) > 0 {
 		hints := make([]map[string]string, 0, len(request.Hints))
@@ -188,7 +188,8 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 		return nil, connectError(err, resp)
 	}
 	conn.SetReadLimit(maxWirePayload + 128)
-	stream := newStream(conn, ctx, c.cfg.ResultType)
+	stream := newStream(conn, ctx, resultType)
+	stream.details = details
 	if request.Format.Encoding == audio.EncodingPCM16LE {
 		stream.pcmFrameBytes = request.Format.Channels * 2 // signed 16-bit samples per channel
 	}

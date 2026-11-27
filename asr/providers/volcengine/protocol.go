@@ -118,10 +118,34 @@ func parseFrame(data []byte) (wireMessage, error) {
 }
 
 type utterance struct {
-	Text     string `json:"text"`
-	Definite bool   `json:"definite"`
-	Start    int64  `json:"start_time"`
-	End      int64  `json:"end_time"`
+	Text      string                     `json:"text"`
+	Definite  bool                       `json:"definite"`
+	Start     int64                      `json:"start_time"`
+	End       int64                      `json:"end_time"`
+	Words     []timedWord                `json:"words"`
+	Additions map[string]json.RawMessage `json:"additions"`
+	startSet  bool
+	endSet    bool
+}
+
+func (u *utterance) UnmarshalJSON(data []byte) error {
+	type plain utterance
+	var v struct {
+		plain
+		Start *int64 `json:"start_time"`
+		End   *int64 `json:"end_time"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*u = utterance(v.plain)
+	if v.Start != nil {
+		u.Start, u.startSet = *v.Start, true
+	}
+	if v.End != nil {
+		u.End, u.endSet = *v.End, true
+	}
+	return nil
 }
 
 type recognition struct {
