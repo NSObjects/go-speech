@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -23,6 +24,7 @@ import (
 // failures remain stable across subsequent Recv calls.
 type Stream struct {
 	conn        *websocket.Conn
+	pool        *connpool.Pool
 	parent      context.Context
 	taskID      string
 	format      audio.Format
@@ -50,8 +52,11 @@ const (
 	receiveEvents
 )
 
-func newStream(conn *websocket.Conn, ctx context.Context, id string, format audio.Format) *Stream {
+func newStream(conn *websocket.Conn, ctx context.Context, id string, format audio.Format, pools ...*connpool.Pool) *Stream {
 	s := &Stream{conn: conn, parent: ctx, taskID: id, format: format, done: make(chan struct{})}
+	if len(pools) != 0 {
+		s.pool = pools[0]
+	}
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -65,12 +70,36 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.closeOnce.Do(func() {
-		close(s.done)
-		_ = s.conn.Close()
-	})
+	s.release(false)
 	return nil
 }
+// release resolves ownership once. Old context callbacks cannot close a
+// connection after this stream has returned it to the pool.
+func (s *Stream) release(reusable bool) {
+	s.closeOnce.Do(func() {
+		close(s.done)
+		if reusable {
+			reusable = s.conn.SetReadDeadline(time.Time{}) == nil && s.conn.SetWriteDeadline(time.Time{}) == nil
+		}
+		s.pool.Release(s.conn, reusable)
+	})
+}
+
+// complete is called under readMu after the matching task-finished event.
+// Taking writeMu ensures the final write has returned before reuse.
+func (s *Stream) complete(ctx context.Context) {
+	if s.pool == nil {
+		_ = s.Close()
+		return
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if s.closed() {
+		return
+	}
+	s.release(s.inputClosed && ctx.Err() == nil && s.parent.Err() == nil)
+}
+
 func (s *Stream) closed() bool {
 	select {
 	case <-s.done:
@@ -392,13 +421,15 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 				return tts.Event{}, s.fail(classifyTaskFailure(ev))
 			case "task-finished":
 				if s.cancelSent.Load() {
-					return tts.Event{}, s.fail(tts.ErrSynthesisCanceled)
+					s.terminalErr = tts.ErrSynthesisCanceled
+					s.complete(ctx)
+					return tts.Event{}, s.terminalErr
 				}
 				if !s.audioSeen {
 					return tts.Event{}, s.fail(protocol("synthesis completed without audio"))
 				}
 				s.finished = true
-				_ = s.Close()
+				s.complete(ctx)
 				return tts.Event{}, io.EOF
 			case "result-generated":
 				if s.receiveMode == receiveEvents {

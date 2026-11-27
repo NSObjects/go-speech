@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
@@ -26,6 +27,7 @@ var (
 // and one concurrent receiver. A canceled Send/Recv context closes the session.
 type Stream struct {
 	conn        *websocket.Conn
+	pool        *connpool.Pool
 	parent      context.Context
 	taskID      string
 	done        chan struct{}
@@ -46,8 +48,11 @@ type Stream struct {
 
 var _ asr.Stream = (*Stream)(nil)
 
-func newStream(conn *websocket.Conn, ctx context.Context, taskID string) *Stream {
+func newStream(conn *websocket.Conn, ctx context.Context, taskID string, pools ...*connpool.Pool) *Stream {
 	s := &Stream{conn: conn, parent: ctx, taskID: taskID, done: make(chan struct{})}
+	if len(pools) != 0 {
+		s.pool = pools[0]
+	}
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -61,9 +66,36 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.once.Do(func() { close(s.done); _ = s.conn.Close() })
+	s.release(false)
 	return nil
 }
+// release resolves ownership once. Old context callbacks cannot close a
+// connection after this stream has returned it to the pool.
+func (s *Stream) release(reusable bool) {
+	s.once.Do(func() {
+		close(s.done)
+		if reusable {
+			reusable = s.conn.SetReadDeadline(time.Time{}) == nil && s.conn.SetWriteDeadline(time.Time{}) == nil
+		}
+		s.pool.Release(s.conn, reusable)
+	})
+}
+
+// complete is called under readMu after the matching task-finished event.
+// Taking writeMu ensures the final write has returned before reuse.
+func (s *Stream) complete(ctx context.Context) {
+	if s.pool == nil {
+		_ = s.Close()
+		return
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if s.closed() {
+		return
+	}
+	s.release(s.sendClosed && ctx.Err() == nil && s.parent.Err() == nil && s.terminalFailure() == nil)
+}
+
 func (s *Stream) closed() bool {
 	select {
 	case <-s.done:
@@ -231,7 +263,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		case "task-finished":
 			s.recordUsage(ev.Payload.Usage, true)
 			s.finished = true
-			_ = s.Close()
+			s.complete(ctx)
 			// A writer can fail while ReadMessage decodes task-finished.
 			// Do not turn an already recorded terminal failure into EOF.
 			if err := s.terminalFailure(); err != nil {

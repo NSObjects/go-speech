@@ -15,7 +15,9 @@ import (
 
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/speecherr"
+	"github.com/NSObjects/go-speech/transport"
 	"github.com/gorilla/websocket"
 )
 
@@ -30,7 +32,7 @@ var _ asr.StreamRecognizer = (*Client)(nil)
 
 // Config provides Alibaba-specific settings. Endpoint is optional and defaults
 // to the China DashScope WebSocket URL. Override it for other regions or
-// workspace-specific endpoints. Each OpenStream creates a WebSocket connection.
+// workspace-specific endpoints. Pool optionally enables serial connection reuse.
 type Config struct {
 	Endpoint             string
 	APIKey               string
@@ -46,9 +48,13 @@ type Config struct {
 	VADModel             string
 	StartTimeout         time.Duration
 	Dialer               *websocket.Dialer
+	Pool                 *transport.PoolConfig
 }
 
-type Client struct{ cfg Config }
+type Client struct {
+	cfg Config
+	pool *connpool.Pool
+}
 
 func New(cfg Config) (*Client, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
@@ -90,7 +96,12 @@ func New(cfg Config) (*Client, error) {
 		}
 		cfg.Vocabulary = vocab
 	}
-	return &Client{cfg: cfg}, nil
+	pool, err := connpool.New(cfg.Pool)
+	if err != nil {
+		return nil, badArgument(err.Error())
+	}
+	cfg.Pool = nil // Pool retains its own immutable settings.
+	return &Client{cfg: cfg, pool: pool}, nil
 }
 func isLoopbackHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
@@ -131,17 +142,23 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 	if c.cfg.WorkspaceID != "" {
 		header.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
 	}
-	conn, resp, err := dialer.DialContext(ctx, c.cfg.Endpoint, header)
+	conn, err := c.pool.Acquire(ctx, func(ctx context.Context) (*websocket.Conn, error) {
+		conn, resp, err := dialer.DialContext(ctx, c.cfg.Endpoint, header)
+		if err != nil {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, dialError(err, resp)
+		}
+		return conn, nil
+	})
 	if err != nil {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, dialError(err, resp)
+		return nil, err
 	}
-	s := newStream(conn, ctx, taskID)
+	s := newStream(conn, ctx, taskID, c.pool)
 	s.details = cfg.Options.UtteranceDetails
 	s.model = c.cfg.Model
 	if cfg.Format.Encoding == audio.EncodingPCM16LE {
@@ -242,4 +259,13 @@ func newTaskID() (string, error) {
 	id[6] = (id[6] & 0x0f) | 0x40
 	id[8] = (id[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]), nil
+}
+
+// Close releases idle pooled connections and rejects new pooled acquisitions.
+// In-flight tasks may finish; unpooled clients have no persistent resources.
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+	return c.pool.Close()
 }
