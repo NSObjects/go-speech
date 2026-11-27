@@ -37,6 +37,7 @@ type Stream struct {
 	sentAudio   bool  // writeMu: true after successful audio upload
 	finished    bool  // readMu
 	terminalErr error // terminalMu: first terminal failure remains observable
+	terminalSuccess bool // terminalMu: provider completion cannot be overwritten
 	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
 	details       bool // immutable after OpenStream
 	model         string // immutable after OpenStream
@@ -51,6 +52,7 @@ func newStream(conn *websocket.Conn, ctx context.Context, taskID string) *Stream
 	go func() {
 		select {
 		case <-ctx.Done():
+			_ = s.fail(ctx.Err())
 			_ = s.Close()
 		case <-s.done:
 		}
@@ -61,6 +63,7 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
+	_ = s.recordFailure(s.closeError(context.Background()))
 	s.once.Do(func() { close(s.done); _ = s.conn.Close() })
 	return nil
 }
@@ -82,7 +85,7 @@ func (s *Stream) write(ctx context.Context, typ int, data []byte) error {
 	if s.closed() {
 		return ErrClosed
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(defaultWriteTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -174,7 +177,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	if s.closed() {
 		return asr.Event{}, s.fail(s.closeError(ctx))
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	for {
 		if err := ctx.Err(); err != nil {
@@ -195,6 +198,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			}
 		}
 		typ, data, err := s.conn.ReadMessage()
+		if cause := s.terminalFailure(); cause != nil {
+			return asr.Event{}, cause
+		}
 		if err != nil {
 			result := s.transportError(ctx, "recv", err)
 			return asr.Event{}, s.fail(result)
@@ -230,11 +236,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			}
 		case "task-finished":
 			s.recordUsage(ev.Payload.Usage, true)
-			s.finished = true
-			_ = s.Close()
-			// A writer can fail while ReadMessage decodes task-finished.
-			// Do not turn an already recorded terminal failure into EOF.
-			if err := s.terminalFailure(); err != nil {
+			if err := s.complete(); err != nil {
 				return asr.Event{}, err
 			}
 			return asr.Event{}, io.EOF
@@ -256,19 +258,43 @@ func (s *Stream) terminalFailure() error {
 // fail retains the first Send, CloseSend or Recv failure. It must not require
 // readMu or writeMu: a sender can fail while a receiver blocks on the socket.
 func (s *Stream) fail(err error) error {
-	s.terminalMu.Lock()
-	if s.terminalErr == nil {
-		s.terminalErr = err
-	}
-	first := s.terminalErr
-	s.terminalMu.Unlock()
+	first := s.recordFailure(err)
 	_ = s.Close()
 	return first
 }
 
-// transportError preserves cancellation and deliberate stream closure.
-// Neither of those conditions is an automatically retryable network failure.
-// Capture the error before closing the connection: Close itself changes state.
+// recordFailure arbitrates failures with successful provider completion.
+// A late sender error is still returned to that sender, but must not
+// replace the already committed receive-side EOF or final backlog.
+func (s *Stream) recordFailure(err error) error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if s.terminalSuccess {
+		return err
+	}
+	if s.terminalErr == nil {
+		s.terminalErr = err
+	}
+	return s.terminalErr
+}
+
+// complete is called under readMu after validating the terminal frame.
+// Publish success before closing the transport, so late cancellation or
+// write errors cannot turn a completed recognition into a failure.
+func (s *Stream) complete() error {
+	s.terminalMu.Lock()
+	if s.terminalErr != nil {
+		err := s.terminalErr
+		s.terminalMu.Unlock()
+		return err
+	}
+	s.terminalSuccess = true
+	s.terminalMu.Unlock()
+	s.finished = true
+	_ = s.Close()
+	return nil
+}
+
 func (s *Stream) transportError(ctx context.Context, op string, err error) error {
 	if e := ctx.Err(); e != nil {
 		return e

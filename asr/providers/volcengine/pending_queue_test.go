@@ -104,6 +104,16 @@ func TestPendingVolcengineEventsRespectStreamLifecycle(t *testing.T) {
 				}
 			case "finished":
 				assertReleased()
+				// Simulate an in-flight sender failing after the final
+				// frame won the terminal-state race.
+				late := errors.New("late write failure")
+				if err := concrete.failWrite(late); err != late {
+					t.Fatalf("sender error = %v", err)
+				}
+				stop() // Late parent cancellation must not discard the backlog.
+				if err := concrete.terminalFailure(); err != nil {
+					t.Fatalf("completed stream overwritten: %v", err)
+				}
 				canceled, cancel := context.WithCancel(context.Background())
 				cancel()
 				second, err := session.Recv(canceled)

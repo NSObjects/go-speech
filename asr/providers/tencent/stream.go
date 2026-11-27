@@ -30,6 +30,7 @@ type Stream struct {
 	sentAudio   bool
 	finished    bool
 	terminalErr error // terminalMu
+	terminalSuccess bool // terminalMu: provider completion cannot be overwritten
 	finalSeen   map[int]struct{}
 	queue       []asr.Event // readMu; one server message may contain multiple sentences
 
@@ -51,6 +52,7 @@ func newStream(conn *websocket.Conn, parent context.Context, voiceID string) *St
 	go func() {
 		select {
 		case <-parent.Done():
+			_ = s.fail(parent.Err())
 			_ = s.Close()
 		case <-s.done:
 		}
@@ -62,6 +64,7 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
+	_ = s.recordFailure(s.closeError(context.Background()))
 	// Unblock the receiver before acquiring its lock. Recv itself uses
 	// closeTransport to avoid reentering readMu.
 	s.closeTransport()
@@ -114,15 +117,43 @@ func (s *Stream) terminalFailure() error {
 // concurrent Recv observes the original Send/CloseSend failure, not an
 // incidental "connection closed" caused by cleanup.
 func (s *Stream) fail(err error) error {
-	s.terminalMu.Lock()
-	if s.terminalErr == nil {
-		s.terminalErr = err
-	}
-	first := s.terminalErr
-	s.terminalMu.Unlock()
+	first := s.recordFailure(err)
 	s.closeTransport()
 	return first
 }
+
+// recordFailure arbitrates failures with successful provider completion.
+// A late sender error is still returned to that sender, but must not
+// replace the already committed receive-side EOF or final backlog.
+func (s *Stream) recordFailure(err error) error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if s.terminalSuccess {
+		return err
+	}
+	if s.terminalErr == nil {
+		s.terminalErr = err
+	}
+	return s.terminalErr
+}
+
+// complete is called under readMu after validating the terminal frame.
+// Publish success before closing the transport, so late cancellation or
+// write errors cannot turn a completed recognition into a failure.
+func (s *Stream) complete() error {
+	s.terminalMu.Lock()
+	if s.terminalErr != nil {
+		err := s.terminalErr
+		s.terminalMu.Unlock()
+		return err
+	}
+	s.terminalSuccess = true
+	s.terminalMu.Unlock()
+	s.finished = true
+	s.closeTransport()
+	return nil
+}
+
 func (s *Stream) transportError(ctx context.Context, operation string, err error) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -157,7 +188,7 @@ func (s *Stream) write(ctx context.Context, typ int, data []byte) error {
 	if s.closed() {
 		return s.closeError(ctx)
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(defaultWriteTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -340,7 +371,7 @@ func remoteError(r response) error {
 }
 
 func (s *Stream) awaitHandshake(ctx context.Context, timeout time.Duration) error {
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(timeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -423,7 +454,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		if s.closed() {
 			return asr.Event{}, s.fail(s.closeError(ctx))
 		}
-		stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+		stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 		var deadline time.Time
 		if d, ok := ctx.Deadline(); ok {
 			deadline = d
@@ -440,6 +471,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		typ, raw, err := s.conn.ReadMessage()
 		stop()
+		if cause := s.terminalFailure(); cause != nil {
+			return asr.Event{}, cause
+		}
 		if err != nil {
 			return asr.Event{}, s.fail(s.transportError(ctx, "recv", err))
 		}
@@ -493,8 +527,12 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			}
 		}
 		if message.Final == 1 {
-			s.finished = true
-			s.closeTransport()
+			if err := s.complete(); err != nil {
+				return asr.Event{}, err
+			}
+		}
+		if cause := s.terminalFailure(); cause != nil {
+			return asr.Event{}, cause
 		}
 		if len(s.queue) > 0 {
 			e := s.queue[0]
