@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -35,11 +36,13 @@ type Stream struct {
 	audioSeen   bool
 	terminalErr error
 	receiveMode uint8
+	cancelSent  atomic.Bool
 }
 
 var (
 	_ tts.Stream        = (*Stream)(nil)
 	_ tts.EventReceiver = (*Stream)(nil)
+	_ tts.Canceler      = (*Stream)(nil)
 )
 
 const (
@@ -274,6 +277,36 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	return nil
 }
 
+// Cancel sends the documented finish-task cancel directive. It is only
+// available before normal CloseSend; the receiver observes task-finished.
+func (s *Stream) Cancel(ctx context.Context) error {
+	if s == nil {
+		return tts.ErrStreamClosed
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.closed() {
+		return s.closeError(ctx)
+	}
+	if s.inputClosed {
+		return tts.ErrInputClosed
+	}
+	// Publish before writing: task-finished can arrive immediately after the
+	// server receives the frame, while WriteMessage is still returning.
+	s.cancelSent.Store(true)
+	if err := s.sendJSON(ctx, command("finish-task", s.taskID, map[string]any{
+		"input": map[string]any{"directive": "cancel"},
+	})); err != nil {
+		_ = s.Close()
+		return err
+	}
+	s.inputClosed = true
+	return nil
+}
+
 // Recv returns the provider's raw binary audio frame, preserving the actual
 // output format. Control events contain no audio and are not exposed as chunks.
 func (s *Stream) Recv(ctx context.Context) (audio.Chunk, error) {
@@ -358,6 +391,9 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 			case "task-failed":
 				return tts.Event{}, s.fail(classifyTaskFailure(ev))
 			case "task-finished":
+				if s.cancelSent.Load() {
+					return tts.Event{}, s.fail(tts.ErrSynthesisCanceled)
+				}
 				if !s.audioSeen {
 					return tts.Event{}, s.fail(protocol("synthesis completed without audio"))
 				}

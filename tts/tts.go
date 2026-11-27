@@ -63,7 +63,8 @@ type Client interface {
 // A stream supports one Recv caller; concurrent Recv calls are not supported.
 //
 // Recv returns io.EOF repeatedly after successful completion. After a
-// terminal error, subsequent Recv calls retain that error. Explicit Close
+// terminal error, subsequent Recv calls retain that error. Native cancellation
+// may terminate with ErrSynthesisCanceled. Explicit Close
 // before completion returns ErrStreamClosed from Recv, while canceling the
 // SynthesizeStream or Recv context preserves the corresponding context error.
 // Close is idempotent, releases network resources, and is always required

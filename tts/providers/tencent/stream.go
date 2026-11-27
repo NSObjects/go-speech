@@ -38,6 +38,7 @@ type Stream struct {
 var (
 	_ tts.Stream        = (*Stream)(nil)
 	_ tts.EventReceiver = (*Stream)(nil)
+	_ tts.Resetter      = (*Stream)(nil)
 )
 
 const (
@@ -246,6 +247,32 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return err
 	}
 	s.inputClosed = true
+	return nil
+}
+
+// Reset clears only the server's pending text. It does not interrupt audio
+// already being synthesized and does not close input.
+func (s *Stream) Reset(ctx context.Context) error {
+	if s == nil {
+		return tts.ErrStreamClosed
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.closed() {
+		return s.closeError(ctx)
+	}
+	if s.inputClosed {
+		return tts.ErrInputClosed
+	}
+	if err := s.sendCommand(ctx, "ACTION_RESET", ""); err != nil {
+		_ = s.Close()
+		return err
+	}
+	// Do not clear textSent: some previously submitted text may already
+	// be synthesizing, and CloseSend must still be able to finish it.
 	return nil
 }
 
