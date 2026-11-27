@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -23,6 +22,7 @@ import (
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
@@ -104,7 +104,7 @@ func New(cfg Config) (*Client, error) {
 		(u.Path != "" && u.Path != "/") {
 		return nil, argumentError("Endpoint must be a WebSocket origin without path or query")
 	}
-	if u.Scheme != "wss" && !(u.Scheme == "ws" && isLoopback(u.Hostname())) {
+	if u.Scheme != "wss" && !(u.Scheme == "ws" && wireutil.IsLoopback(u.Hostname())) {
 		return nil, argumentError("wss is required outside loopback tests")
 	}
 	if cfg.Dialer != nil {
@@ -112,14 +112,6 @@ func New(cfg Config) (*Client, error) {
 		cfg.Dialer = &copyDialer
 	}
 	return &Client{cfg: cfg}, nil
-}
-
-func isLoopback(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // SupportedAudio reports the PCM transport supported by the selected engine.
@@ -148,7 +140,7 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	if err != nil {
 		return nil, err
 	}
-	voiceID, err := requestID()
+	voiceID, err := wireutil.UUIDv4()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "voice_id", Err: err}
 	}
@@ -263,16 +255,6 @@ func signatureQuery(params url.Values) string {
 		parts = append(parts, key+"="+params.Get(key))
 	}
 	return strings.Join(parts, "&")
-}
-
-func requestID() (string, error) {
-	var id [16]byte
-	if _, err := rand.Read(id[:]); err != nil {
-		return "", err
-	}
-	id[6] = id[6]&15 | 0x40
-	id[8] = id[8]&63 | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]), nil
 }
 
 func argumentError(message string) error {

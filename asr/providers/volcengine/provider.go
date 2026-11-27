@@ -5,10 +5,8 @@ package volcengine
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,6 +15,7 @@ import (
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
@@ -82,7 +81,7 @@ func New(cfg Config) (*Client, error) {
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, argumentError("invalid Volcengine WebSocket endpoint")
 	}
-	if u.Scheme != "wss" && !(u.Scheme == "ws" && isLoopback(u.Hostname())) {
+	if u.Scheme != "wss" && !(u.Scheme == "ws" && wireutil.IsLoopback(u.Hostname())) {
 		return nil, argumentError("wss is required outside loopback tests")
 	}
 	if u.Path != "/api/v3/sauc/bigmodel_async" {
@@ -96,14 +95,6 @@ func New(cfg Config) (*Client, error) {
 		cfg.Dialer = &copyDialer
 	}
 	return &Client{cfg: cfg}, nil
-}
-
-func isLoopback(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream, error) {
@@ -121,7 +112,7 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 	if err != nil {
 		return nil, err
 	}
-	id, err := newRequestID()
+	id, err := wireutil.UUIDv4()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "volcengine", Operation: "request_id", Err: err}
 	}
@@ -226,12 +217,3 @@ func connectError(err error, resp *http.Response) error {
 	}
 }
 
-func newRequestID() (string, error) {
-	var buf [16]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return "", err
-	}
-	buf[6] = buf[6]&15 | 0x40
-	buf[8] = buf[8]&63 | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[:4], buf[4:6], buf[6:8], buf[8:10], buf[10:]), nil
-}

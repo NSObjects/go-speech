@@ -5,12 +5,10 @@ package aliyun
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,6 +17,7 @@ import (
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -67,7 +66,7 @@ func New(cfg Config) (*Client, error) {
 		u.Path != "/api-ws/v1/inference" {
 		return nil, invalid("Endpoint must be a WebSocket /api-ws/v1/inference URL")
 	}
-	if u.Scheme != "wss" && !(u.Scheme == "ws" && loopback(u.Hostname())) {
+	if u.Scheme != "wss" && !(u.Scheme == "ws" && wireutil.IsLoopback(u.Hostname())) {
 		return nil, invalid("wss is required except for local mock servers")
 	}
 	if cfg.StartTimeout < 0 {
@@ -84,14 +83,6 @@ func New(cfg Config) (*Client, error) {
 		cfg.Dialer = &copied
 	}
 	return &Client{cfg: cfg}, nil
-}
-
-func loopback(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // SupportedAudio describes CosyVoice WebSocket output formats. EncodingOpus
@@ -195,7 +186,7 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 
 // openSession owns the common connection and handshake for both modes.
 func (c *Client) openSession(ctx context.Context, req tts.Request, codec string, params map[string]any) (*Stream, error) {
-	taskID, err := taskID()
+	taskID, err := wireutil.UUIDv4()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "task_id", Err: err}
 	}
@@ -259,16 +250,6 @@ func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer,
 		}
 		output.Data = append(output.Data, chunk.Data...)
 	}
-}
-
-func taskID() (string, error) {
-	var id [16]byte
-	if _, err := rand.Read(id[:]); err != nil {
-		return "", err
-	}
-	id[6] = id[6]&15 | 0x40
-	id[8] = id[8]&63 | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]), nil
 }
 
 func invalid(msg string) error {

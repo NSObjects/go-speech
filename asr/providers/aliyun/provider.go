@@ -4,7 +4,6 @@ package aliyun
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +15,7 @@ import (
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
@@ -62,7 +62,7 @@ func New(cfg Config) (*Client, error) {
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, badArgument("invalid WebSocket endpoint")
 	}
-	if u.Scheme != "wss" && !(u.Scheme == "ws" && isLoopbackHost(u.Hostname())) {
+	if u.Scheme != "wss" && !(u.Scheme == "ws" && wireutil.IsLoopback(u.Hostname())) {
 		return nil, badArgument("use wss:// except for loopback tests")
 	}
 	if u.Path != "/api-ws/v1/inference" {
@@ -93,13 +93,6 @@ func New(cfg Config) (*Client, error) {
 	}
 	return &Client{cfg: cfg}, nil
 }
-func isLoopbackHost(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
 func badArgument(msg string) error {
 	return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "aliyun", Operation: "configure", Err: errors.New(msg)}
 }
@@ -115,7 +108,7 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 	if err != nil {
 		return nil, err
 	}
-	taskID, err := newTaskID()
+	taskID, err := wireutil.UUIDv4()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "task_id", Err: err}
 	}
@@ -218,13 +211,4 @@ func wrapNetwork(ctx context.Context, op string, err error) error {
 		code = speecherr.CodeTimeout
 	}
 	return &speecherr.Error{Code: code, Provider: "aliyun", Operation: op, Err: err, Retryable: true}
-}
-func newTaskID() (string, error) {
-	var id [16]byte
-	if _, err := rand.Read(id[:]); err != nil {
-		return "", err
-	}
-	id[6] = (id[6] & 0x0f) | 0x40
-	id[8] = (id[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]), nil
 }

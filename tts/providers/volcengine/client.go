@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -63,7 +63,7 @@ func New(cfg Config) (*Client, error) {
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
 		(u.Path != "" && u.Path != "/") ||
-		(u.Scheme != "https" && !(u.Scheme == "http" && loopback(u.Hostname()))) {
+		(u.Scheme != "https" && !(u.Scheme == "http" && wireutil.IsLoopback(u.Hostname()))) {
 		return nil, invalid("Endpoint must be an HTTPS origin")
 	}
 	if cfg.StartTimeout < 0 {
@@ -85,11 +85,6 @@ func New(cfg Config) (*Client, error) {
 	return &Client{cfg: cfg, base: u, http: &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
-}
-
-func loopback(host string) bool {
-	ip := net.ParseIP(host)
-	return strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback())
 }
 
 func failure(code speecherr.Code, op string, err error) error {

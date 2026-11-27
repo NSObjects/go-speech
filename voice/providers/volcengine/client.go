@@ -3,7 +3,6 @@ package volcengine
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 )
 
@@ -45,7 +45,7 @@ func New(cfg Config) (*Client, error) {
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
 		(u.Path != "" && u.Path != "/") ||
-		(u.Scheme != "https" && !(u.Scheme == "http" && loopback(u.Hostname()))) {
+		(u.Scheme != "https" && !(u.Scheme == "http" && wireutil.IsLoopback(u.Hostname()))) {
 		return nil, invalid("Endpoint must be an HTTPS origin (HTTP loopback for tests)")
 	}
 	if cfg.Timeout < 0 {
@@ -58,21 +58,6 @@ func New(cfg Config) (*Client, error) {
 		Timeout: cfg.Timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
-}
-
-func loopback(host string) bool {
-	ip := net.ParseIP(host)
-	return strings.EqualFold(host, "localhost") || ip != nil && ip.IsLoopback()
-}
-
-func requestID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
 }
 
 // RemoteError preserves response status and server diagnostics without
@@ -115,7 +100,7 @@ func (c *Client) call(ctx context.Context, op string, body any) (Result, error) 
 	if err != nil {
 		return Result{}, failure(op, speecherr.CodeInvalidArgument, err)
 	}
-	id, err := requestID()
+	id, err := wireutil.UUIDv4()
 	if err != nil {
 		return Result{}, failure(op, speecherr.CodeInternal, err)
 	}
