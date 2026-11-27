@@ -72,8 +72,8 @@ func (c Config) applyOptions(o asr.Options, req map[string]any) (string, bool, e
 	if native.EndWindowSize != nil {
 		endWindow = *native.EndWindowSize
 	}
-	if endWindow != 0 && (endWindow < 200*time.Millisecond || endWindow%time.Millisecond != 0) {
-		return "", false, argumentError("EndWindowSize must be at least 200ms and a whole number of milliseconds")
+	if err := validateEndWindow(c.ResourceID, endWindow); err != nil {
+		return "", false, err
 	}
 	if native.EnableNonStream != nil {
 		secondPass = *native.EnableNonStream
