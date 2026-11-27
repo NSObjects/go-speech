@@ -216,3 +216,5 @@ Advanced feature queries use `client.(asr.CapabilityProvider).Capabilities().Fea
 阿里 CosyVoice / Qwen Audio 音色复刻、设计、查询、更新及删除使用 [`voice/providers/aliyun`](voice/providers/aliyun)，音色绑定创建时指定的目标模型。
 
 腾讯 VRS 使用 [`voice/providers/tencent`](voice/providers/tencent) 获取训练文本、检测录音、提交训练任务及查询任务和音色。使用返回的 VoiceType / FastVoiceType 合成语音。
+
+Aliyun ASR and TTS support [optional WebSocket connection pooling](docs/aliyun-connection-pool.md).
