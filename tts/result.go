@@ -6,11 +6,11 @@ import (
 	"io"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/ttscollect"
 	"github.com/NSObjects/go-speech/speecherr"
 )
 
 const (
-	maxDetailedAudioBytes = 64 << 20
 	maxDetailedAlignments = 10000
 	maxDetailedWords      = 100000
 )
@@ -52,7 +52,7 @@ func SynthesizeDetailed(ctx context.Context, client StreamSynthesizer, req Reque
 	if !ok {
 		return Result{}, detailedError(speecherr.CodeUnsupported, ErrEventsUnsupported)
 	}
-	return collectDetailed(ctx, reader, maxDetailedAudioBytes)
+	return collectDetailed(ctx, reader, ttscollect.MaxAudioBytes)
 }
 
 func collectDetailed(ctx context.Context, reader EventReceiver, audioLimit int) (Result, error) {

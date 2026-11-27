@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/ttscollect"
 	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
@@ -31,7 +31,6 @@ const (
 	defaultEndpoint     = "wss://tts.cloud.tencent.com/stream_wsv2"
 	defaultStartTimeout = 15 * time.Second
 	maxTextRunes        = 10000
-	maxBatchAudio       = 64 << 20
 )
 
 var (
@@ -244,26 +243,7 @@ func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer,
 		return audio.Buffer{}, err
 	}
 	defer stream.Close()
-	var out audio.Buffer
-	for {
-		chunk, err := stream.Recv(ctx)
-		if errors.Is(err, io.EOF) {
-			if len(out.Data) == 0 {
-				return audio.Buffer{}, protocol("synthesis completed without audio")
-			}
-			return out, nil
-		}
-		if err != nil {
-			return audio.Buffer{}, err
-		}
-		if len(chunk.Data) > maxBatchAudio-len(out.Data) {
-			return audio.Buffer{}, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "tts", Err: errors.New("batch audio exceeds 64 MiB; use SynthesizeStream")}
-		}
-		if out.Format == (audio.Format{}) {
-			out.Format = chunk.Format
-		}
-		out.Data = append(out.Data, chunk.Data...)
-	}
+	return ttscollect.Collect(ctx, stream, "tencent")
 }
 
 func invalid(msg string) error {
