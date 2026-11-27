@@ -55,7 +55,7 @@ type HTTPClient struct {
 }
 
 var (
-	_ tts.Synthesizer = (*HTTPClient)(nil)
+	_ tts.Synthesizer       = (*HTTPClient)(nil)
 	_ tts.CapabilityProvider = (*HTTPClient)(nil)
 )
 
@@ -87,9 +87,9 @@ func NewHTTP(cfg HTTPConfig) (*HTTPClient, error) {
 
 func SupportedHTTPAudio() audio.Capability {
 	return audio.Capability{
-		Encodings: []audio.Encoding{audio.EncodingWAV, audio.EncodingPCM16LE, audio.EncodingMP3},
+		Encodings:   []audio.Encoding{audio.EncodingWAV, audio.EncodingPCM16LE, audio.EncodingMP3},
 		SampleRates: []int{8000, 16000, 24000},
-		Channels: []int{1},
+		Channels:    []int{1},
 	}
 }
 
@@ -107,22 +107,22 @@ func (c *HTTPClient) Capabilities() tts.Capabilities {
 }
 
 type httpRequest struct {
-	Text string `json:"Text"`
-	SessionID string `json:"SessionId"`
-	VoiceType int64 `json:"VoiceType"`
-	SampleRate int `json:"SampleRate"`
-	Codec string `json:"Codec"`
-	Speed *float64 `json:"Speed,omitempty"`
-	Volume *float64 `json:"Volume,omitempty"`
-	ProjectID *int64 `json:"ProjectId,omitempty"`
-	ModelType *int `json:"ModelType,omitempty"`
-	PrimaryLanguage *int `json:"PrimaryLanguage,omitempty"`
-	FastVoiceType string `json:"FastVoiceType,omitempty"`
-	EnableSubtitle *bool `json:"EnableSubtitle,omitempty"`
-	SegmentRate *int `json:"SegmentRate,omitempty"`
-	EmotionCategory string `json:"EmotionCategory,omitempty"`
-	EmotionIntensity *int `json:"EmotionIntensity,omitempty"`
-	EnableLatex *bool `json:"EnableLatex,omitempty"`
+	Text             string   `json:"Text"`
+	SessionID        string   `json:"SessionId"`
+	VoiceType        int64    `json:"VoiceType"`
+	SampleRate       int      `json:"SampleRate"`
+	Codec            string   `json:"Codec"`
+	Speed            *float64 `json:"Speed,omitempty"`
+	Volume           *float64 `json:"Volume,omitempty"`
+	ProjectID        *int64   `json:"ProjectId,omitempty"`
+	ModelType        *int     `json:"ModelType,omitempty"`
+	PrimaryLanguage  *int     `json:"PrimaryLanguage,omitempty"`
+	FastVoiceType    string   `json:"FastVoiceType,omitempty"`
+	EnableSubtitle   *bool    `json:"EnableSubtitle,omitempty"`
+	SegmentRate      *int     `json:"SegmentRate,omitempty"`
+	EmotionCategory  string   `json:"EmotionCategory,omitempty"`
+	EmotionIntensity *int     `json:"EmotionIntensity,omitempty"`
+	EnableLatex      *bool    `json:"EnableLatex,omitempty"`
 }
 
 func prepareHTTP(req tts.Request, detailed bool) (httpRequest, audio.Format, error) {
@@ -218,12 +218,12 @@ func prepareHTTP(req tts.Request, detailed bool) (httpRequest, audio.Format, err
 
 // HTTPSubtitle preserves nullable native phonemes and indices.
 type HTTPSubtitle struct {
-	Text string `json:"Text"`
-	BeginTime *int64 `json:"BeginTime"`
-	EndTime *int64 `json:"EndTime"`
-	BeginIndex *int `json:"BeginIndex"`
-	EndIndex *int `json:"EndIndex"`
-	Phoneme *string `json:"Phoneme"`
+	Text       string  `json:"Text"`
+	BeginTime  *int64  `json:"BeginTime"`
+	EndTime    *int64  `json:"EndTime"`
+	BeginIndex *int    `json:"BeginIndex"`
+	EndIndex   *int    `json:"EndIndex"`
+	Phoneme    *string `json:"Phoneme"`
 }
 
 // HTTPResult includes the complete audio, native subtitles and diagnostic IDs.
@@ -315,12 +315,12 @@ func httpTransportError(ctx context.Context, err error) error {
 func decodeHTTPResult(raw []byte, status int, session string, f audio.Format) (HTTPResult, error) {
 	var env struct {
 		Response *struct {
-			Audio []byte
-			SessionID string `json:"SessionId"`
-			RequestID string `json:"RequestId"`
+			Audio     []byte
+			SessionID string         `json:"SessionId"`
+			RequestID string         `json:"RequestId"`
 			Subtitles []HTTPSubtitle
 			Error *struct {
-				Code string
+				Code    string
 				Message string
 			}
 		}

@@ -68,28 +68,7 @@ jobs:
           fi
 
       - name: Real Tencent native TextToVoice SSML WAV and subtitles
-        run: go test -tags=integration -run '^TestTencentLiveHTTPTextToVoice
-    runs-on: ubuntu-latest
-    timeout-minutes: 7
-    env:
-      VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
-      VOLCENGINE_TTS_MODEL_ID: ${{ vars.VOLCENGINE_TTS_MODEL_ID }}
-      VOLCENGINE_TTS_VOICE: ${{ vars.VOLCENGINE_TTS_VOICE }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Verify Volcengine API key
-        run: |
-          test -n "$VOLCENGINE_API_KEY" || { echo "Missing VOLCENGINE_API_KEY repository secret" >&2; exit 1; }
-          test -n "$VOLCENGINE_TTS_VOICE" || { echo "Set VOLCENGINE_TTS_VOICE to an authorized Seed-TTS 3.0 voice" >&2; exit 1; }
-      - name: Install FFmpeg for decoded audio validation
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Real Seed-TTS 3.0 HTTP and WebSocket synthesis
-        run: go test -tags=integration -run TestVolcengineLive -count=1 -v -timeout 5m ./tts/providers/volcengine
- -count=1 -v -timeout 2m ./tts/providers/tencent
+        run: go test -tags=integration -run '^TestTencentLiveHTTPTextToVoice$' -count=1 -v -timeout 2m ./tts/providers/tencent
 
   volcengine-live-tts:
     runs-on: ubuntu-latest
