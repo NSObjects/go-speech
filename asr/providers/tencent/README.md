@@ -1,6 +1,6 @@
 # Tencent Cloud real-time ASR (WebSocket V2)
 
-This provider implements `asr.StreamRecognizer` and `asr.Stream` with
+This provider implements `asr.Client` and `asr.Stream` with
 Tencent Cloud Speech Recognition V2 (`/asr/v2/<appid>`). It is **not**
 Tencent RTC's separate `/asr/v3` product or Tencent's TTS service.
 
@@ -142,8 +142,8 @@ not a VAD silence threshold and not an automatic reconnect mechanism.
 
 Per-request `Language` is unsupported rather than silently ignored:
 choose the engine in `Config`. Per-request `Hints` use Tencent temporary
-hotwords, as documented above. The SDK does not implement non-streaming batch
-recognition via this adapter.
+hotwords, as documented above. Use Recognize for a complete short audio buffer; it uses the same realtime
+streaming protocol internally.
 
 ## Reconnection and duplicate-result safety
 
@@ -503,3 +503,9 @@ Official protocol: https://cloud.tencent.com/document/product/1093/48982
 ## Request-local advanced options
 
 Use `asr.Config.Options.Provider = tencent.Options{...}` to override VAD and dictionary defaults, select native filters and numeric conversion, weighted temporary hotwords, noise threshold, domain, word timing, sentence strategy and speaker context. Explicit common Punctuation and TextNormalization are rejected rather than approximated by Tencent's narrower controls; use FilterPunctuation and ConvertNumMode. DisfluencyRemoval maps to filter_modal=0/1. Legacy WordInfo and EmotionRecognition are engine-restricted; emotion is opt-in, billable, and requires NeedVAD. Its separate realtime response schema is not documented, so the SDK preserves native result JSON in UtteranceDetails.RawResult and does not infer emotion or strip inline labels. Set UtteranceDetails for timing; explicit emotion also enables detailed results. Empty legacy final slices can be requested with ReturnEmptyResults. Speaker 2.0 supports EnableSpeakerContext and SpeakerContextID; read the service-issued ID through asr.SessionMetadataReceiver or Result.Provider (tencent.SessionDetails). Reuse only for the same conversation with caller-managed lifetime. No automatic reconnect, local diarization or audio replay occurs. See https://cloud.tencent.com/document/product/1093/48982 and https://cloud.tencent.com/document/product/1093/131127 . Real service validation remains pending.
+
+## Live emotion metadata probe
+
+On 2026-11-27 the real WSv2 endpoint rejected `EmotionRecognition=1` with `NeedVAD=true` on all four documented engines (`16k_zh`, `16k_zh_en`, `8k_zh`, `8k_zh_large`), returning error 4001 (`EmotionRecognition Not support`). See [16k probe](https://github.com/NSObjects/go-speech/actions/runs/45962278572), [16k bilingual probe](https://github.com/NSObjects/go-speech/actions/runs/45962932341), and [8k probes](https://github.com/NSObjects/go-speech/actions/runs/45964170905). The result is specific to the tested account and service configuration, not proof of global unavailability. Emotion remains an unverified, billable provider option; consult Tencent before enabling it.
+
+The regular ASR workflow does not repeatedly request this unavailable option. To recheck after service availability changes, explicitly dispatch the Tencent ASR workflow with `emotion_engine` set to one of the documented engines (default `disabled`). The diagnostic makes one request with a matching PCM sample rate, fails on provider rejection, requires final text and preserved native result JSON on success, and logs only field names/types. Request acceptance does not validate emotion label semantics or accuracy. No automatic fallback or retry is performed.
