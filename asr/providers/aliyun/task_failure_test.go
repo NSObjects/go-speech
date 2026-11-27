@@ -15,6 +15,9 @@ func TestTaskFailureDashScopeCodes(t *testing.T) {
 		want speecherr.Code
 		retryable bool
 	}{
+		{"permanent service quota", "ServiceQuotaExhausted", "retry later", speecherr.CodeRateLimited, false},
+		{"request timeout", "RequestTimeout", "timed out", speecherr.CodeTimeout, true},
+		{"server error", "InternalServerError", "temporary", speecherr.CodeUnavailable, true},
 		{"invalid API key", "InvalidApiKey", "incorrect credential", speecherr.CodeUnauthorized, false},
 		{"authentication failed legacy", "AuthenticationFailed", "test failure", speecherr.CodeUnauthorized, false},
 		{"snake case API key", "invalid_api_key", "bad key", speecherr.CodeUnauthorized, false},

@@ -15,6 +15,12 @@ func TestCosyVoiceStructuredTaskFailures(t *testing.T) {
 		want    speecherr.Code
 		retry   bool
 	}{
+		{"snake case auth", "invalid_api_key", "retry later", speecherr.CodeUnauthorized, false},
+		{"request limit", "limit_requests", "busy", speecherr.CodeRateLimited, true},
+		{"burst limit", "Throttling.BurstRate", "busy", speecherr.CodeRateLimited, true},
+		{"allocation quota", "Throttling.AllocationQuota", "retry later", speecherr.CodeRateLimited, false},
+		{"arrearage", "Arrearage", "retry later", speecherr.CodeRateLimited, false},
+		{"permanent service quota", "ServiceQuotaExhausted", "retry later", speecherr.CodeRateLimited, false},
 		{"throttle", "Throttling", "request too frequent", speecherr.CodeRateLimited, true},
 		{"quota", "QuotaExceeded", "please retry later", speecherr.CodeRateLimited, false},
 		{"allocation", "AllocationQuotaExceeded", "try again", speecherr.CodeRateLimited, false},
