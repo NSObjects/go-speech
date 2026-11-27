@@ -46,7 +46,7 @@ func TestFullTranscriptDoesNotRepeatFinalUtterances(t *testing.T) {
 		s.queue = nil
 	}
 	if s.pendingText != "" || s.confirmedText.String() != "今天天气真好。明天也不错。" {
-		t.Fatalf("unexpected final state: pending=%q confirmed=%q", s.pendingText, s.confirmedText)
+		t.Fatalf("unexpected final state: pending=%q confirmed=%q", s.pendingText, s.confirmedText.String())
 	}
 }
 
