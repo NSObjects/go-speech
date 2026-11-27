@@ -22,6 +22,36 @@ func TestTencentLiveVoiceQueries(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	// Fetch fresh provider-issued training text without submitting audio or
+	// creating a training task. Fast text IDs expire and are not reused.
+	t.Run("training_text", func(t *testing.T) {
+		domain, language := 1, 1
+		for _, tc := range []struct {
+			name string
+			req  TrainingTextRequest
+		}{
+			{"basic", TrainingTextRequest{TaskType: Basic}},
+			{"fast_chat", TrainingTextRequest{TaskType: Fast, Domain: &domain, TextLanguage: &language}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				r, err := c.GetTrainingText(ctx, tc.req)
+				if err != nil {
+					failVoiceQuery(t, "training text", err)
+				}
+				if r.RequestID == "" || len(r.Texts) == 0 {
+					t.Fatal("training text response has no request ID or text entries")
+				}
+				seen := make(map[string]bool, len(r.Texts))
+				for _, item := range r.Texts {
+					if !validID(item.TextID) || !validText(item.Text) || seen[item.TextID] {
+						t.Fatal("invalid or duplicate provider-issued training text entry")
+					}
+					seen[item.TextID] = true
+				}
+				t.Logf("training text response returned %d usable entries", len(r.Texts))
+			})
+		}
+	})
 	for _, kind := range []TaskType{Basic, Fast} {
 		name := "basic"
 		if kind == Fast {
