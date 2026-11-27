@@ -231,3 +231,21 @@ func TestVoiceNoRedirect(t *testing.T) {
 		t.Fatal("redirect treated as success")
 	}
 }
+
+func TestCloneModelMismatchPreservesCreatedID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"request_id":"trace","output":{"voice_id":"created","target_model":"cosyvoice-v3-plus"}}`))
+	}))
+	defer server.Close()
+	c, err := New(Config{APIKey: "test", Endpoint: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := c.Clone(context.Background(), CloneRequest{
+		TargetModel: "cosyvoice-v3-flash", Prefix: "test",
+		Audio: AudioSource{Data: []byte{1}, Format: WAV},
+	})
+	if !speecherr.IsCode(err, speecherr.CodeProtocol) || r.VoiceID != "created" || r.RequestID != "trace" || r.TargetModel != "cosyvoice-v3-plus" {
+		t.Fatalf("creation response lost: %+v, %v", r, err)
+	}
+}

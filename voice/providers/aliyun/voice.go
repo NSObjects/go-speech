@@ -232,7 +232,7 @@ func (c *Client) Clone(ctx context.Context, req CloneRequest) (Result, error) {
 	if v.TargetModel == "" {
 		v.TargetModel = req.TargetModel
 	} else if v.TargetModel != req.TargetModel {
-		return Result{}, protocol("create_voice", "target model mismatch")
+		return Result{Metadata: meta, Voice: v}, protocol("create_voice", "target model mismatch")
 	}
 	return Result{Metadata: meta, Voice: v}, nil
 }
