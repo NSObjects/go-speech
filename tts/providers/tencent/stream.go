@@ -192,7 +192,7 @@ func (s *Stream) startReady(ctx context.Context, timeout time.Duration) error {
 	for {
 		typ, data, err := s.readFrame(ctx, deadline)
 		if cause := s.terminalFailure(); cause != nil {
-			return tts.Event{}, cause
+			return cause
 		}
 		if err != nil {
 			return err
@@ -356,6 +356,9 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 			deadline = d
 		}
 		typ, data, err := s.readFrame(ctx, deadline)
+		if cause := s.terminalFailure(); cause != nil {
+			return tts.Event{}, cause
+		}
 		if err != nil {
 			return tts.Event{}, s.fail(err)
 		}
