@@ -79,6 +79,26 @@ _ = result.Data // 完整音频字节
 
 `SynthesizeStream` 返回 `tts.Stream`，通过 `Recv(ctx)` 逐块读取音频，读取结束返回 `io.EOF`。使用后调用 `Close()`。
 
+需要完整音频及字词时间戳时，使用 `tts.SynthesizeDetailed(ctx, client, req)`。例如，火山引擎（`volcengine` 为 `tts/providers/volcengine` 包）：
+
+```go
+enabled := true
+result, err := tts.SynthesizeDetailed(ctx, client, tts.Request{
+    Text:  "你好。",
+    Voice: voiceID,
+    Options: tts.Options{
+        Provider: volcengine.Options{EnableSubtitle: &enabled},
+    },
+})
+if err != nil {
+    return err
+}
+_ = result.Audio
+_ = result.Alignments
+```
+
+阿里云通过 `aliyun.Options.WordTimestampEnabled` 开启时间戳，腾讯云通过 `tencent.Options.EnableSubtitle` 开启。实际返回内容取决于模型和音色；SDK 不会自动生成缺失的时间戳。需要边接收音频边处理对齐数据时，使用 `tts.EventReceiver`。
+
 ### ASR：音频转文字
 
 准备 16 kHz、单声道 PCM16LE 原始音频文件：
