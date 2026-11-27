@@ -19,7 +19,8 @@ Query `asr.CapabilityProvider` or `tts.CapabilityProvider` via
 `Supported` indicates that a client can be configured with a pool;
 `Enabled` is true only for an initialized, nonclosed pool.
 `Warmup` and `VoiceSpecific` describe implementation requirements
-independently of Enabled. Use Enabled && Warmup before calling Prewarmer.
+independently of Enabled. Use Enabled && Warmup for UI or optional
+feature selection; the warmup helper itself requires no prior query.
 
 | Provider path | Batch | Streaming | Duplex | Warmup | VoiceSpecific |
 | --- | --- | --- | --- | --- | --- |
@@ -70,7 +71,11 @@ underlying causes remain observable. No failure triggers automatic retry.
 
 ## Warmup and pre-open
 
-Use `tts.Prewarmer.Warmup(ctx, voice, count)` with enabled pooling.
+Call `tts.Warmup(ctx, client, voice, count)` with enabled pooling.
+The helper accepts clients from either constructor, delegates to
+`tts.Prewarmer`, and returns unsupported or provider errors unchanged
+(no retries or silent fallback). Capability queries are optional for
+ordinary synthesis and explicit warmup.
 The count is a best-effort target, bounded by MaxIdle. Existing matching
 idle sockets and in-flight warmups are counted. The call does not wait for
 occupied capacity, evict idle sockets, start synthesis or retry failed

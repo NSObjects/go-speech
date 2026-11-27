@@ -53,6 +53,41 @@ func TestRecvDeadlineStopsSessionAndRetainsError(t *testing.T) {
 	}
 }
 
+// Simulate the interval between a cancellation callback publishing its
+// terminal error and closing the physical transport. Recv must complete
+// teardown before returning the error, even when another goroutine was
+// responsible for recording it.
+func TestRecvObservedTerminalFailureClosesTransport(t *testing.T) {
+	endpoint := mockEndpoint(t, func(ws *websocket.Conn, _ *http.Request) {
+		_, _, _ = ws.ReadMessage()
+		_, _, _ = ws.ReadMessage()
+	})
+	client, err := New(Config{APIKey: "key", Endpoint: endpoint})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stream, err := client.OpenStream(ctx, asr.Config{
+		Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	s := stream.(*Stream)
+	_ = s.recordFailure(context.DeadlineExceeded)
+	if _, err := s.Recv(ctx); err != context.DeadlineExceeded {
+		t.Fatalf("terminal error: %v", err)
+	}
+	if !s.closed() {
+		t.Fatal("Recv returned before transport teardown")
+	}
+	if err := s.Send(ctx, []byte{0, 0}); !errors.Is(err, asr.ErrStreamClosed) {
+		t.Fatalf("send after terminal receive: %v", err)
+	}
+}
+
 // A single Client may be shared by multiple independent connections. The
 // response belonging to one socket must never be delivered to another caller.
 func TestConcurrentIndependentStreams(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 
 	speech "github.com/NSObjects/go-speech"
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/speecherr"
 	tencenttts "github.com/NSObjects/go-speech/tts/providers/tencent"
 	"github.com/NSObjects/go-speech/transport"
 	"github.com/NSObjects/go-speech/tts"
@@ -78,6 +79,15 @@ func TestPoolCapabilitiesOffline(t *testing.T) {
 			}
 			if _, ok := c.(tts.Prewarmer); ok != got.Warmup {
 				t.Fatal("warmup capability disagrees with implemented interface")
+			}
+			if !got.Enabled {
+				if err := tts.Warmup(context.Background(), c, "101001", 1); !speecherr.IsCode(err, speecherr.CodeUnsupported) {
+					t.Fatalf("disabled or unsupported warmup helper: %v", err)
+				}
+			} else {
+				if err := tts.Warmup(context.Background(), c, "101001", -1); !speecherr.IsCode(err, speecherr.CodeInvalidArgument) {
+					t.Fatalf("warmup helper did not preserve validation: %v", err)
+				}
 			}
 			if tc.want.Supported {
 				// A returned capability value cannot mutate the client.
