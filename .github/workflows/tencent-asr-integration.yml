@@ -96,14 +96,13 @@ jobs:
       - name: Real Tencent Cloud native WAV WebSocket recognition
         run: go test -tags=integration -run '^TestTencentLiveWAVRecognize$' -count=1 -v -timeout 2m ./asr/providers/tencent
 
-      # Test-only protocol probe: ASR documentation specifies opus + uint16
-      # length + packet, but does not specify the length byte order.
+      # Independent native Opus fixture: real-cloud verification confirmed LE.
       - name: Install libopus runtime for protocol fixture
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libopus0
           python3 -c 'import ctypes; ctypes.CDLL("libopus.so.0")'
-      - name: Prepare native 40ms Opus probe fixture
+      - name: Prepare native 40ms Opus fixture
         run: |
           python3 - <<'PY'
           import ctypes as c
@@ -141,10 +140,10 @@ jobs:
           Path(os.environ["RUNNER_TEMP"], "tencent-opus-le.frames").write_bytes(result)
           print(f"encoded {len(raw)//1280} 40ms packets, {len(result)} framed bytes")
           PY
-      - name: Verify real Tencent ASR native Opus little-endian framing
+      - name: Real Tencent native Opus Recognize and OpenStream
         env:
           TENCENT_TEST_OPUS_LE_FILE: ${{ runner.temp }}/tencent-opus-le.frames
-        run: go test -tags=integration -run '^TestTencentLiveNativeOpusFramingProbe$' -count=1 -v -timeout 2m ./asr/providers/tencent
+        run: go test -tags=integration -run '^TestTencentLiveNativeOpus$' -count=1 -v -timeout 2m ./asr/providers/tencent
 
       - name: Real Tencent Cloud per-request hotword hints
         run: go test -tags=integration -run TestTencentLiveRequestHints -count=1 -v -timeout 2m ./asr/providers/tencent

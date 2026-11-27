@@ -59,8 +59,11 @@ func (c *Client) prepare(req asr.Config) (Client, Options, url.Values, string, e
 	if err := capability.Validate(req.Format); err != nil {
 		return Client{}, Options{}, nil, "", &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "start", Err: err}
 	}
-	if req.Format.Encoding == audio.EncodingWAV {
+	switch req.Format.Encoding {
+	case audio.EncodingWAV:
 		extra.Set("voice_format", "12")
+	case EncodingOpusFrames:
+		extra.Set("voice_format", "10")
 	}
 	if req.Language != "" {
 		return Client{}, Options{}, nil, "", unsupportedError("language is selected by EngineModel; per-request Language is not supported")

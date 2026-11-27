@@ -1,6 +1,16 @@
 package opus
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
+
+// PacketDuration returns the duration of a complete raw Opus packet without
+// decoding it. It validates RFC 6716 framing, not the encoded audio content.
+func PacketDuration(packet []byte) (time.Duration, error) {
+	samples, err := packetSamples48k(packet)
+	return time.Duration(samples) * time.Second / 48000, err
+}
 
 // packetSamples48k reads the Opus TOC and packet framing without decoding
 // audio. Opus granule increments are always measured in 48kHz samples.

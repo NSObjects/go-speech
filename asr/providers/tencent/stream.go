@@ -202,7 +202,8 @@ func (s *Stream) write(ctx context.Context, typ int, data []byte) error {
 	return s.conn.WriteMessage(typ, data)
 }
 
-// Send sends complete PCM16LE samples or a fragment of a continuous WAV file.
+// Send sends complete PCM16LE samples, a continuous WAV fragment, or one
+// complete native Opus frame.
 // Tencent's real-time service expects
 // approximately real-time pacing; the SDK does not artificially sleep or
 // silently resample caller-supplied audio.
@@ -226,8 +227,16 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	if len(data) == 0 {
 		return argumentError("audio chunk must not be empty")
 	}
-	if s.encoding != audio.EncodingWAV && len(data)%2 != 0 {
-		return argumentError("PCM16LE audio must contain complete 16-bit samples")
+	switch s.encoding {
+	case audio.EncodingWAV:
+	case EncodingOpusFrames:
+		if _, err := nativeOpusPacket(data); err != nil {
+			return err
+		}
+	default:
+		if len(data)%2 != 0 {
+			return argumentError("PCM16LE audio must contain complete 16-bit samples")
+		}
 	}
 	if err := s.write(ctx, websocket.BinaryMessage, data); err != nil {
 		return s.failWrite(s.transportError(ctx, "send", err))

@@ -35,6 +35,17 @@ complete WAV metadata and paces the original container bytes. The explicit
 8 kHz upsampling override is PCM-only. `Hy-ASR-3.0-preview` is also PCM-only.
 Model/account availability remains provider-dependent.
 
+Native Opus is supported on the live-verified `16k_zh` engine using
+`audio.Format{Encoding: tencent.EncodingOpusFrames, SampleRate: 16000, Channels: 1}`.
+Encode externally into complete mono 40ms packets (640 input samples at
+16 kHz), then call `tencent.FrameOpusPacket(packet)` and `stream.Send(ctx, frame)`.
+Each Send requires exactly one complete framed packet. The framing is ASCII
+`opus`, uint16 little-endian payload length, then unchanged Opus bytes. The
+SDK validates framing and packet duration without decoding; the caller owns
+encoder configuration. `Recognize` accepts concatenated native frames and
+sends them at 40ms intervals, bounded to 60 seconds. No Ogg parsing, resampling
+or codec dependency is added. Other engines are not advertised until verified.
+
 ## Optional Tencent-side sentence segmentation
 
 On supported legacy real-time engines, configure `VADSilenceTime` and
