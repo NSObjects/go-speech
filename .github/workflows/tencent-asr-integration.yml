@@ -3,6 +3,17 @@ name: Tencent Cloud ASR Integration (automatic, paid)
 on:
   push:
   workflow_dispatch:
+    inputs:
+      emotion_engine:
+        description: 'Optional paid emotion diagnostic (currently unverified)'
+        type: choice
+        default: disabled
+        options:
+          - disabled
+          - 16k_zh
+          - 16k_zh_en
+          - 8k_zh
+          - 8k_zh_large
 
 permissions:
   contents: read
@@ -116,13 +127,16 @@ jobs:
             exit 1
           fi
 
-      # Run this diagnostic after the established ASR gates.
-      - name: Real Tencent Cloud legacy emotion metadata (paid)
+      # Known cloud rejection on all documented engines. Only re-probe on explicit request.
+      - name: Optional Tencent Cloud legacy emotion metadata (paid)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.emotion_engine != 'disabled' }}
+        env:
+          TENCENT_EMOTION_TEST_ENGINE: ${{ inputs.emotion_engine }}
         run: |
           set -euo pipefail
-          go test -tags=integration -run '^TestTencentLiveEmotionMetadata$' -count=1 -v -timeout 4m ./asr/providers/tencent | tee "$RUNNER_TEMP/tencent-emotion.log"
+          go test -tags=integration -run '^TestTencentLiveEmotionMetadata$' -count=1 -v -timeout 2m ./asr/providers/tencent | tee "$RUNNER_TEMP/tencent-emotion.log"
           if grep -q 'NOT VALIDATED:' "$RUNNER_TEMP/tencent-emotion.log"; then
-            echo "### Tencent ASR emotion: requests accepted; label schema unconfirmed" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Tencent ASR emotion: request accepted; label schema unconfirmed" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # Strict, paid speaker-enabled V2 ASR gate. A pinned 16kHz sample from the

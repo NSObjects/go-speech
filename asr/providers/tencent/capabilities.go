@@ -70,7 +70,7 @@ func (c *Client) features() capability.Features {
 		emotion = capability.Unknown
 	}
 	return capability.Features{
-		asr.FeatureEmotion: {Status: emotion, Parameters: []capability.Parameter{{Field: "Options.Provider.EmotionRecognition", Kind: capability.Integer, IntValues: []int{0, 1, 2}}}, Notes: "Billable; requires NeedVAD. Response schema is undocumented; raw result preserved."},
+		asr.FeatureEmotion: {Status: emotion, Parameters: []capability.Parameter{{Field: "Options.Provider.EmotionRecognition", Kind: capability.Integer, IntValues: []int{0, 1, 2}}}, Notes: "Billable; requires NeedVAD. Real probes on all documented engines returned error 4001; account/service availability unverified. Response schema is undocumented; raw result preserved."},
 		asr.FeatureSpeechRate: {Status: capability.Unsupported},
 		asr.FeatureVolume: {Status: capability.Unsupported},
 		asr.FeatureLanguageDetection: {Status: capability.Unsupported},
