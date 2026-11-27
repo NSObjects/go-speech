@@ -215,16 +215,6 @@ func (s *Stream) startReady(ctx context.Context, timeout time.Duration) error {
 	return nil
 }
 
-func (s *Stream) start(ctx context.Context, text string, timeout time.Duration) error {
-	if err := s.startReady(ctx, timeout); err != nil {
-		return err
-	}
-	if err := s.SendText(ctx, text); err != nil {
-		return err
-	}
-	return s.CloseSend(ctx)
-}
-
 // SendText sends another text fragment into an active Tencent v2 session.
 func (s *Stream) SendText(ctx context.Context, text string) error {
 	if s == nil {

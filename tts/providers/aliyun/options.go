@@ -114,11 +114,7 @@ func voiceParameters(o tts.Options) (map[string]any, error) {
 	return params, nil
 }
 
-func validateVoiceOptions(req tts.Request, model string) error {
-	params, err := voiceParameters(req.Options)
-	if err != nil {
-		return err
-	}
+func validateVoiceOptions(req tts.Request, model string, params map[string]any) error {
 	if _, ok := params["bit_rate"]; ok && req.Format.Encoding != audio.EncodingMP3 && req.Format.Encoding != audio.EncodingOpus {
 		return invalid("bit rate requires MP3 or Ogg Opus")
 	}

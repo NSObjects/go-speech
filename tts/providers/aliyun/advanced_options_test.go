@@ -18,11 +18,11 @@ func TestAdvancedVoiceOptions(t *testing.T) {
 		Format:  audio.Format{Encoding: audio.EncodingMP3},
 		Options: tts.Options{Provider: o},
 	}
-	if err := validateVoiceOptions(req, ModelCosyVoiceV3Flash); err != nil {
-		t.Fatal(err)
-	}
 	p, err := voiceParameters(req.Options)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateVoiceOptions(req, ModelCosyVoiceV3Flash, p); err != nil {
 		t.Fatal(err)
 	}
 	b, err := json.Marshal(p)
@@ -48,7 +48,11 @@ func TestAdvancedVoiceOptions(t *testing.T) {
 	} {
 		req.Format.Encoding = tc.encoding
 		req.Options.Provider = tc.options
-		if err := validateVoiceOptions(req, tc.model); err == nil {
+		params, err := voiceParameters(req.Options)
+		if err == nil {
+			err = validateVoiceOptions(req, tc.model, params)
+		}
+		if err == nil {
 			t.Errorf("invalid combination accepted: %+v", tc)
 		}
 	}
