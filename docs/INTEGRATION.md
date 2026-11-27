@@ -87,3 +87,9 @@ recognition accuracy on representative application recordings separately.
 The SDK does not impose a universal transcript accuracy threshold,
 network throughput target, cloud concurrency limit, or application-level
 telemetry.
+
+## Advanced TTS live checks
+
+The existing automatic paid TTS workflows now include TestVolcengineLiveAdvanced, TestAliyunLiveAdvanced and TestTencentLiveAdvanced. Each case has a deadline and checks real returned audio or a terminal control event. The alignment cases require at least one word with a positive-duration timing, not simply an accepted subtitle option. Aliyun uses the documented cosyvoice-v3-flash/longanyang system voice for advanced checks; Tencent uses the documented standard voice 101001 to avoid assuming subtitle support on an arbitrary configured voice. Volcengine continues using the authorized configured voice. The existing smoke tests still use their configured voices. Tencent advanced cases skip only the explicit existing quota-exhaustion response (3022) and log NOT VALIDATED; other errors fail. The legacy smoke billing handling remains separate.
+
+These cases verify transport and response contracts, not perceived speech rate, volume, pitch, SSML effects, tag interpretation, or whether the queued text was discarded by RESET. Volcengine tests FLUSHED followed by another text batch and CLOSED, including a tag split across writes; this does not establish how the model interprets a split tag. Aliyun tests provider-confirmed cancellation and stable cancellation error. The current Volcengine interrupt reference leaves post-interrupt session semantics unconfirmed, so no public Interrupt implementation is added by this test change. Voice-training API mutations are not part of the automatic synthesis tests.

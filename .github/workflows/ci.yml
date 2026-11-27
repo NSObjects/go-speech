@@ -46,7 +46,7 @@ jobs:
         run: |
           go test -tags=integration -run TestNonexistentCompileOnly \
             ./asr/providers/volcengine ./asr/providers/tencent \
-            ./tts/providers/aliyun ./tts/providers/volcengine
+            ./tts/providers/aliyun ./tts/providers/volcengine ./tts/providers/tencent
       - name: Verify preinstalled FFmpeg
         run: |
           command -v ffmpeg
