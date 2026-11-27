@@ -114,7 +114,7 @@ func New(cfg Config) (*Client, error) {
 	return &Client{cfg: cfg}, nil
 }
 
-// SupportedAudio reports the PCM transport supported by the selected engine.
+// SupportedAudio reports implemented PCM and WAV transport for the selected engine.
 // The Tencent voice_format=10 Opus protocol uses proprietary frame prefixes,
 // not audio.EncodingOpus's Ogg container, so it is deliberately not advertised.
 func SupportedAudio(engine string) audio.Capability {
@@ -122,8 +122,12 @@ func SupportedAudio(engine string) audio.Capability {
 	if strings.HasPrefix(engine, "8k_") {
 		rate = 8000
 	}
+	encodings := []audio.Encoding{audio.EncodingPCM16LE, audio.EncodingWAV}
+	if engine == "Hy-ASR-3.0-preview" {
+		encodings = []audio.Encoding{audio.EncodingPCM16LE}
+	}
 	return audio.Capability{
-		Encodings:   []audio.Encoding{audio.EncodingPCM16LE},
+		Encodings:   encodings,
 		SampleRates: []int{rate},
 		Channels:    []int{1},
 	}
@@ -169,6 +173,7 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	}
 	conn.SetReadLimit(1 << 20)
 	s := newStream(conn, ctx, voiceID)
+	s.encoding = req.Format.Encoding
 	s.details = req.Options.UtteranceDetails || enabledEmotion(native) || (native.WordInfo != nil && *native.WordInfo != 0)
 	s.returnEmpty = native.ReturnEmptyResults != nil && *native.ReturnEmptyResults
 	s.readIdleTimeout = c.cfg.ReadIdleTimeout

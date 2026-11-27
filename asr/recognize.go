@@ -39,12 +39,26 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 	}
 	cfg.Format = input.Format
 	chunkSize := shortAudioChunkBytes
-	if input.Format.Encoding == audio.EncodingPCM16LE {
+	// PCM16 WAV is a continuous container, not a sequence of standalone WAV files.
+	// Validate complete metadata and pace the original bytes without decoding on the wire.
+	paced := input.Format.Encoding == audio.EncodingPCM16LE || input.Format.Encoding == audio.EncodingWAV
+	if paced {
+		pcmBytes := len(input.Data)
+		if input.Format.Encoding == audio.EncodingWAV {
+			decoded, err := audio.DecodeWAVPCM16(input.Data)
+			if err != nil {
+				return Result{}, fmt.Errorf("%w: %w", ErrInvalidShortAudio, err)
+			}
+			if decoded.Format.SampleRate != input.Format.SampleRate || decoded.Format.Channels != input.Format.Channels || len(decoded.Data) == 0 {
+				return Result{}, fmt.Errorf("%w: WAV metadata or audio data mismatch", ErrInvalidShortAudio)
+			}
+			pcmBytes = len(decoded.Data)
+		}
 		frameBytes := input.Format.Channels * 2
-		if len(input.Data)%frameBytes != 0 {
+		if pcmBytes%frameBytes != 0 {
 			return Result{}, fmt.Errorf("%w: incomplete PCM frame", ErrInvalidShortAudio)
 		}
-		frameCount := len(input.Data) / frameBytes
+		frameCount := pcmBytes / frameBytes
 		if int64(frameCount) > int64(input.Format.SampleRate)*int64(maxShortAudioDuration/time.Second) {
 			return Result{}, fmt.Errorf("%w: PCM exceeds 60 seconds", ErrInvalidShortAudio)
 		}
@@ -67,7 +81,7 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 	go func() {
 		var sendErr error
 		var ticker *time.Ticker
-		if input.Format.Encoding == audio.EncodingPCM16LE {
+		if paced {
 			ticker = time.NewTicker(shortAudioPCMFrame)
 			defer ticker.Stop()
 		}
