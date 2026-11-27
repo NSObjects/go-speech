@@ -217,4 +217,4 @@ Advanced feature queries use `client.(asr.CapabilityProvider).Capabilities().Fea
 
 腾讯 VRS 使用 [`voice/providers/tencent`](voice/providers/tencent) 获取训练文本、检测录音、提交训练任务及查询任务和音色。使用返回的 VoiceType / FastVoiceType 合成语音。
 
-Aliyun ASR and TTS support [optional WebSocket connection pooling](docs/aliyun-connection-pool.md).
+Aliyun ASR and TTS support [optional WebSocket connection pooling](docs/aliyun-connection-pool.md). Volcengine Seed-TTS 3.0 also supports [optional duplex connection pooling](tts/providers/volcengine/README.md#optional-duplex-connection-reuse), with a separate idle timeout policy.

@@ -27,6 +27,7 @@ type Pool struct {
 	closed  bool
 	open    int
 	born    map[*websocket.Conn]time.Time
+	keys    map[*websocket.Conn]string
 	idle    []*idleConn
 	changed chan struct{}
 }
@@ -58,7 +59,7 @@ func New(cfg *transport.PoolConfig) (*Pool, error) {
 	if c.MaxLifetime == 0 {
 		c.MaxLifetime = 10 * time.Minute
 	}
-	return &Pool{cfg: c, born: make(map[*websocket.Conn]time.Time), changed: make(chan struct{})}, nil
+	return &Pool{cfg: c, born: make(map[*websocket.Conn]time.Time), keys: make(map[*websocket.Conn]string), changed: make(chan struct{})}, nil
 }
 
 func (p *Pool) signal() {
@@ -69,6 +70,13 @@ func (p *Pool) signal() {
 // Acquire returns an exclusive connection; a nil pool dials directly.
 // No task is retried if a reused connection was closed by the server.
 func (p *Pool) Acquire(ctx context.Context, dial func(context.Context) (*websocket.Conn, error)) (*websocket.Conn, error) {
+	return p.AcquireKey(ctx, "", dial)
+}
+
+// AcquireKey only leases sockets bound to the requested transport identity.
+// Capacity is global, not per key; an idle unmatched socket can be evicted
+// to serve a different key when all open slots are occupied.
+func (p *Pool) AcquireKey(ctx context.Context, key string, dial func(context.Context) (*websocket.Conn, error)) (*websocket.Conn, error) {
 	if p == nil {
 		return dial(ctx)
 	}
@@ -87,18 +95,24 @@ func (p *Pool) Acquire(ctx context.Context, dial func(context.Context) (*websock
 			p.mu.Unlock()
 			return nil, ErrClosed
 		}
-		for len(p.idle) > 0 {
-			i := len(p.idle) - 1
+		for i := len(p.idle) - 1; i >= 0; i-- {
 			e := p.idle[i]
-			p.idle[i] = nil
-			p.idle = p.idle[:i]
-			e.timer.Stop()
 			if !time.Now().Before(e.until) {
+				p.removeIdle(i)
 				p.drop(e.conn)
 				continue
 			}
+			if p.keys[e.conn] != key {
+				continue
+			}
+			p.removeIdle(i)
 			p.mu.Unlock()
 			return e.conn, nil
+		}
+		if p.open >= p.cfg.MaxOpen && len(p.idle) > 0 {
+			e := p.idle[0]
+			p.removeIdle(0)
+			p.drop(e.conn)
 		}
 		if p.open < p.cfg.MaxOpen {
 			p.open++
@@ -121,6 +135,7 @@ func (p *Pool) Acquire(ctx context.Context, dial func(context.Context) (*websock
 				return nil, err
 			}
 			p.born[conn] = time.Now()
+			p.keys[conn] = key
 			p.mu.Unlock()
 			return conn, nil
 		}
@@ -134,9 +149,18 @@ func (p *Pool) Acquire(ctx context.Context, dial func(context.Context) (*websock
 	}
 }
 
+// removeIdle removes an idle entry and stops its timer while holding mu.
+func (p *Pool) removeIdle(i int) {
+	p.idle[i].timer.Stop()
+	copy(p.idle[i:], p.idle[i+1:])
+	p.idle[len(p.idle)-1] = nil
+	p.idle = p.idle[:len(p.idle)-1]
+}
+
 // drop removes a tracked connection while holding mu.
 func (p *Pool) drop(conn *websocket.Conn) {
 	delete(p.born, conn)
+	delete(p.keys, conn)
 	p.open--
 	_ = conn.Close()
 	p.signal()
