@@ -52,7 +52,7 @@ type Config struct {
 }
 
 type Client struct {
-	cfg Config
+	cfg  Config
 	pool *connpool.Pool
 }
 

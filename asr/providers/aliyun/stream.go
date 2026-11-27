@@ -26,21 +26,21 @@ var (
 // Stream is a task-specific WebSocket session. It permits one concurrent sender
 // and one concurrent receiver. A canceled Send/Recv context closes the session.
 type Stream struct {
-	conn        *websocket.Conn
-	pool        *connpool.Pool
-	parent      context.Context
-	taskID      string
-	done        chan struct{}
-	once        sync.Once
-	writeMu     sync.Mutex
-	readMu      sync.Mutex
-	terminalMu  sync.Mutex
-	sendClosed  bool  // writeMu
-	sentAudio   bool  // writeMu: true after successful audio upload
-	finished    bool  // readMu
-	terminalErr error // terminalMu: first terminal failure remains observable
-	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
-	details       bool // immutable after OpenStream
+	conn          *websocket.Conn
+	pool          *connpool.Pool
+	parent        context.Context
+	taskID        string
+	done          chan struct{}
+	once          sync.Once
+	writeMu       sync.Mutex
+	readMu        sync.Mutex
+	terminalMu    sync.Mutex
+	sendClosed    bool   // writeMu
+	sentAudio     bool   // writeMu: true after successful audio upload
+	finished      bool   // readMu
+	terminalErr   error  // terminalMu: first terminal failure remains observable
+	pcmFrameBytes int    // 0 for encoded formats; immutable after OpenStream
+	details       bool   // immutable after OpenStream
 	model         string // immutable after OpenStream
 	usageMu       sync.Mutex
 	usage         *Usage
@@ -69,6 +69,7 @@ func (s *Stream) Close() error {
 	s.release(false)
 	return nil
 }
+
 // release resolves ownership once. Old context callbacks cannot close a
 // connection after this stream has returned it to the pool.
 func (s *Stream) release(reusable bool) {

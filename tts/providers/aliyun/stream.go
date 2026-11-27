@@ -73,6 +73,7 @@ func (s *Stream) Close() error {
 	s.release(false)
 	return nil
 }
+
 // release resolves ownership once. Old context callbacks cannot close a
 // connection after this stream has returned it to the pool.
 func (s *Stream) release(reusable bool) {

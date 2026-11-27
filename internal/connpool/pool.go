@@ -15,20 +15,19 @@ import (
 var ErrClosed = errors.New("connection pool closed")
 
 type idleConn struct {
-	conn *websocket.Conn
-	born time.Time
+	conn  *websocket.Conn
 	until time.Time
 	timer *time.Timer
 }
 
 // Pool is owned by a single provider client and never shared across credentials.
 type Pool struct {
-	cfg transport.PoolConfig
-	mu sync.Mutex
-	closed bool
-	open int
-	born map[*websocket.Conn]time.Time
-	idle []*idleConn
+	cfg     transport.PoolConfig
+	mu      sync.Mutex
+	closed  bool
+	open    int
+	born    map[*websocket.Conn]time.Time
+	idle    []*idleConn
 	changed chan struct{}
 }
 
@@ -89,7 +88,7 @@ func (p *Pool) Acquire(ctx context.Context, dial func(context.Context) (*websock
 			return nil, ErrClosed
 		}
 		for len(p.idle) > 0 {
-			i := len(p.idle)-1
+			i := len(p.idle) - 1
 			e := p.idle[i]
 			p.idle[i] = nil
 			p.idle = p.idle[:i]
@@ -165,7 +164,7 @@ func (p *Pool) Release(conn *websocket.Conn, reusable bool) {
 	if end := born.Add(p.cfg.MaxLifetime); end.Before(until) {
 		until = end
 	}
-	e := &idleConn{conn: conn, born: born, until: until}
+	e := &idleConn{conn: conn, until: until}
 	e.timer = time.AfterFunc(time.Until(until), func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
