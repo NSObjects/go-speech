@@ -18,7 +18,7 @@ Migration: the previous ResourceID configuration field is removed; use optional 
 
 ## Optional duplex connection reuse
 
-Set `Pool: &speech.PoolConfig{MaxOpen: 4}` in `speech.VolcengineTTS` to enable WebSocket reuse for `OpenDuplex` only. HTTP synthesis is unchanged. Connections are keyed by the voice-specific URL; the limits apply across all voices in the client. Only a completed input followed by a valid CLOSED final and audio can return a socket. Local close, context cancellation, provider errors and INTERRUPTED discard the connection. No automatic retry, reconnect, or idle prefill. Close the client via its `io.Closer` implementation to release idle sockets. An idle socket may be closed by the provider before the configured idle timeout.
+Set `Pool: &speech.PoolConfig{MaxOpen: 4}` in `speech.VolcengineTTS` to enable WebSocket reuse for `OpenDuplex` only. HTTP synthesis is unchanged. Connections are keyed by the voice-specific URL; the limits apply across all voices in the client. Only a completed input followed by a valid CLOSED final and audio can return a socket. Local close, context cancellation, provider errors and INTERRUPTED discard the connection. No automatic retry, reconnect, or idle prefill. Close the client via its `io.Closer` implementation to release idle sockets. The idle timeout defaults to 10 seconds and must not exceed 15 seconds. Live probes succeeded after 15 seconds but failed after 30 seconds; this policy leaves headroom rather than assuming a documented server timeout. An idle socket may still be closed earlier by the provider.
 
 ## Text formats
 

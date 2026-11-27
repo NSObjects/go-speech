@@ -86,7 +86,11 @@ func New(cfg Config) (*Client, error) {
 		dialer := *cfg.Dialer
 		cfg.Dialer = &dialer
 	}
-	pool, err := connpool.New(cfg.Pool)
+	poolConfig, err := duplexPoolConfig(cfg.Pool)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := connpool.New(poolConfig)
 	if err != nil {
 		return nil, invalid(err.Error())
 	}
@@ -94,6 +98,24 @@ func New(cfg Config) (*Client, error) {
 	return &Client{cfg: cfg, base: u, pool: pool, http: &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
+}
+
+// duplexPoolConfig applies the Seed-TTS idle budget without mutating the
+// caller's shared configuration. Live probes reused a socket after 15s but
+// received an abnormal closure after 30s. This is a conservative policy,
+// not a documented server timeout or a guarantee of socket liveness.
+func duplexPoolConfig(cfg *transport.PoolConfig) (*transport.PoolConfig, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	copy := *cfg
+	if copy.IdleTimeout == 0 {
+		copy.IdleTimeout = 10 * time.Second
+	}
+	if copy.IdleTimeout > 15*time.Second {
+		return nil, invalid("Seed-TTS Pool.IdleTimeout must not exceed 15s")
+	}
+	return &copy, nil
 }
 
 func loopback(host string) bool {

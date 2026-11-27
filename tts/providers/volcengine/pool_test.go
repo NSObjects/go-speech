@@ -12,6 +12,7 @@ import (
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/connpool"
+	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/transport"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -134,5 +135,52 @@ func TestDuplexPoolReuseAndVoiceIsolation(t *testing.T) {
 	}
 	if _, err := c.OpenDuplex(ctx, tts.DuplexRequest{Voice: "second"}); !errors.Is(err, connpool.ErrClosed) {
 		t.Fatalf("closed pool acquisition=%v", err)
+	}
+}
+
+func TestDuplexPoolIdlePolicy(t *testing.T) {
+	if got, err := duplexPoolConfig(nil); got != nil || err != nil {
+		t.Fatalf("nil pool changed: %v, %v", got, err)
+	}
+	for _, tc := range []struct {
+		name string
+		idle time.Duration
+		want time.Duration
+		bad  bool
+	}{
+		{"default", 0, 10 * time.Second, false},
+		{"explicit shorter", 2 * time.Second, 2 * time.Second, false},
+		{"maximum", 15 * time.Second, 15 * time.Second, false},
+		{"over maximum", 15*time.Second + time.Nanosecond, 0, true},
+		{"aliyun default not suitable", 30 * time.Second, 0, true},
+		{"negative", -time.Second, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := transport.PoolConfig{IdleTimeout: tc.idle, MaxOpen: 3, MaxIdle: 2, MaxLifetime: time.Minute, AcquireTimeout: time.Second}
+			before := cfg
+			c, err := New(Config{APIKey: fixtureKey, Pool: &cfg})
+			if cfg != before {
+				t.Fatal("caller config mutated")
+			}
+			if tc.bad {
+				if c != nil || !speecherr.IsCode(err, speecherr.CodeInvalidArgument) {
+					t.Fatalf("invalid configuration accepted: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			normalized, err := duplexPoolConfig(&cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := before
+			want.IdleTimeout = tc.want
+			if normalized == &cfg || *normalized != want {
+				t.Fatalf("normalized config=%+v; want %+v", normalized, want)
+			}
+		})
 	}
 }
