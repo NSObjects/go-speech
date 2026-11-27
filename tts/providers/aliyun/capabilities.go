@@ -25,52 +25,48 @@ func (c *Client) Capabilities() tts.Capabilities {
 }
 
 func (c *Client) ValidateRequest(req tts.Request) error {
-	_, _, err := c.prepareRequest(req)
+	_, _, _, err := c.prepareRequest(req, false)
 	return err
 }
 
 func (c *Client) ValidateSynthesize(req tts.Request) error {
-	if err := c.validateBatchOptions(req); err != nil {
-		return err
-	}
-	return c.ValidateRequest(req)
-}
-
-func (c *Client) ValidateDuplex(req tts.DuplexRequest) error {
-	_, _, err := c.prepareDuplex(req)
+	_, _, _, err := c.prepareRequest(req, true)
 	return err
 }
 
-func (c *Client) validateBatchOptions(req tts.Request) error {
+func (c *Client) ValidateDuplex(req tts.DuplexRequest) error {
+	_, _, _, err := c.prepareDuplex(req)
+	return err
+}
+
+// prepareRequest validates and normalizes once, returning owned native
+// parameters that can be sent without reading the caller's options again.
+func (c *Client) prepareRequest(req tts.Request, batch bool) (tts.Request, string, map[string]any, error) {
+	if c == nil {
+		return req, "", nil, invalid("nil client")
+	}
+	req, codec, err := validateRequest(req)
+	if err != nil {
+		return req, "", nil, err
+	}
 	params, err := voiceParameters(req.Options)
 	if err != nil {
-		return err
+		return req, "", nil, err
 	}
-	if enabled, _ := params["word_timestamp_enabled"].(bool); enabled {
-		return invalid("Synthesize returns audio only; use SynthesizeStream with RecvEvent for timestamps")
+	if err := validateVoiceOptions(req, c.cfg.Model, params); err != nil {
+		return req, "", nil, err
 	}
-	return nil
+	if enabled, _ := params["word_timestamp_enabled"].(bool); batch && enabled {
+		return req, "", nil, invalid("Synthesize returns audio only; use SynthesizeStream with RecvEvent for timestamps")
+	}
+	return req, codec, params, nil
 }
 
-func (c *Client) prepareRequest(req tts.Request) (tts.Request, string, error) {
-	if c == nil {
-		return req, "", invalid("nil client")
-	}
-	req, encoding, err := validateRequest(req)
-	if err != nil {
-		return req, "", err
-	}
-	if err := validateVoiceOptions(req, c.cfg.Model); err != nil {
-		return req, "", err
-	}
-	return req, encoding, nil
-}
-
-func (c *Client) prepareDuplex(cfg tts.DuplexRequest) (tts.Request, string, error) {
+func (c *Client) prepareDuplex(cfg tts.DuplexRequest) (tts.Request, string, map[string]any, error) {
 	if cfg.TextFormat == tts.TextSSML {
-		return tts.Request{}, "", &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "aliyun", Operation: "tts", Err: tts.ErrUnsupportedTextFormat}
+		return tts.Request{}, "", nil, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "aliyun", Operation: "tts", Err: tts.ErrUnsupportedTextFormat}
 	}
-	return c.prepareRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options})
+	return c.prepareRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options}, false)
 }
 
 func (c *Client) features() capability.Features {

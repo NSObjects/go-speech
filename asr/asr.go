@@ -20,7 +20,8 @@ type Config struct {
 type Result struct {
 	Text     string
 	Language string
-	// Utterances contains available final-segment metadata in receive order.
+	// Utterances contains available final-segment metadata in receive order,
+	// including explicitly returned empty-text final segments.
 	Utterances []Utterance
 	// Provider contains optional provider-native session metadata.
 	Provider any

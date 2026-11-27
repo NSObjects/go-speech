@@ -117,9 +117,6 @@ func SupportedAudio() audio.Capability {
 }
 
 func validateRequest(req tts.Request) (tts.Request, string, error) {
-	if _, err := voiceParameters(req.Options); err != nil {
-		return req, "", err
-	}
 	switch req.TextFormat {
 	case "", tts.TextPlain, tts.TextSSML:
 	case tts.TextInlineTag:
@@ -163,69 +160,50 @@ func validateRequest(req tts.Request) (tts.Request, string, error) {
 // returns a stream of the provider's binary audio frames. The session stays
 // alive until task-finished, a terminal error, or cancellation.
 func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Stream, error) {
-	if c == nil {
-		return nil, invalid("nil client")
-	}
+	return c.synthesizeStream(ctx, req, false)
+}
+
+func (c *Client) synthesizeStream(ctx context.Context, req tts.Request, batch bool) (tts.Stream, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, encoding, err := c.prepareRequest(req)
+	req, codec, params, err := c.prepareRequest(req, batch)
 	if err != nil {
 		return nil, err
 	}
-	taskID, err := taskID()
-	if err != nil {
-		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "task_id", Err: err}
-	}
-	dialer := *websocket.DefaultDialer
-	if c.cfg.Dialer != nil {
-		dialer = *c.cfg.Dialer
-	}
-	if dialer.HandshakeTimeout == 0 {
-		dialer.HandshakeTimeout = c.cfg.StartTimeout
-	}
-	headers := http.Header{}
-	headers.Set("Authorization", "Bearer "+c.cfg.APIKey)
-	if c.cfg.WorkspaceID != "" {
-		headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
-	}
-	conn, err := c.pool.Acquire(ctx, func(ctx context.Context) (*websocket.Conn, error) {
-		conn, response, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
-		if err != nil {
-			if response != nil && response.Body != nil {
-				_ = response.Body.Close()
-			}
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			return nil, dialFailure(err, response)
-		}
-		return conn, nil
-	})
+	s, err := c.openSession(ctx, req, codec, params)
 	if err != nil {
 		return nil, err
 	}
-	conn.SetReadLimit(8 << 20)
-	stream := newStream(conn, ctx, taskID, req.Format, c.pool)
-	if err := stream.start(ctx, c.cfg.Model, req, encoding, c.cfg.StartTimeout); err != nil {
-		_ = stream.Close()
+	if err := s.SendText(ctx, req.Text); err != nil {
+		_ = s.Close()
 		return nil, err
 	}
-	return stream, nil
+	if err := s.CloseSend(ctx); err != nil {
+		_ = s.Close()
+		return nil, err
+	}
+	return s, nil
 }
 
-// OpenDuplex opens a CosyVoice session for incremental text input.
+// OpenDuplex opens a session for incremental text input.
 func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.DuplexStream, error) {
-	if c == nil {
-		return nil, invalid("nil client")
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, encoding, err := c.prepareDuplex(cfg)
+	req, codec, params, err := c.prepareDuplex(cfg)
 	if err != nil {
 		return nil, err
 	}
+	s, err := c.openSession(ctx, req, codec, params)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// openSession owns the common connection and handshake for both modes.
+func (c *Client) openSession(ctx context.Context, req tts.Request, codec string, params map[string]any) (*Stream, error) {
 	taskID, err := taskID()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "task_id", Err: err}
@@ -260,20 +238,15 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 	}
 	conn.SetReadLimit(8 << 20)
 	stream := newStream(conn, ctx, taskID, req.Format, c.pool)
-	if err := stream.startSession(ctx, c.cfg.Model, req, encoding, c.cfg.StartTimeout); err != nil {
+	if err := stream.startSession(ctx, c.cfg.Model, req, codec, params, c.cfg.StartTimeout); err != nil {
 		_ = stream.Close()
 		return nil, err
 	}
 	return stream, nil
 }
 
-// Synthesize collects the same streaming synthesis into a complete buffer.
-// The 64 MiB cap prevents accidental unbounded memory usage by batch callers.
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
-	if err := c.validateBatchOptions(req); err != nil {
-		return audio.Buffer{}, err
-	}
-	s, err := c.SynthesizeStream(ctx, req)
+	s, err := c.synthesizeStream(ctx, req, true)
 	if err != nil {
 		return audio.Buffer{}, err
 	}

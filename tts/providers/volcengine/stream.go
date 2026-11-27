@@ -125,17 +125,18 @@ func decodeEvent(raw []byte) (event, error) {
 // stream is shared by HTTP and WebSocket adapters. The receiver owns terminal
 // state; Close is concurrent-safe and unblocks pending reads and writes.
 type stream struct {
-	parent    context.Context
-	format    audio.Format
-	next      func() (event, error)
-	closeFn   func()
-	done      chan struct{}
-	once      sync.Once
-	mu        sync.Mutex
-	ready     bool
-	audioSeen bool
-	terminal  error
-	mode      receiveMode
+	parent     context.Context
+	format     audio.Format
+	next       func() (event, error)
+	closeFn    func()
+	done       chan struct{}
+	once       sync.Once
+	mu         sync.Mutex
+	ready      bool
+	audioSeen  bool
+	terminalMu sync.Mutex
+	terminal   error
+	mode       receiveMode
 }
 
 func newStream(ctx context.Context, format audio.Format, next func() (event, error), closeFn func()) *stream {
@@ -143,7 +144,7 @@ func newStream(ctx context.Context, format audio.Format, next func() (event, err
 	go func() {
 		select {
 		case <-ctx.Done():
-			_ = s.Close()
+			_ = s.terminate(ctx.Err())
 		case <-s.done:
 		}
 	}()
@@ -189,10 +190,32 @@ const (
 
 var _ tts.EventReceiver = (*stream)(nil)
 
-func (s *stream) fail(err error) (tts.Event, error) {
-	s.terminal = err
+func (s *stream) terminalFailure() error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	return s.terminal
+}
+
+func (s *stream) terminate(err error) error {
+	s.terminalMu.Lock()
+	if s.terminal == nil {
+		s.terminal = err
+	}
+	first := s.terminal
+	s.terminalMu.Unlock()
 	_ = s.Close()
-	return tts.Event{}, err
+	return first
+}
+
+func (s *stream) fail(err error) (tts.Event, error) {
+	return tts.Event{}, s.terminate(err)
+}
+
+func (s *stream) failWrite(err error) error {
+	if first := s.terminate(err); !errors.Is(first, io.EOF) {
+		return first
+	}
+	return err
 }
 
 func (s *stream) Recv(ctx context.Context) (audio.Chunk, error) {
@@ -225,16 +248,19 @@ func (s *stream) RecvEvent(ctx context.Context) (tts.Event, error) {
 
 // recvEvent is called with mu held; it is the single protocol reader.
 func (s *stream) recvEvent(ctx context.Context) (tts.Event, error) {
-	if s.terminal != nil {
-		return tts.Event{}, s.terminal
+	if err := s.terminalFailure(); err != nil {
+		return tts.Event{}, err
 	}
 	if err := s.contextError(ctx); err != nil {
 		return s.fail(err)
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.terminate(ctx.Err()) })
 	defer stop()
 	for {
 		e, err := s.next()
+		if cause := s.terminalFailure(); cause != nil {
+			return tts.Event{}, cause
+		}
 		if ctxErr := s.contextError(ctx); ctxErr != nil {
 			return s.fail(ctxErr)
 		}

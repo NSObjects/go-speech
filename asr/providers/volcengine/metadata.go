@@ -3,6 +3,7 @@ package volcengine
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"slices"
 
 	"github.com/NSObjects/go-speech/asr"
 )
@@ -65,4 +66,44 @@ func (s *Stream) updateFinalMetadata(key string, u utterance) {
 	s.finalMetadata[key] = finalMetadata{text: u.Text, digest: digest}
 	// The update is a provider snapshot, not an appended transcript.
 	s.queue = append(s.queue, detailedEvent(asr.EventUtteranceUpdate, "", a))
+}
+
+// clonePointer copies an optional scalar, preserving missing versus zero.
+func clonePointer[T any](p *T) *T {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
+}
+
+// cloneUtterance isolates the mutable metadata returned in a partial
+// event from the pending snapshot retained for terminal fallback. This
+// is only needed when details are enabled; finals transfer ownership.
+func cloneUtterance(u *asr.Utterance) *asr.Utterance {
+	if u == nil {
+		return nil
+	}
+	out := *u
+	out.SpeakerID = clonePointer(u.SpeakerID)
+	out.StartTime = clonePointer(u.StartTime)
+	out.EndTime = clonePointer(u.EndTime)
+	out.SpeechRate = clonePointer(u.SpeechRate)
+	out.VolumeDB = clonePointer(u.VolumeDB)
+	out.Words = slices.Clone(u.Words)
+	for i := range out.Words {
+		out.Words[i].StartTime = clonePointer(u.Words[i].StartTime)
+		out.Words[i].EndTime = clonePointer(u.Words[i].EndTime)
+	}
+	if native, ok := u.Provider.(UtteranceDetails); ok {
+		if native.Additions != nil {
+			details := make(map[string]json.RawMessage, len(native.Additions))
+			for k, v := range native.Additions {
+				details[k] = slices.Clone(v)
+			}
+			native.Additions = details
+		}
+		out.Provider = native
+	}
+	return &out
 }

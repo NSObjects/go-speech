@@ -61,7 +61,13 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	if response.StatusCode != http.StatusOK {
 		defer cancel()
 		defer func() { _ = response.Body.Close() }()
+		// Bound diagnostic reads separately from the successful stream.
+		bodyTimer := time.AfterFunc(c.cfg.StartTimeout, cancel)
+		defer bodyTimer.Stop()
 		raw, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if readErr == nil {
 			if e, decodeErr := decodeEvent(raw); decodeErr == nil && e.Event == "error" {
 				return nil, e.failure()

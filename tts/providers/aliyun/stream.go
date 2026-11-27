@@ -36,6 +36,7 @@ type Stream struct {
 	textSent    bool
 	finished    bool
 	audioSeen   bool
+	terminalMu  sync.Mutex
 	terminalErr error
 	receiveMode uint8
 	cancelSent  atomic.Bool
@@ -60,7 +61,7 @@ func newStream(conn *websocket.Conn, ctx context.Context, id string, format audi
 	go func() {
 		select {
 		case <-ctx.Done():
-			_ = s.Close()
+			_ = s.fail(ctx.Err())
 		case <-s.done:
 		}
 	}()
@@ -73,7 +74,6 @@ func (s *Stream) Close() error {
 	s.release(false)
 	return nil
 }
-
 // release resolves ownership once. Old context callbacks cannot close a
 // connection after this stream has returned it to the pool.
 func (s *Stream) release(reusable bool) {
@@ -84,21 +84,6 @@ func (s *Stream) release(reusable bool) {
 		}
 		s.pool.Release(s.conn, reusable)
 	})
-}
-
-// complete is called under readMu after the matching task-finished event.
-// Taking writeMu ensures the final write has returned before reuse.
-func (s *Stream) complete(ctx context.Context) {
-	if s.pool == nil {
-		_ = s.Close()
-		return
-	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if s.closed() {
-		return
-	}
-	s.release(s.inputClosed && ctx.Err() == nil && s.parent.Err() == nil)
 }
 
 func (s *Stream) closed() bool {
@@ -119,13 +104,47 @@ func (s *Stream) closeError(ctx context.Context) error {
 	return tts.ErrStreamClosed
 }
 
-// fail is called only under readMu and remembers the first terminal failure.
+// fail records the first terminal result before closing the socket.
 func (s *Stream) fail(err error) error {
+	s.terminalMu.Lock()
 	if s.terminalErr == nil {
 		s.terminalErr = err
 	}
+	first := s.terminalErr
+	s.terminalMu.Unlock()
 	_ = s.Close()
+	return first
+}
+
+// complete arbitrates the first terminal result and only reuses a socket
+// after the final writer has stopped. Called under readMu.
+func (s *Stream) complete(ctx context.Context, result error) error {
+	if s.pool != nil {
+		s.writeMu.Lock()
+		defer s.writeMu.Unlock()
+	}
+	s.terminalMu.Lock()
+	if s.terminalErr == nil {
+		s.terminalErr = result
+	}
+	first := s.terminalErr
+	s.terminalMu.Unlock()
+	s.release(s.pool != nil && first == result && s.inputClosed && ctx.Err() == nil && s.parent.Err() == nil)
+	return first
+}
+
+func (s *Stream) terminalFailure() error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
 	return s.terminalErr
+}
+
+// A sender never reports EOF as a successful write.
+func (s *Stream) failWrite(err error) error {
+	if first := s.fail(err); !errors.Is(first, io.EOF) {
+		return first
+	}
+	return err
 }
 
 func (s *Stream) networkError(ctx context.Context, op string, err error) error {
@@ -167,7 +186,7 @@ func (s *Stream) sendJSON(ctx context.Context, event any) error {
 	if err != nil {
 		return err
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(defaultWriteTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -188,14 +207,10 @@ func command(action, id string, payload any) any {
 	}
 }
 
-func (s *Stream) startSession(ctx context.Context, model string, req tts.Request, encoding string, timeout time.Duration) error {
+func (s *Stream) startSession(ctx context.Context, model string, req tts.Request, encoding string, voice map[string]any, timeout time.Duration) error {
 	params := map[string]any{
 		"text_type": "PlainText", "voice": req.Voice,
 		"format": encoding, "sample_rate": req.Format.SampleRate,
-	}
-	voice, err := voiceParameters(req.Options)
-	if err != nil {
-		return err
 	}
 	for key, value := range voice {
 		params[key] = value
@@ -218,7 +233,7 @@ func (s *Stream) startSession(ctx context.Context, model string, req tts.Request
 	if err := s.conn.SetReadDeadline(deadline); err != nil {
 		return s.networkError(ctx, "task-started", err)
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	typ, data, err := s.conn.ReadMessage()
 	stop()
 	if err != nil {
@@ -245,16 +260,6 @@ func (s *Stream) startSession(ctx context.Context, model string, req tts.Request
 	return nil
 }
 
-func (s *Stream) start(ctx context.Context, model string, req tts.Request, encoding string, timeout time.Duration) error {
-	if err := s.startSession(ctx, model, req, encoding, timeout); err != nil {
-		return err
-	}
-	if err := s.SendText(ctx, req.Text); err != nil {
-		return err
-	}
-	return s.CloseSend(ctx)
-}
-
 // SendText adds one text fragment to the active synthesis task.
 func (s *Stream) SendText(ctx context.Context, text string) error {
 	if s == nil {
@@ -274,8 +279,7 @@ func (s *Stream) SendText(ctx context.Context, text string) error {
 	if err := s.sendJSON(ctx, command("continue-task", s.taskID, map[string]any{
 		"input": map[string]any{"text": text},
 	})); err != nil {
-		_ = s.Close()
-		return err
+		return s.failWrite(err)
 	}
 	s.textSent = true
 	return nil
@@ -300,8 +304,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 	if err := s.sendJSON(ctx, command("finish-task", s.taskID, map[string]any{
 		"input": map[string]any{},
 	})); err != nil {
-		_ = s.Close()
-		return err
+		return s.failWrite(err)
 	}
 	s.inputClosed = true
 	return nil
@@ -330,8 +333,7 @@ func (s *Stream) Cancel(ctx context.Context) error {
 	if err := s.sendJSON(ctx, command("finish-task", s.taskID, map[string]any{
 		"input": map[string]any{"directive": "cancel"},
 	})); err != nil {
-		_ = s.Close()
-		return err
+		return s.failWrite(err)
 	}
 	s.inputClosed = true
 	return nil
@@ -379,8 +381,8 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 	if s.finished {
 		return tts.Event{}, io.EOF
 	}
-	if s.terminalErr != nil {
-		return tts.Event{}, s.terminalErr
+	if err := s.terminalFailure(); err != nil {
+		return tts.Event{}, err
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -392,7 +394,7 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 		if s.closed() {
 			return tts.Event{}, s.fail(s.closeError(ctx))
 		}
-		stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+		stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 		deadline := time.Time{}
 		if d, ok := ctx.Deadline(); ok {
 			deadline = d
@@ -403,6 +405,9 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 		}
 		typ, data, err := s.conn.ReadMessage()
 		stop()
+		if cause := s.terminalFailure(); cause != nil {
+			return tts.Event{}, cause
+		}
 		if err != nil {
 			return tts.Event{}, s.fail(s.networkError(ctx, "recv", err))
 		}
@@ -422,16 +427,14 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 				return tts.Event{}, s.fail(classifyTaskFailure(ev))
 			case "task-finished":
 				if s.cancelSent.Load() {
-					s.terminalErr = tts.ErrSynthesisCanceled
-					s.complete(ctx)
-					return tts.Event{}, s.terminalErr
+					return tts.Event{}, s.complete(ctx, tts.ErrSynthesisCanceled)
 				}
 				if !s.audioSeen {
 					return tts.Event{}, s.fail(protocol("synthesis completed without audio"))
 				}
-				s.finished = true
-				s.complete(ctx)
-				return tts.Event{}, io.EOF
+				err := s.complete(ctx, io.EOF)
+				s.finished = errors.Is(err, io.EOF)
+				return tts.Event{}, err
 			case "result-generated":
 				if s.receiveMode == receiveEvents {
 					a, err := decodeAlignment(data)

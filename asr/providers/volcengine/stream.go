@@ -36,12 +36,13 @@ type Stream struct {
 
 	finished       bool                // readMu
 	terminalErr    error               // terminalMu
+	terminalSuccess bool // terminalMu: provider completion cannot be overwritten
 	queue          []asr.Event         // readMu
 	resultType     string              // immutable
 	pendingDetails *asr.Utterance      // readMu
 	details        bool                // immutable
 	pendingText    string              // readMu: latest unconfirmed utterance
-	confirmedText  string              // readMu: concatenated confirmed segments
+	confirmedText  strings.Builder              // readMu: concatenated confirmed segments
 	lastFinalText  string              // readMu: most recent confirmed utterance
 	finalSeen      map[string]struct{} // readMu
 	finalMetadata  map[string]finalMetadata // readMu; detailed timed finals only
@@ -57,6 +58,7 @@ func newStream(conn *websocket.Conn, parent context.Context, resultType string) 
 	go func() {
 		select {
 		case <-parent.Done():
+			_ = s.fail(parent.Err())
 			_ = s.Close()
 		case <-s.done:
 		}
@@ -68,11 +70,35 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
+	_ = s.recordFailure(s.closedError(context.Background()))
+	// Unblock the receiver before acquiring its lock. Recv itself uses
+	// closeTransport to avoid reentering readMu.
+	s.closeTransport()
+	s.readMu.Lock()
+	s.releaseReadState()
+	s.readMu.Unlock()
+	return nil
+}
+
+func (s *Stream) closeTransport() {
 	s.once.Do(func() {
 		close(s.done)
 		_ = s.conn.Close()
 	})
-	return nil
+}
+
+// releaseReadState requires readMu. A successful final frame may still
+// contain events the caller has not received; preserve that backlog.
+func (s *Stream) releaseReadState() {
+	s.confirmedText.Reset()
+	s.lastFinalText = ""
+	s.pendingText = ""
+	s.pendingDetails = nil
+	s.finalSeen = nil
+	s.finalMetadata = nil
+	if !s.finished || s.terminalFailure() != nil || len(s.queue) == 0 {
+		s.queue = nil
+	}
 }
 
 func (s *Stream) closed() bool {
@@ -94,7 +120,7 @@ func (s *Stream) writeFrame(ctx context.Context, frame []byte) error {
 	if s.closed() {
 		return asr.ErrStreamClosed
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(defaultWriteTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -120,7 +146,7 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	}
 	// A canceled upload operation cannot leave a reusable provider session.
 	if err := ctx.Err(); err != nil {
-		return s.fail(err)
+		return s.failWrite(err)
 	}
 	if len(data) == 0 {
 		return argumentError("audio chunk cannot be empty")
@@ -135,7 +161,7 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 		return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "volcengine", Operation: "send", Err: err}
 	}
 	if err := s.writeFrame(ctx, frame); err != nil {
-		return s.fail(s.transportError(ctx, "send", err))
+		return s.failWrite(s.transportError(ctx, "send", err))
 	}
 	s.sentAudio = true
 	return nil
@@ -154,7 +180,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
-		return s.fail(err)
+		return s.failWrite(err)
 	}
 	if !s.sentAudio {
 		return argumentError("cannot finish an empty audio stream")
@@ -166,7 +192,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return err
 	}
 	if err := s.writeFrame(ctx, frame); err != nil {
-		return s.fail(s.transportError(ctx, "finish", err))
+		return s.failWrite(s.transportError(ctx, "finish", err))
 	}
 	s.sendClosed = true
 	return nil
@@ -177,7 +203,12 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		return asr.Event{}, asr.ErrStreamClosed
 	}
 	s.readMu.Lock()
-	defer s.readMu.Unlock()
+	defer func() {
+		if s.closed() {
+			s.releaseReadState()
+		}
+		s.readMu.Unlock()
+	}()
 	for {
 		if err := s.terminalFailure(); err != nil {
 			return asr.Event{}, err
@@ -205,7 +236,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		if s.finished {
 			return asr.Event{}, io.EOF
 		}
-		stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+		stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 		var deadline time.Time
 		if d, ok := ctx.Deadline(); ok {
 			deadline = d
@@ -216,6 +247,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		typ, data, readErr := s.conn.ReadMessage()
 		stop()
+		if cause := s.terminalFailure(); cause != nil {
+			return asr.Event{}, cause
+		}
 		if readErr != nil {
 			result := s.transportError(ctx, "recv", readErr)
 			return asr.Event{}, s.fail(result)
@@ -240,8 +274,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			s.addEvents(results, last)
 		}
 		if last {
-			s.finished = true
-			_ = s.Close()
+			if err := s.complete(); err != nil {
+				return asr.Event{}, err
+			}
 		}
 	}
 }
@@ -276,11 +311,6 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				}
 				continue
 			}
-			// A definite utterance supersedes a provisional hypothesis
-			// seen earlier in this response, even when the provider lists
-			// the provisional entry before the confirmed entry.
-			partial = ""
-			partialDetails = nil
 			// A finalized utterance is identified by its time interval, not by
 			// transcript text. Full snapshots may revise punctuation or
 			// spelling for an already emitted interval; EventFinal is
@@ -297,6 +327,11 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				}
 				continue
 			}
+			// Only a new final supersedes the provisional hypothesis.
+			// A replay of an older final (including a metadata update)
+			// must not discard a newer partial in this response.
+			partial = ""
+			partialDetails = nil
 			s.finalSeen[key] = struct{}{}
 			e := asr.Event{Type: asr.EventFinal, Text: u.Text}
 			if s.details {
@@ -305,7 +340,9 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				s.rememberFinalMetadata(key, u, e.Utterance)
 			}
 			s.queue = append(s.queue, e)
-			s.confirmedText += u.Text
+			if s.resultType == ResultFull {
+				s.confirmedText.WriteString(u.Text)
+			}
 			s.lastFinalText = u.Text
 			s.pendingText = ""
 			s.pendingDetails = nil
@@ -317,7 +354,12 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 	// before exposing a new tentative segment.
 	if !hasUtterances && fallback != "" {
 		if s.resultType == ResultFull {
-			fallback = strings.TrimPrefix(fallback, s.confirmedText)
+			// A small suffix must not retain the backing storage of a large
+			// cumulative provider response.
+			suffix := strings.TrimPrefix(fallback, s.confirmedText.String())
+			if len(suffix) != len(fallback) {
+				fallback = strings.Clone(suffix)
+			}
 		}
 		if fallback != s.lastFinalText {
 			partial = fallback
@@ -326,7 +368,7 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 	if partial != "" && partial != s.pendingText {
 		// Never emit a provisional event after the terminal response.
 		if !last {
-			s.queue = append(s.queue, detailedEvent(asr.EventPartial, partial, partialDetails))
+			s.queue = append(s.queue, detailedEvent(asr.EventPartial, partial, cloneUtterance(partialDetails)))
 		}
 		s.pendingText = partial
 		s.pendingDetails = partialDetails
@@ -353,14 +395,41 @@ func (s *Stream) terminalFailure() error {
 // fail saves the first terminal failure before closing the connection. It
 // cannot acquire readMu or writeMu, since Recv may be blocked on ReadMessage.
 func (s *Stream) fail(err error) error {
+	first := s.recordFailure(err)
+	s.closeTransport()
+	return first
+}
+
+// recordFailure arbitrates failures with successful provider completion.
+// A late sender error is still returned to that sender, but must not
+// replace the already committed receive-side EOF or final backlog.
+func (s *Stream) recordFailure(err error) error {
 	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if s.terminalSuccess {
+		return err
+	}
 	if s.terminalErr == nil {
 		s.terminalErr = err
 	}
-	first := s.terminalErr
+	return s.terminalErr
+}
+
+// complete is called under readMu after validating the terminal frame.
+// Publish success before closing the transport, so late cancellation or
+// write errors cannot turn a completed recognition into a failure.
+func (s *Stream) complete() error {
+	s.terminalMu.Lock()
+	if s.terminalErr != nil {
+		err := s.terminalErr
+		s.terminalMu.Unlock()
+		return err
+	}
+	s.terminalSuccess = true
 	s.terminalMu.Unlock()
-	_ = s.Close()
-	return first
+	s.finished = true
+	s.closeTransport()
+	return nil
 }
 
 func (s *Stream) closedError(ctx context.Context) error {
@@ -401,4 +470,12 @@ func (s *Stream) transportError(ctx context.Context, op string, err error) error
 		Code: code, Provider: "volcengine", Operation: op, Err: err,
 		Retryable: true,
 	}
+}
+
+// failWrite runs outside readMu. Release receive state even if the caller
+// has no active receiver, after saving the first terminal error.
+func (s *Stream) failWrite(err error) error {
+	first := s.fail(err)
+	_ = s.Close()
+	return first
 }

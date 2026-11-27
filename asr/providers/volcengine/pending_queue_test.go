@@ -69,6 +69,17 @@ func TestPendingVolcengineEventsRespectStreamLifecycle(t *testing.T) {
 				t.Fatalf("first event: %+v, %v", first, err)
 			}
 
+			concrete := session.(*Stream)
+			assertReleased := func() {
+				t.Helper()
+				concrete.readMu.Lock()
+				defer concrete.readMu.Unlock()
+				if concrete.confirmedText.Len() != 0 || concrete.finalSeen != nil ||
+					concrete.finalMetadata != nil || concrete.pendingDetails != nil || concrete.pendingText != "" ||
+					concrete.lastFinalText != "" {
+					t.Fatal("closed session retained historical recognition state")
+				}
+			}
 			switch tc.action {
 			case "cancel":
 				call, cancel := context.WithCancel(context.Background())
@@ -92,6 +103,17 @@ func TestPendingVolcengineEventsRespectStreamLifecycle(t *testing.T) {
 					}
 				}
 			case "finished":
+				assertReleased()
+				// Simulate an in-flight sender failing after the final
+				// frame won the terminal-state race.
+				late := errors.New("late write failure")
+				if err := concrete.failWrite(late); err != late {
+					t.Fatalf("sender error = %v", err)
+				}
+				stop() // Late parent cancellation must not discard the backlog.
+				if err := concrete.terminalFailure(); err != nil {
+					t.Fatalf("completed stream overwritten: %v", err)
+				}
 				canceled, cancel := context.WithCancel(context.Background())
 				cancel()
 				second, err := session.Recv(canceled)
@@ -103,6 +125,12 @@ func TestPendingVolcengineEventsRespectStreamLifecycle(t *testing.T) {
 						t.Fatalf("Recv %d after final frame = %v, want EOF", i, err)
 					}
 				}
+			}
+			assertReleased()
+			concrete.readMu.Lock()
+			defer concrete.readMu.Unlock()
+			if concrete.queue != nil {
+				t.Fatal("closed session retained drained or abandoned queue")
 			}
 		})
 	}

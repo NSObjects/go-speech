@@ -153,7 +153,8 @@ func TestCloseAndCancelledRecvAreNotNetworkFailures(t *testing.T) {
 		if err := s.CloseSend(ctx); !errors.Is(err, asr.ErrStreamClosed) {
 			t.Fatalf("finish closed stream: %v", err)
 		}
-		_, err := s.Recv(ctx)
+		cancel()
+		_, err := s.Recv(context.Background())
 		if !errors.Is(err, asr.ErrStreamClosed) || speecherr.IsCode(err, speecherr.CodeUnavailable) {
 			t.Fatalf("explicit close incorrectly classified: %v", err)
 		}
@@ -212,6 +213,14 @@ func TestRecvEOFAfterTaskFinishedIsStable(t *testing.T) {
 		if !errors.Is(err, io.EOF) {
 			t.Fatalf("Recv call %d should return EOF, got %v", i, err)
 		}
+	}
+	late := errors.New("late write failure")
+	if err := s.(*Stream).fail(late); err != late {
+		t.Fatalf("sender error = %v", err)
+	}
+	cancel()
+	if _, err := s.Recv(context.Background()); !errors.Is(err, io.EOF) {
+		t.Fatalf("late failure changed completed result: %v", err)
 	}
 }
 

@@ -99,7 +99,7 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 }
 
 func (d *duplex) initialize(ctx context.Context, init clientEvent) error {
-	stop := context.AfterFunc(ctx, func() { _ = d.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = d.terminate(ctx.Err()) })
 	defer stop()
 	if err := d.send(ctx, init); err != nil {
 		return err
@@ -125,7 +125,7 @@ func (d *duplex) send(ctx context.Context, e clientEvent) error {
 	if err := d.contextError(ctx); err != nil {
 		return err
 	}
-	stop := context.AfterFunc(ctx, func() { _ = d.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = d.terminate(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(10 * time.Second)
 	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
@@ -157,8 +157,7 @@ func (d *duplex) SendText(ctx context.Context, text string) error {
 		return invalid("invalid text fragment or session text limit exceeded")
 	}
 	if err := d.send(ctx, clientEvent{Event: "text", Content: text}); err != nil {
-		_ = d.Close()
-		return err
+		return d.failWrite(err)
 	}
 	d.textRunes += count
 	return nil
@@ -177,8 +176,7 @@ func (d *duplex) CloseSend(ctx context.Context) error {
 		return invalid("at least one text fragment required")
 	}
 	if err := d.send(ctx, clientEvent{Event: "close"}); err != nil {
-		_ = d.Close()
-		return err
+		return d.failWrite(err)
 	}
 	d.inputClosed = true
 	return nil
@@ -199,8 +197,7 @@ func (d *duplex) Flush(ctx context.Context) error {
 		return invalid("at least one text fragment required")
 	}
 	if err := d.send(ctx, clientEvent{Event: "flush"}); err != nil {
-		_ = d.Close()
-		return err
+		return d.failWrite(err)
 	}
 	return nil
 }

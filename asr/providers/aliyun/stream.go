@@ -26,24 +26,25 @@ var (
 // Stream is a task-specific WebSocket session. It permits one concurrent sender
 // and one concurrent receiver. A canceled Send/Recv context closes the session.
 type Stream struct {
-	conn          *websocket.Conn
-	pool          *connpool.Pool
-	parent        context.Context
-	taskID        string
-	done          chan struct{}
-	once          sync.Once
-	writeMu       sync.Mutex
-	readMu        sync.Mutex
-	terminalMu    sync.Mutex
-	sendClosed    bool   // writeMu
-	sentAudio     bool   // writeMu: true after successful audio upload
-	finished      bool   // readMu
-	terminalErr   error  // terminalMu: first terminal failure remains observable
-	pcmFrameBytes int    // 0 for encoded formats; immutable after OpenStream
-	details       bool   // immutable after OpenStream
-	model         string // immutable after OpenStream
-	usageMu       sync.Mutex
-	usage         *Usage
+	conn            *websocket.Conn
+	pool            *connpool.Pool
+	parent          context.Context
+	taskID          string
+	done            chan struct{}
+	once            sync.Once
+	writeMu         sync.Mutex
+	readMu          sync.Mutex
+	terminalMu      sync.Mutex
+	sendClosed      bool   // writeMu
+	sentAudio       bool   // writeMu: true after successful audio upload
+	finished        bool   // readMu
+	terminalErr     error  // terminalMu: first terminal failure remains observable
+	terminalSuccess bool   // terminalMu: provider completion cannot be overwritten
+	pcmFrameBytes   int    // 0 for encoded formats; immutable after OpenStream
+	details         bool   // immutable after OpenStream
+	model           string // immutable after OpenStream
+	usageMu         sync.Mutex
+	usage           *Usage
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -56,6 +57,7 @@ func newStream(conn *websocket.Conn, ctx context.Context, taskID string, pools .
 	go func() {
 		select {
 		case <-ctx.Done():
+			_ = s.fail(ctx.Err())
 			_ = s.Close()
 		case <-s.done:
 		}
@@ -66,10 +68,10 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
+	_ = s.recordFailure(s.closeError(context.Background()))
 	s.release(false)
 	return nil
 }
-
 // release resolves ownership once. Old context callbacks cannot close a
 // connection after this stream has returned it to the pool.
 func (s *Stream) release(reusable bool) {
@@ -80,21 +82,6 @@ func (s *Stream) release(reusable bool) {
 		}
 		s.pool.Release(s.conn, reusable)
 	})
-}
-
-// complete is called under readMu after the matching task-finished event.
-// Taking writeMu ensures the final write has returned before reuse.
-func (s *Stream) complete(ctx context.Context) {
-	if s.pool == nil {
-		_ = s.Close()
-		return
-	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if s.closed() {
-		return
-	}
-	s.release(s.sendClosed && ctx.Err() == nil && s.parent.Err() == nil && s.terminalFailure() == nil)
 }
 
 func (s *Stream) closed() bool {
@@ -115,7 +102,7 @@ func (s *Stream) write(ctx context.Context, typ int, data []byte) error {
 	if s.closed() {
 		return ErrClosed
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(defaultWriteTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -207,7 +194,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 	if s.closed() {
 		return asr.Event{}, s.fail(s.closeError(ctx))
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	for {
 		if err := ctx.Err(); err != nil {
@@ -228,6 +215,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			}
 		}
 		typ, data, err := s.conn.ReadMessage()
+		if cause := s.terminalFailure(); cause != nil {
+			return asr.Event{}, cause
+		}
 		if err != nil {
 			result := s.transportError(ctx, "recv", err)
 			return asr.Event{}, s.fail(result)
@@ -263,11 +253,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			}
 		case "task-finished":
 			s.recordUsage(ev.Payload.Usage, true)
-			s.finished = true
-			s.complete(ctx)
-			// A writer can fail while ReadMessage decodes task-finished.
-			// Do not turn an already recorded terminal failure into EOF.
-			if err := s.terminalFailure(); err != nil {
+			if err := s.complete(ctx); err != nil {
 				return asr.Event{}, err
 			}
 			return asr.Event{}, io.EOF
@@ -289,19 +275,47 @@ func (s *Stream) terminalFailure() error {
 // fail retains the first Send, CloseSend or Recv failure. It must not require
 // readMu or writeMu: a sender can fail while a receiver blocks on the socket.
 func (s *Stream) fail(err error) error {
-	s.terminalMu.Lock()
-	if s.terminalErr == nil {
-		s.terminalErr = err
-	}
-	first := s.terminalErr
-	s.terminalMu.Unlock()
+	first := s.recordFailure(err)
 	_ = s.Close()
 	return first
 }
 
-// transportError preserves cancellation and deliberate stream closure.
-// Neither of those conditions is an automatically retryable network failure.
-// Capture the error before closing the connection: Close itself changes state.
+// recordFailure arbitrates failures with successful provider completion.
+// A late sender error is still returned to that sender, but must not
+// replace the already committed receive-side EOF or final backlog.
+func (s *Stream) recordFailure(err error) error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if s.terminalSuccess {
+		return err
+	}
+	if s.terminalErr == nil {
+		s.terminalErr = err
+	}
+	return s.terminalErr
+}
+
+// complete is called under readMu after validating the terminal frame.
+// Publish success before closing the transport, so late cancellation or
+// write errors cannot turn a completed recognition into a failure.
+func (s *Stream) complete(ctx context.Context) error {
+	if s.pool != nil {
+		s.writeMu.Lock()
+		defer s.writeMu.Unlock()
+	}
+	s.terminalMu.Lock()
+	if s.terminalErr != nil {
+		err := s.terminalErr
+		s.terminalMu.Unlock()
+		return err
+	}
+	s.terminalSuccess = true
+	s.terminalMu.Unlock()
+	s.finished = true
+	s.release(s.pool != nil && s.sendClosed && ctx.Err() == nil && s.parent.Err() == nil)
+	return nil
+}
+
 func (s *Stream) transportError(ctx context.Context, op string, err error) error {
 	if e := ctx.Err(); e != nil {
 		return e

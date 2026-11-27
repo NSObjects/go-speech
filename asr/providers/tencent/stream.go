@@ -30,6 +30,7 @@ type Stream struct {
 	sentAudio   bool
 	finished    bool
 	terminalErr error // terminalMu
+	terminalSuccess bool // terminalMu: provider completion cannot be overwritten
 	finalSeen   map[int]struct{}
 	queue       []asr.Event // readMu; one server message may contain multiple sentences
 
@@ -51,6 +52,7 @@ func newStream(conn *websocket.Conn, parent context.Context, voiceID string) *St
 	go func() {
 		select {
 		case <-parent.Done():
+			_ = s.fail(parent.Err())
 			_ = s.Close()
 		case <-s.done:
 		}
@@ -62,12 +64,32 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
+	_ = s.recordFailure(s.closeError(context.Background()))
+	// Unblock the receiver before acquiring its lock. Recv itself uses
+	// closeTransport to avoid reentering readMu.
+	s.closeTransport()
+	s.readMu.Lock()
+	s.releaseReadState()
+	s.readMu.Unlock()
+	return nil
+}
+
+func (s *Stream) closeTransport() {
 	s.once.Do(func() {
 		close(s.done)
 		_ = s.conn.Close()
 	})
-	return nil
 }
+
+// releaseReadState requires readMu. A successful final frame may still
+// contain events the caller has not received; preserve that backlog.
+func (s *Stream) releaseReadState() {
+	s.finalSeen = nil
+	if !s.finished || s.terminalFailure() != nil || len(s.queue) == 0 {
+		s.queue = nil
+	}
+}
+
 func (s *Stream) closed() bool {
 	select {
 	case <-s.done:
@@ -95,15 +117,43 @@ func (s *Stream) terminalFailure() error {
 // concurrent Recv observes the original Send/CloseSend failure, not an
 // incidental "connection closed" caused by cleanup.
 func (s *Stream) fail(err error) error {
+	first := s.recordFailure(err)
+	s.closeTransport()
+	return first
+}
+
+// recordFailure arbitrates failures with successful provider completion.
+// A late sender error is still returned to that sender, but must not
+// replace the already committed receive-side EOF or final backlog.
+func (s *Stream) recordFailure(err error) error {
 	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if s.terminalSuccess {
+		return err
+	}
 	if s.terminalErr == nil {
 		s.terminalErr = err
 	}
-	first := s.terminalErr
-	s.terminalMu.Unlock()
-	_ = s.Close()
-	return first
+	return s.terminalErr
 }
+
+// complete is called under readMu after validating the terminal frame.
+// Publish success before closing the transport, so late cancellation or
+// write errors cannot turn a completed recognition into a failure.
+func (s *Stream) complete() error {
+	s.terminalMu.Lock()
+	if s.terminalErr != nil {
+		err := s.terminalErr
+		s.terminalMu.Unlock()
+		return err
+	}
+	s.terminalSuccess = true
+	s.terminalMu.Unlock()
+	s.finished = true
+	s.closeTransport()
+	return nil
+}
+
 func (s *Stream) transportError(ctx context.Context, operation string, err error) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -138,7 +188,7 @@ func (s *Stream) write(ctx context.Context, typ int, data []byte) error {
 	if s.closed() {
 		return s.closeError(ctx)
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(defaultWriteTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -168,13 +218,13 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	// Cancellation of an upload operation terminates the WebSocket session,
 	// even when it happens before the first write.
 	if err := ctx.Err(); err != nil {
-		return s.fail(err)
+		return s.failWrite(err)
 	}
 	if len(data) == 0 || len(data)%2 != 0 {
 		return argumentError("PCM16LE audio must contain complete 16-bit samples")
 	}
 	if err := s.write(ctx, websocket.BinaryMessage, data); err != nil {
-		return s.fail(s.transportError(ctx, "send", err))
+		return s.failWrite(s.transportError(ctx, "send", err))
 	}
 	s.sentAudio = true
 	return nil
@@ -195,13 +245,13 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
-		return s.fail(err)
+		return s.failWrite(err)
 	}
 	if !s.sentAudio {
 		return argumentError("cannot close empty audio input")
 	}
 	if err := s.write(ctx, websocket.TextMessage, []byte(`{"type":"end"}`)); err != nil {
-		return s.fail(s.transportError(ctx, "finish", err))
+		return s.failWrite(s.transportError(ctx, "finish", err))
 	}
 	s.sendClosed = true
 	return nil
@@ -226,17 +276,6 @@ type segment struct {
 	raw       json.RawMessage
 }
 
-func (s *segment) UnmarshalJSON(data []byte) error {
-	type plain segment
-	var v plain
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*s = segment(v)
-	s.raw = append(json.RawMessage(nil), data...)
-	return nil
-}
-
 // Tencent large-model 2.0 WebSocket V2 returns a sentence_list, while
 // traditional real-time ASR returns result.slice_type. Both use /asr/v2.
 type sentenceList struct {
@@ -252,23 +291,43 @@ type sentence struct {
 	EndTime   *int64 `json:"end_time"`
 }
 
-func decodeResponse(raw []byte, expectedID string) (response, error) {
+func decodeResponse(raw []byte, expectedID string, details bool) (response, error) {
 	var result response
-	if err := json.Unmarshal(raw, &result); err != nil {
+	var status *int
+	var err error
+	if details {
+		// RawMessage owns a copy of the native result only when requested.
+		var wire struct {
+			*response
+			Code   *int            `json:"code"`
+			Result json.RawMessage `json:"result"`
+		}
+		wire.response = &result
+		err = json.Unmarshal(raw, &wire)
+		status = wire.Code
+		if err == nil && len(wire.Result) != 0 {
+			err = json.Unmarshal(wire.Result, &result.Result)
+			if err == nil && result.Result != nil {
+				result.Result.raw = wire.Result
+			}
+		}
+	} else {
+		var wire struct {
+			*response
+			Code *int `json:"code"`
+		}
+		wire.response = &result
+		err = json.Unmarshal(raw, &wire)
+		status = wire.Code
+	}
+	if err != nil {
 		return result, &speecherr.Error{Code: speecherr.CodeProtocol, Provider: "tencent", Operation: "decode", Err: err}
 	}
-	// Go's zero value would otherwise turn a missing or null code into a
-	// successful Tencent response. Both handshake ACKs and transcript frames
-	// must explicitly carry a numeric service status.
-	var status struct {
-		Code *json.RawMessage `json:"code"`
-	}
-	if err := json.Unmarshal(raw, &status); err != nil {
-		return result, protocolError("invalid response status")
-	}
-	if status.Code == nil {
+	// A missing/null code must not be interpreted as success.
+	if status == nil {
 		return result, protocolError("missing or null response code")
 	}
+	result.Code = *status
 	if result.VoiceID != expectedID {
 		return result, protocolError("voice_id mismatch or missing")
 	}
@@ -312,7 +371,7 @@ func remoteError(r response) error {
 }
 
 func (s *Stream) awaitHandshake(ctx context.Context, timeout time.Duration) error {
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(timeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -328,7 +387,7 @@ func (s *Stream) awaitHandshake(ctx context.Context, timeout time.Duration) erro
 	if typ != websocket.TextMessage {
 		return protocolError("expected text handshake")
 	}
-	result, err := decodeResponse(raw, s.voiceID)
+	result, err := decodeResponse(raw, s.voiceID, false)
 	if err != nil {
 		return err
 	}
@@ -351,7 +410,12 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		return asr.Event{}, asr.ErrStreamClosed
 	}
 	s.readMu.Lock()
-	defer s.readMu.Unlock()
+	defer func() {
+		if s.closed() {
+			s.releaseReadState()
+		}
+		s.readMu.Unlock()
+	}()
 	if err := s.terminalFailure(); err != nil {
 		return asr.Event{}, err
 	}
@@ -390,7 +454,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		if s.closed() {
 			return asr.Event{}, s.fail(s.closeError(ctx))
 		}
-		stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+		stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 		var deadline time.Time
 		if d, ok := ctx.Deadline(); ok {
 			deadline = d
@@ -407,13 +471,16 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		typ, raw, err := s.conn.ReadMessage()
 		stop()
+		if cause := s.terminalFailure(); cause != nil {
+			return asr.Event{}, cause
+		}
 		if err != nil {
 			return asr.Event{}, s.fail(s.transportError(ctx, "recv", err))
 		}
 		if typ != websocket.TextMessage {
 			return asr.Event{}, s.fail(protocolError("non-text ASR response"))
 		}
-		message, err := decodeResponse(raw, s.voiceID)
+		message, err := decodeResponse(raw, s.voiceID, s.details)
 		if err != nil {
 			return asr.Event{}, s.fail(err)
 		}
@@ -460,8 +527,12 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			}
 		}
 		if message.Final == 1 {
-			s.finished = true
-			_ = s.Close()
+			if err := s.complete(); err != nil {
+				return asr.Event{}, err
+			}
+		}
+		if cause := s.terminalFailure(); cause != nil {
+			return asr.Event{}, cause
 		}
 		if len(s.queue) > 0 {
 			e := s.queue[0]
@@ -473,4 +544,12 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			return asr.Event{}, io.EOF
 		}
 	}
+}
+
+// failWrite runs outside readMu. Release receive state even if the caller
+// has no active receiver, after saving the first terminal error.
+func (s *Stream) failWrite(err error) error {
+	first := s.fail(err)
+	_ = s.Close()
+	return first
 }

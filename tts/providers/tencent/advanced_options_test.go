@@ -15,7 +15,11 @@ func TestAdvancedSignedOptions(t *testing.T) {
 		Voice:   "200000400",
 		Options: tts.Options{Provider: Options{FastVoiceType: "clone-fixture", EnableLatex: &off}},
 	}
-	endpoint, err := signedEndpoint(cfg, req, "mp3", "session", time.Unix(1700000000, 0))
+	voice, err := requestVoiceQuery(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err := signedEndpoint(cfg, req, "mp3", "session", voice, time.Unix(1700000000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,12 +32,12 @@ func TestAdvancedSignedOptions(t *testing.T) {
 		t.Fatal("missing signed options")
 	}
 	req.Voice = "101001"
-	if _, err := signedEndpoint(cfg, req, "mp3", "session", time.Now()); err == nil {
+	if _, err := requestVoiceQuery(req); err == nil {
 		t.Fatal("clone ID accepted for ordinary voice")
 	}
 	req.Voice = "200000000"
 	req.Options = tts.Options{}
-	if _, err := signedEndpoint(cfg, req, "mp3", "session", time.Now()); err == nil {
+	if _, err := requestVoiceQuery(req); err == nil {
 		t.Fatal("clone VoiceType accepted without clone ID")
 	}
 }
