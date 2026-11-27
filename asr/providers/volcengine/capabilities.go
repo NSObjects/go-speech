@@ -70,7 +70,7 @@ func (c *Client) features() capability.Features {
 		asr.FeatureVolume: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.ShowVolume", Kind: capability.Bool}}, Notes: "VolumeDB is provider-reported decibels."},
 		asr.FeatureLanguageDetection: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.EnableLID", Kind: capability.Bool}}, Notes: "Native language label in utterance details."},
 		asr.FeatureGenderDetection: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.EnableGenderDetection", Kind: capability.Bool}}, Notes: "Provider estimate, not verified identity."},
-		asr.FeatureSpeakerDiarization: {Status: capability.Unknown, Parameters: []capability.Parameter{{Field: "Options.Provider.EnableSpeakerInfo", Kind: capability.Bool}}, Notes: "Requires EnableNonStream; native additions retained, unified SpeakerID mapping not implemented."},
+		asr.FeatureSpeakerDiarization: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.EnableSpeakerInfo", Kind: capability.Bool}}, Notes: "Requires EnableNonStream. Numeric speaker IDs mapped; nonnumeric labels retained in native metadata."},
 		asr.FeatureSpeakerContext: {Status: capability.Unsupported},
 		asr.FeatureWordTimestamps: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.UtteranceDetails", Kind: capability.Bool}}},
 		asr.FeatureSegmentTimestamps: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.UtteranceDetails", Kind: capability.Bool}}},

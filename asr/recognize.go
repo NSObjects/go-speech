@@ -99,6 +99,7 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 	var parts []string
 	var lang string
 	var utterances []Utterance
+	var utteranceIndex map[string]int
 	var recvErr error
 	for {
 		event, err := stream.Recv(sessionCtx)
@@ -112,10 +113,21 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 		if event.Type == EventFinal && event.Text != "" {
 			parts = append(parts, event.Text)
 			if event.Utterance != nil {
-				utterances = append(utterances, *event.Utterance)
+				u := *event.Utterance
+				if u.ID != "" {
+					if utteranceIndex == nil {
+						utteranceIndex = make(map[string]int)
+					}
+					utteranceIndex[u.ID] = len(utterances)
+				}
+				utterances = append(utterances, u)
 			}
 			if event.Language != "" {
 				lang = event.Language
+			}
+		} else if event.Type == EventUtteranceUpdate && event.Utterance != nil && event.Utterance.ID != "" {
+			if i, ok := utteranceIndex[event.Utterance.ID]; ok && utterances[i].Text == event.Utterance.Text {
+				utterances[i] = *event.Utterance
 			}
 		}
 	}

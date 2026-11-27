@@ -14,6 +14,8 @@ import (
 type UtteranceDetails struct {
 	LanguageLabel string
 	GenderLabel   string
+	// SpeakerLabel preserves the native string even if it is not numeric.
+	SpeakerLabel string
 	Additions     map[string]json.RawMessage
 }
 
@@ -57,6 +59,10 @@ func rawNumber(v json.RawMessage) *float64 {
 
 func (u utterance) metadata() *asr.Utterance {
 	a := &asr.Utterance{Text: u.Text, Definite: u.Definite}
+	label := rawString(u.Additions["speaker_id"])
+	if id, err := strconv.Atoi(label); err == nil && id >= -1 && strconv.Itoa(id) == label {
+		a.SpeakerID = &id
+	}
 	if u.startSet {
 		a.StartTime = duration(&u.Start)
 	}
@@ -73,6 +79,7 @@ func (u utterance) metadata() *asr.Utterance {
 		a.Provider = UtteranceDetails{
 			LanguageLabel: rawString(u.Additions["lid_lang"]),
 			GenderLabel:   rawString(u.Additions["gender"]),
+			SpeakerLabel:  label,
 			Additions:     u.Additions,
 		}
 	}
