@@ -14,6 +14,16 @@ capture, audio playback, turn-taking, conversation memory, monitoring, or
 application-level retries. Audio conversion is **explicit** through separate
 `audio` utilities; provider adapters never silently convert supplied bytes.
 
+Streaming-capable speech transports are the default. Complete-buffer ASR
+uses streaming recognition; complete-text TTS uses the existing synthesis
+path rather than requiring another transport for equivalent functionality.
+Additional native protocols are justified by capabilities not available on
+the existing path. Tencent's batch-only HTTP TextToVoice client is an
+explicit exception for SSML and WAV. It implements `tts.Synthesizer`, not
+`tts.Client`, and is selected with `tencent.NewHTTP` in the TTS provider
+package, not through `speech.NewTTS`. Voice management uses the vendor's
+native management APIs. There is no automatic protocol fallback.
+
 ## Provider selection
 
 The root package exposes:

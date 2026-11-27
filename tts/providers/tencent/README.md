@@ -1,8 +1,10 @@
-# Tencent Cloud TTS (WebSocket stream_wsv2)
+# Tencent Cloud TTS
 
-This provider implements Tencent Cloud **TextToStreamAudioWSv2** with
-`tts.Synthesizer` and `tts.StreamSynthesizer`. It accepts one **complete**
-text request and returns the provider's PCM16LE or MP3 bytes incrementally.
+The default `New` client implements Tencent Cloud **TextToStreamAudioWSv2**
+with complete-text and incremental-text synthesis. It returns the provider's
+PCM16LE or MP3 bytes incrementally. Use the same client for one-shot,
+streaming-output and duplex requests. Select `NewHTTP` explicitly only when
+native complete-text HTTP features such as SSML or WAV are needed.
 The provider does not resample, transcode, cache or play audio.
 
 Official protocol: https://cloud.tencent.com/document/api/1073/108595
@@ -72,10 +74,12 @@ Duplex streams implement `tts.Resetter`. Reset sends ACTION_RESET without ending
 
 ## Native complete-text HTTP synthesis
 
-Use `NewHTTP(HTTPConfig{SecretID: id, SecretKey: key})` for the Cloud API
+WSv2 does not support SSML or WAV output. For these native features, use `NewHTTP(HTTPConfig{SecretID: id, SecretKey: key})` for the Cloud API
 `TextToVoice` (2019-08-23). It implements `tts.Synthesizer`, not streaming
 or duplex; register it as `tts.Provider.Batch` independently of WSv2.
-The default is mono 16 kHz WAV. PCM and MP3 are also native options.
+The default is mono 16 kHz WAV. PCM and MP3 are also native options. The
+existing WebSocket client is preferred for ordinary text and PCM/MP3; there
+is no automatic fallback between protocols.
 Use `tts.TextSSML` to pass supported markup unchanged; voice-specific
 restrictions and text-length limits apply (150 Chinese characters or 500 English letters per official protocol; the service decides mixed text and SSML limits). No fallback or local text splitting. Cloud error codes are retained, including entitlement, resource-pack exhaustion and request limits.
 
