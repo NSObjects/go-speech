@@ -33,7 +33,10 @@ type duplex struct {
 	textRunes   int
 }
 
-var _ tts.DuplexStream = (*duplex)(nil)
+var (
+	_ tts.DuplexStream = (*duplex)(nil)
+	_ tts.Flusher      = (*duplex)(nil)
+)
 
 // OpenDuplex opens the JSON text-event protocol and waits for ready before
 // accepting incremental text. CloseSend submits the remaining text; Close

@@ -106,3 +106,7 @@ stream decodes correctly. Opus is not re-encoded or remuxed by the SDK.
 Set `tts.Options.Provider` to `aliyun.Options` to configure `BitRateKbps` (MP3/Opus), `LanguageHint` (one native language code), Markdown filtering and AIGC metadata. AIGC tagging is restricted to documented models and WAV/MP3/Opus. These options also apply to duplex input. Set `WordTimestampEnabled` to true to receive final sentence timing via `tts.EventReceiver.RecvEvent`. See the official client-event documentation for model and voice restrictions.
 
 Use one receive API per session: `Recv` for audio only, or `RecvEvent` for audio and alignment. Explicit timestamp enablement is rejected by audio-only `Synthesize`; use `tts.SynthesizeDetailed(ctx, client, req)` for a complete result or `SynthesizeStream` with `RecvEvent`. Provider model/voice restrictions apply.
+
+## Native cancellation
+
+Duplex streams implement `tts.Canceler`. Call Cancel before CloseSend to send the native finish-task cancel directive. Keep receiving until `tts.ErrSynthesisCanceled` (task-finished) or another error; the canceled task cannot receive more text. Already queued audio is not discarded by the SDK. Close is still required. The adapter closes the connection at terminal completion and does not reuse it. For a task whose normal input has already ended, use Close for local termination; sending a second finish-task directive is not assumed to be supported.

@@ -22,9 +22,10 @@ type DuplexSynthesizer interface {
 }
 
 // DuplexStream supports one text sender and one audio receiver concurrently.
-// SendText is called with successive UTF-8 fragments; it is not safe to call
-// SendText and CloseSend concurrently. CloseSend finalizes text input while
-// Recv continues until io.EOF. Always call Close to free resources.
+// SendText is called with successive UTF-8 fragments. Serialize SendText,
+// CloseSend and optional control operations from the sender. CloseSend
+// finalizes text input while Recv continues until io.EOF. Always call Close
+// to free resources.
 type DuplexStream interface {
 	Stream
 	SendText(ctx context.Context, text string) error

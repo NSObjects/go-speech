@@ -61,3 +61,7 @@ is claimed from the ASR CI workflow.
 Set `tts.Options.Provider` to `tencent.Options` to select `FastVoiceType` with `Request.Voice` (or `DuplexRequest.Voice`) equal to 200000000 or 200000400 for one-sentence cloning. `EnableLatex` is optional; it is only supported by certain Chinese super-natural 2.0 voices and may increase latency. Both parameters are included in the signed query. Set `EnableSubtitle` to true and use `tts.EventReceiver.RecvEvent` to receive word timestamps and phonemes.
 
 Use one receive API per session: `Recv` for audio only, or `RecvEvent` for audio and alignment. Explicit timestamp enablement is rejected by audio-only `Synthesize`; use `tts.SynthesizeDetailed(ctx, client, req)` for a complete result or `SynthesizeStream` with `RecvEvent`. Provider model/voice restrictions apply.
+
+## Native reset
+
+Duplex streams implement `tts.Resetter`. Reset sends ACTION_RESET without ending input, clearing server-side pending text only. Already-started synthesis is unaffected. SendText or CloseSend may follow Reset. A successful write is not a server acknowledgment; the SDK neither drops already-received audio nor simulates a cancellation.
