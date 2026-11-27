@@ -256,3 +256,7 @@ func (f modelFamily) supportsSensitiveWords() bool {
 func (f modelFamily) supportsContext() bool {
 	return f != familyParaformer
 }
+
+func (f modelFamily) supportsDynamicContext() bool {
+	return f == familyQwenMessage
+}

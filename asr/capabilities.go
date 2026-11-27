@@ -44,6 +44,8 @@ const (
 	FeatureWordTimestamps       = "word_timestamps"
 	FeatureSegmentTimestamps    = "segment_timestamps"
 	FeatureContext              = "context"
+	FeatureDynamicContext       = "dynamic_context"
+	FeatureUsage                = "usage"
 	FeatureImageContext         = "image_context"
 	FeatureHotwords             = "hotwords"
 	FeaturePunctuation          = "punctuation"
