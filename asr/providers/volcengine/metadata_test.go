@@ -208,3 +208,79 @@ func TestSpeakerMetadataWireAndBatch(t *testing.T) {
 		cancel()
 	}
 }
+
+func TestPartialMetadataSnapshotIsolation(t *testing.T) {
+	var r recognition
+	if err := json.Unmarshal([]byte(`{"utterances":[{"text":"hello","start_time":0,"end_time":500,"words":[{"text":"hello","start_time":0,"end_time":500}],"additions":{"speaker_id":"0","emotion":"happy","speech_rate":4.5,"volume":-10,"future":{"a":1}}}]}`), &r); err != nil {
+		t.Fatal(err)
+	}
+	s := &Stream{resultType: ResultFull, finalSeen: make(map[string]struct{}), details: true}
+	s.addEvents([]recognition{r}, false)
+	if len(s.queue) != 1 || s.queue[0].Type != asr.EventPartial {
+		t.Fatalf("partial = %+v", s.queue)
+	}
+	e := s.queue[0]
+	u := e.Utterance
+	u.Text = "modified"
+	u.Emotion = "sad"
+	*e.SpeakerID = 9
+	*u.StartTime = time.Second
+	*u.EndTime = time.Second
+	*u.SpeechRate = 99
+	*u.VolumeDB = 99
+	u.Words[0].Text = "modified"
+	*u.Words[0].StartTime = time.Second
+	*u.Words[0].EndTime = time.Second
+	d := u.Provider.(UtteranceDetails)
+	d.Additions["future"][0] = '['
+	delete(d.Additions, "emotion")
+
+	s.queue = nil
+	s.addEvents(nil, true)
+	if len(s.queue) != 1 || s.queue[0].Type != asr.EventFinal || s.queue[0].Text != "hello" {
+		t.Fatalf("final = %+v", s.queue)
+	}
+	f := s.queue[0].Utterance
+	if f.Text != "hello" || f.Emotion != "happy" || *f.SpeakerID != 0 ||
+		*f.StartTime != 0 || *f.EndTime != 500*time.Millisecond ||
+		*f.SpeechRate != 4.5 || *f.VolumeDB != -10 ||
+		f.Words[0].Text != "hello" || *f.Words[0].StartTime != 0 || *f.Words[0].EndTime != 500*time.Millisecond {
+		t.Fatalf("partial mutation leaked to final: %+v", f)
+	}
+	native := f.Provider.(UtteranceDetails)
+	if string(native.Additions["future"]) != `{"a":1}` || string(native.Additions["emotion"]) != `"happy"` {
+		t.Fatalf("native metadata shared: %+v", native)
+	}
+}
+
+func TestReplayedFinalDoesNotDiscardNewerPartial(t *testing.T) {
+	for _, details := range []bool{false, true} {
+		s := &Stream{resultType: ResultFull, finalSeen: make(map[string]struct{}), details: details}
+		emit := func(raw string, last bool) {
+			t.Helper()
+			var r recognition
+			if err := json.Unmarshal([]byte(raw), &r); err != nil {
+				t.Fatal(err)
+			}
+			s.addEvents([]recognition{r}, last)
+		}
+		emit(`{"utterances":[{"text":"first","definite":true,"start_time":0,"end_time":500}]}`, false)
+		s.queue = nil
+		emit(`{"utterances":[{"text":"second","start_time":600,"end_time":900},{"text":"first","definite":true,"start_time":0,"end_time":500}]}`, false)
+		if len(s.queue) != 1 || s.queue[0].Type != asr.EventPartial || s.queue[0].Text != "second" {
+			t.Fatalf("new partial lost on replay (details=%t): %+v", details, s.queue)
+		}
+		s.queue = nil
+		emit(`{"utterances":[{"text":"second revised","start_time":600,"end_time":1000},{"text":"first","definite":true,"start_time":0,"end_time":500,"additions":{"speaker_id":"0"}}]}`, true)
+		want := 1
+		if details {
+			want = 2
+			if len(s.queue) != want || s.queue[0].Type != asr.EventUtteranceUpdate {
+				t.Fatalf("missing metadata update: %+v", s.queue)
+			}
+		}
+		if len(s.queue) != want || s.queue[want-1].Type != asr.EventFinal || s.queue[want-1].Text != "second revised" {
+			t.Fatalf("terminal partial lost (details=%t): %+v", details, s.queue)
+		}
+	}
+}
