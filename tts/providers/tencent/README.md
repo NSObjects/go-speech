@@ -43,6 +43,8 @@ for {
 The SDK signs a new WebSocket URL/session per synthesis with HMAC-SHA1,
 waits for Tencent's `ready=1`, sends `ACTION_SYNTHESIS` and
 `ACTION_COMPLETE`, and drains audio until `final=1`.
+The signed URL binds the session ID and synthesis settings. FINAL terminates that session and the protocol requires closing the WebSocket. This provider does not implement connection pooling or `tts.Prewarmer`. To overlap setup with other work, open the duplex session with the actual request options before text is ready; keep its context valid through synthesis and close it if unused.
+
 Only `pcm` and `mp3` at 8/16/24 kHz mono are accepted; individual
 voices may support fewer sample rates.
 
@@ -62,7 +64,7 @@ is claimed from the ASR CI workflow.
 
 Set `tts.Options.Provider` to `tencent.Options` to select `FastVoiceType` with `Request.Voice` (or `DuplexRequest.Voice`) equal to 200000000 or 200000400 for one-sentence cloning. `EnableLatex` is optional; it is only supported by certain Chinese super-natural 2.0 voices and may increase latency. Both parameters are included in the signed query. Set `EnableSubtitle` to true and use `tts.EventReceiver.RecvEvent` to receive word timestamps and phonemes.
 
-Use one receive API per session: `Recv` for audio only, or `RecvEvent` for audio and alignment. Explicit timestamp enablement is rejected by audio-only `Synthesize`; use `tts.SynthesizeDetailed(ctx, client, req)` for a complete result or `SynthesizeStream` with `RecvEvent`. Provider model/voice restrictions apply.
+Use one receive API per session: `Recv` for audio only, or `RecvEvent` for audio and alignment. Explicit timestamp enablement is rejected by audio-only `Synthesize`; use `tts.SynthesizeDetailed(ctx, client, req)` for a complete result or `SynthesizeStream` with `RecvEvent`. Provider model/voice restrictions apply. A subtitle may have empty text and native phoneme `SIL` (silence); the SDK preserves its timing and optional indices. Count only nonempty text entries when computing spoken-word statistics.
 
 ## Native reset
 

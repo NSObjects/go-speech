@@ -118,3 +118,24 @@ func TestInvalidAlignmentTimes(t *testing.T) {
 		}
 	}
 }
+
+func TestAlignmentPreservesSilencePhoneme(t *testing.T) {
+	// Observed in a real WSv2 response: a textless SIL entry with
+	// positive duration. Do not invent text or drop the native entry.
+	raw := []byte(`{"result":{"subtitles":[{"Text":"好","BeginTime":1600,"EndTime":1820,"BeginIndex":0,"EndIndex":1,"Phoneme":"hao3"},{"Text":"","BeginTime":1820,"EndTime":2040,"Phoneme":"SIL"}]}}`)
+	a, err := decodeAlignment(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a == nil || len(a.Words) != 2 {
+		t.Fatalf("alignment=%+v", a)
+	}
+	w := a.Words[1]
+	if w.Text != "" || w.Phoneme != "SIL" || w.StartTime != 1820*time.Millisecond || w.EndTime != 2040*time.Millisecond {
+		t.Fatalf("silence was changed: %+v", w)
+	}
+	d, ok := a.Provider.(AlignmentDetails)
+	if !ok || len(d.Indices) != len(a.Words) || d.Indices[1].Begin != nil || d.Indices[1].End != nil {
+		t.Fatalf("silence indices were fabricated or dropped: %+v", a.Provider)
+	}
+}
