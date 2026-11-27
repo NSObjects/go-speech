@@ -26,6 +26,15 @@ func TestTencentLiveVoiceQueries(t *testing.T) {
 		name := "basic"
 		if kind == Fast {
 			name = "fast"
+			// GetVRSVoiceTypes is limited to one request per second.
+			// Space distinct list queries; never retry a rejected request.
+			timer := time.NewTimer(1100 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				t.Fatal(ctx.Err())
+			case <-timer.C:
+			}
 		}
 		t.Run(name, func(t *testing.T) {
 			list, err := c.List(ctx, kind)
