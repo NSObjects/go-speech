@@ -22,6 +22,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -291,20 +292,17 @@ func protocol(msg string) error {
 	return &speecherr.Error{Code: speecherr.CodeProtocol, Provider: "tencent", Operation: "tts", Err: errors.New(msg)}
 }
 func dialFailure(err error, response *http.Response) error {
-	code := speecherr.CodeUnavailable
+	code, retryable := errclass.Dial(err, response)
+	// The signed URL contains SecretID and Signature. Never include the
+	// underlying dial error in the diagnostic string (same as Tencent ASR).
+	message := "WebSocket connection failed"
 	if response != nil {
-		switch response.StatusCode {
-		case http.StatusBadRequest:
-			code = speecherr.CodeInvalidArgument
-		case http.StatusUnauthorized, http.StatusForbidden:
-			code = speecherr.CodeUnauthorized
-		case http.StatusTooManyRequests:
-			code = speecherr.CodeRateLimited
-		}
-		err = fmt.Errorf("WebSocket handshake HTTP %d: %w", response.StatusCode, err)
+		message = fmt.Sprintf("WebSocket handshake HTTP %d", response.StatusCode)
 	}
-	return &speecherr.Error{Code: code, Provider: "tencent", Operation: "connect", Err: err,
-		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited}
+	return &speecherr.Error{
+		Code: code, Provider: "tencent", Operation: "connect",
+		Err: errors.New(message), Retryable: retryable,
+	}
 }
 
 type responseEvent struct {

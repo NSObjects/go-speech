@@ -16,6 +16,7 @@ import (
 
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
@@ -210,35 +211,18 @@ func unsupportedError(msg string) error {
 }
 
 func connectError(err error, resp *http.Response) error {
-	code := speecherr.CodeUnavailable
+	code, retryable := errclass.Dial(err, resp)
 	remoteCode := ""
 	if resp != nil {
-		switch resp.StatusCode {
-		case http.StatusUnauthorized, http.StatusForbidden:
-			code = speecherr.CodeUnauthorized
-		case http.StatusTooManyRequests:
-			code = speecherr.CodeRateLimited
-		case http.StatusBadRequest:
-			code = speecherr.CodeInvalidArgument
-		}
-		// Report only non-secret protocol metadata. Never print request
-		// headers, API keys, response body or untrusted error-message text.
+		// Preserve only non-secret protocol diagnostics.
 		remoteCode = resp.Header.Get("X-Api-Status-Code")
 		logID := resp.Header.Get("X-Tt-Logid")
 		err = fmt.Errorf("%w: HTTP %d, X-Api-Status-Code=%q, X-Tt-Logid=%q",
 			err, resp.StatusCode, remoteCode, logID)
-	} else {
-		// The WebSocket handshake can time out before an HTTP response
-		// arrives. Expose a typed timeout, not a generic unavailable error.
-		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
-			code = speecherr.CodeTimeout
-		}
 	}
 	return &speecherr.Error{
 		Code: code, Provider: "volcengine", Operation: "connect",
-		RemoteCode: remoteCode, Err: err,
-		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeRateLimited || code == speecherr.CodeTimeout,
+		RemoteCode: remoteCode, Err: err, Retryable: retryable,
 	}
 }
 
