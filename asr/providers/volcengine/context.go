@@ -29,7 +29,8 @@ type Corpus struct {
 // ContextItem supplies historical dialogue, scene text or one image URL.
 // Speaker may be user or bot, or empty for scene/context text. An image URL
 // requires second-pass recognition and Seed-ASR 2.0; image validation and
-// hosting are the caller's responsibility. The SDK never fetches the URL.
+// hosting are the caller's responsibility (JPEG/PNG, at most 500 KB).
+// The SDK never fetches the URL.
 type ContextItem struct {
 	Speaker  string `json:"speaker,omitempty"`
 	Text     string `json:"text,omitempty"`
@@ -107,7 +108,7 @@ func validContextText(text string) bool {
 	return utf8.ValidString(text) && strings.TrimSpace(text) != ""
 }
 
-func applyCorpus(cfg asr.Config, req map[string]any) error {
+func applyCorpus(cfg asr.Config, req map[string]any, resource string) error {
 	o, err := nativeOptions(cfg.Options)
 	if err != nil {
 		return err
@@ -155,6 +156,9 @@ func applyCorpus(cfg asr.Config, req map[string]any) error {
 				u, err := url.Parse(item.ImageURL)
 				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
 					return argumentError("context image requires an HTTP(S) URL")
+				}
+				if isLegacyResource(resource) {
+					return unsupportedError("context images require Seed-ASR 2.0")
 				}
 				if !secondPass || images > 1 {
 					return argumentError("context images require EnableNonStream and at most one image")

@@ -62,11 +62,11 @@ func New(cfg Config) (*Client, error) {
 	if cfg.ResultType != ResultFull && cfg.ResultType != ResultSingle {
 		return nil, argumentError("ResultType must be full or single")
 	}
-	if cfg.EndWindowSize != 0 && (cfg.EndWindowSize < 200*time.Millisecond || cfg.EndWindowSize%time.Millisecond != 0) {
-		return nil, argumentError("EndWindowSize must be at least 200ms and a whole number of milliseconds")
-	}
 	if strings.TrimSpace(cfg.ResourceID) == "" {
 		cfg.ResourceID = ResourceSeedASR2
+	}
+	if err := validateEndWindow(cfg.ResourceID, cfg.EndWindowSize); err != nil {
+		return nil, err
 	}
 	if cfg.Endpoint == "" {
 		cfg.Endpoint = DefaultEndpoint

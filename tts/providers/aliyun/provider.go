@@ -31,6 +31,7 @@ const (
 	ModelCosyVoiceV3Flash = "cosyvoice-v3-flash"
 	defaultStartTimeout   = 15 * time.Second
 	defaultWriteTimeout   = 10 * time.Second
+	maxSessionTextRunes   = 200000
 	maxTextRunes          = 20000
 	maxBatchAudio         = 64 << 20
 )

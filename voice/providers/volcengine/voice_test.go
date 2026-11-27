@@ -189,3 +189,78 @@ func TestNoRedirect(t *testing.T) {
 		t.Fatal("redirect treated as success")
 	}
 }
+
+func TestCloneLanguageRules(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		code int
+		prompt string
+		boost *bool
+		wantError bool
+	}{
+		{0, "", &on, false},
+		{2, "", &on, false},
+		{25, "", &on, false},
+		{62, "", &on, true},
+		{62, "", &off, false},
+		{22, "", nil, true},
+		{22, " ", nil, true},
+		{22, "sample transcript", &off, false},
+		{22, "sample transcript", &on, true},
+		{86, "", &on, false},
+		{118, "", nil, true},
+		{118, "sample transcript", nil, false},
+		{200, "", nil, false},
+	} {
+		r := CloneRequest{Voice: VoiceRef{SpeakerID: "S_test"}, Audio: []byte{1}, Language: &tc.code,
+			Options: &CloneOptions{PromptText: tc.prompt, ProsodyBoost: tc.boost}}
+		_, err := r.wire()
+		if (err != nil) != tc.wantError {
+			t.Errorf("language %d: got %v; want error=%t", tc.code, err, tc.wantError)
+		}
+	}
+	r := CloneRequest{Voice: VoiceRef{SpeakerID: "S_test"}, Audio: []byte{1}}
+	w, err := r.wire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Audio map[string]any `json:"audio"`
+	}
+	if err := json.Unmarshal(b, &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body.Audio["format"]; ok {
+		t.Fatal("unspecified format must be omitted")
+	}
+}
+
+func TestExplicitSlotMismatchPreservesResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Tt-Logid", "trace")
+		_, _ = w.Write([]byte(`{"speaker_id":"S_other","status":2}`))
+	}))
+	defer server.Close()
+	c, err := New(Config{APIKey: "test", Endpoint: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	ref := VoiceRef{SpeakerID: "S_test"}
+	check := func(r Result, err error) {
+		t.Helper()
+		if !speecherr.IsCode(err, speecherr.CodeProtocol) || r.SpeakerID != "S_other" || r.LogID != "trace" {
+			t.Fatalf("mismatch lost result or error: %+v %v", r, err)
+		}
+	}
+	check(c.Query(ctx, ref))
+	check(c.Clone(ctx, CloneRequest{Voice: ref, Audio: []byte{1}, Format: WAV}))
+	check(c.Design(ctx, DesignRequest{SpeakerID: "S_test", Text: "hello", TextPrompt: "calm"}))
+	if _, err := c.Query(ctx, VoiceRef{CustomSpeakerID: "StudioVoice_01"}); err != nil {
+		t.Fatalf("custom name resolution rejected: %v", err)
+	}
+}

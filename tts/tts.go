@@ -55,11 +55,13 @@ type Client interface {
 	StreamSynthesizer
 }
 
-// Stream yields consecutive slices of one synthesized audio bitstream.
+// Stream yields consecutive synthesized audio chunks.
 //
 // A single MP3, WAV, or Ogg Opus Chunk.Data is not necessarily a standalone
-// decodable file. Concatenate chunks in receive order, or feed them to a
-// streaming decoder. Chunk.Format identifies the audio encoding/rate/channels.
+// decodable file. Within one encoded audio bitstream, concatenate chunks in
+// receive order or feed them to a streaming decoder. Provider-native Flush
+// may produce separate encoded batches (e.g. Seed-TTS 3.0 MP3); use RecvEvent
+// to observe audio boundaries. Chunk.Format identifies encoding/rate/channels.
 // A stream supports one Recv caller; concurrent Recv calls are not supported.
 //
 // Recv returns io.EOF repeatedly after successful completion. After a

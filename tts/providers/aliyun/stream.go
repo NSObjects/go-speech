@@ -34,6 +34,7 @@ type Stream struct {
 	writeMu     sync.Mutex
 	inputClosed bool
 	textSent    bool
+	textRunes   int
 	finished    bool
 	audioSeen   bool
 	terminalMu  sync.Mutex
@@ -273,8 +274,12 @@ func (s *Stream) SendText(ctx context.Context, text string) error {
 	if s.inputClosed {
 		return tts.ErrInputClosed
 	}
-	if !utf8.ValidString(text) || strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > maxTextRunes {
+	count := utf8.RuneCountInString(text)
+	if !utf8.ValidString(text) || strings.TrimSpace(text) == "" || count > maxTextRunes {
 		return invalid("text fragment must contain 1–20000 valid UTF-8 characters")
+	}
+	if count > maxSessionTextRunes-s.textRunes {
+		return invalid("session text limit of 200000 characters exceeded")
 	}
 	if err := s.sendJSON(ctx, command("continue-task", s.taskID, map[string]any{
 		"input": map[string]any{"text": text},
@@ -282,6 +287,7 @@ func (s *Stream) SendText(ctx context.Context, text string) error {
 		return s.failWrite(err)
 	}
 	s.textSent = true
+	s.textRunes += count
 	return nil
 }
 
