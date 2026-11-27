@@ -202,3 +202,7 @@ go vet ./...
 ## License
 
 [Apache-2.0](LICENSE)
+
+## Offline capability queries and request validation
+
+Built-in clients implement optional `asr.CapabilityProvider` / `tts.CapabilityProvider` and `asr.ConfigValidator` / `tts.RequestValidator`. For example, `client.(asr.ConfigValidator).ValidateConfig(cfg)` validates a streaming configuration without a network request. For TTS, `ValidateRequest(req)` checks complete-text streaming/detailed requests, `ValidateSynthesize(req)` additionally checks audio-only batch restrictions, and `ValidateDuplex(req)` checks incremental-text configuration. The actual request paths reuse the same preparation logic. `Capabilities()` exposes local protocol paths, model/resource selection, coarse audio support, accepted text formats and native TTS controls. A successful local check is not a guarantee of account authorization, service availability or voice-specific support. No remote probing or automatic fallback occurs.

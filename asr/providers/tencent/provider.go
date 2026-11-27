@@ -143,31 +143,9 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	native, err := nativeOptions(req.Options)
+	effective, native, extra, hotwords, err := c.prepare(req)
 	if err != nil {
 		return nil, err
-	}
-	effective := *c
-	effective.cfg = c.cfg.withOverrides(native)
-	if err := validateSegmentation(effective.cfg); err != nil {
-		return nil, err
-	}
-	extra, hotwords, err := effective.cfg.requestOptions(req, native)
-	if err != nil {
-		return nil, err
-	}
-	if err := req.Format.Validate(); err != nil {
-		return nil, &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "tencent", Operation: "start", Err: err}
-	}
-	capability := SupportedAudio(c.cfg.EngineModel)
-	if c.cfg.InputSampleRate != 0 {
-		capability.SampleRates = []int{c.cfg.InputSampleRate}
-	}
-	if err := capability.Validate(req.Format); err != nil {
-		return nil, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "start", Err: err}
-	}
-	if req.Language != "" {
-		return nil, unsupportedError("language is selected by EngineModel; per-request Language is not supported")
 	}
 	voiceID, err := requestID()
 	if err != nil {

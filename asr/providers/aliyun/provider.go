@@ -110,19 +110,7 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	format, err := mapAudioFormat(cfg.Format)
-	if err != nil {
-		return nil, err
-	}
-	native, err := nativeOptions(cfg.Options)
-	if err != nil {
-		return nil, err
-	}
-	params, err := c.cfg.parameters(cfg, format)
-	if err != nil {
-		return nil, err
-	}
-	input, err := c.cfg.contextInput(native.Context)
+	params, input, err := c.prepare(cfg)
 	if err != nil {
 		return nil, err
 	}

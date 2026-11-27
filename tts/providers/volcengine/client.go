@@ -166,12 +166,8 @@ func (c *Client) endpoint(voice, operation string, socket bool) string {
 // Synthesize collects one complete bounded bitstream from the same HTTP
 // streaming implementation used by SynthesizeStream.
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
-	native, err := nativeOptions(req.Options)
-	if err != nil {
+	if err := c.validateBatchOptions(req); err != nil {
 		return audio.Buffer{}, err
-	}
-	if native.EnableSubtitle != nil && *native.EnableSubtitle {
-		return audio.Buffer{}, invalid("Synthesize returns audio only; use SynthesizeStream with RecvEvent for subtitles")
 	}
 	stream, err := c.SynthesizeStream(ctx, req)
 	if err != nil {

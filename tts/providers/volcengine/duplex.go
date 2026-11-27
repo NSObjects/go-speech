@@ -45,37 +45,11 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if c == nil {
-		return nil, invalid("nil client")
-	}
-	switch req.TextFormat {
-	case "", tts.TextPlain, tts.TextInlineTag:
-	case tts.TextSSML:
-		return nil, failure(speecherr.CodeUnsupported, "validate", tts.ErrUnsupportedTextFormat)
-	default:
-		return nil, invalid("unknown text format")
-	}
-	format, output, err := validateOutput(req.Voice, req.Format)
+	format, init, err := c.prepareDuplex(req)
 	if err != nil {
 		return nil, err
 	}
-	native, err := nativeOptions(req.Options)
-	if err != nil {
-		return nil, err
-	}
-	voice, err := buildVoiceSettings(req.Options, native)
-	if err != nil {
-		return nil, err
-	}
-	extra, err := advanced(native, &output, true)
-	if err != nil {
-		return nil, err
-	}
-	language := c.cfg.LanguageCode
-	if native.LanguageCode != "" {
-		language = native.LanguageCode
-	}
-	id := native.SessionID
+	id := init.SessionID
 	if id == "" {
 		var idBytes [16]byte
 		if _, err := rand.Read(idBytes[:]); err != nil {
@@ -116,11 +90,8 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 	}
 	d := &duplex{conn: conn}
 	d.stream = newStream(ctx, format, next, func() { _ = conn.Close() })
-	if err := d.initialize(startCtx, clientEvent{
-		Event: "init", SessionID: id, ModelID: c.cfg.ModelID,
-		LanguageCode: language, OutputFormat: &output, VoiceSettings: voice,
-		advancedRequest: extra,
-	}); err != nil {
+	init.SessionID = id
+	if err := d.initialize(startCtx, init); err != nil {
 		_ = d.Close()
 		return nil, err
 	}

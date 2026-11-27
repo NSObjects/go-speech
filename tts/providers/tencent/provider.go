@@ -157,20 +157,9 @@ func signedEndpoint(cfg Config, req tts.Request, codec, sessionID string, now ti
 		"Codec":      {codec},
 		"SampleRate": {strconv.Itoa(req.Format.SampleRate)},
 	}
-	voice, err := voiceQuery(req.Options)
+	voice, err := requestVoiceQuery(req)
 	if err != nil {
 		return "", err
-	}
-	fastVoice := voice.Get("FastVoiceType")
-	switch req.Voice {
-	case "200000000", "200000400":
-		if fastVoice == "" || strings.TrimSpace(fastVoice) != fastVoice {
-			return "", invalid("cloned VoiceType requires FastVoiceType")
-		}
-	default:
-		if fastVoice != "" {
-			return "", invalid("FastVoiceType requires VoiceType 200000000 or 200000400")
-		}
 	}
 	for key, values := range voice {
 		q[key] = values
@@ -199,7 +188,7 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, codec, err := validateRequest(req)
+	req, codec, err := c.prepareRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +234,7 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, codec, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options})
+	req, codec, err := c.prepareRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options})
 	if err != nil {
 		return nil, err
 	}
@@ -284,12 +273,8 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 }
 
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
-	q, err := voiceQuery(req.Options)
-	if err != nil {
+	if err := c.validateBatchOptions(req); err != nil {
 		return audio.Buffer{}, err
-	}
-	if q.Get("EnableSubtitle") == "true" {
-		return audio.Buffer{}, invalid("Synthesize returns audio only; use SynthesizeStream with RecvEvent for timestamps")
 	}
 	stream, err := c.SynthesizeStream(ctx, req)
 	if err != nil {

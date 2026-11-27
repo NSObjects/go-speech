@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -31,44 +30,7 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if c == nil || !validText(req.Text) {
-		return nil, invalid("client and 1–10000 UTF-8 characters required")
-	}
-	format, output, err := validateOutput(req.Voice, req.Format)
-	if err != nil {
-		return nil, err
-	}
-	native, err := nativeOptions(req.Options)
-	if err != nil {
-		return nil, err
-	}
-	voice, err := buildVoiceSettings(req.Options, native)
-	if err != nil {
-		return nil, err
-	}
-	extra, err := advanced(native, &output, false)
-	if err != nil {
-		return nil, err
-	}
-	language := c.cfg.LanguageCode
-	if native.LanguageCode != "" {
-		language = native.LanguageCode
-	}
-	body := synthesisRequest{
-		VoiceSettings: voice,
-		ModelID: c.cfg.ModelID, LanguageCode: language, OutputFormat: output,
-		SessionID: native.SessionID, SilenceDurationMS: native.SilenceDurationMS,
-		advancedRequest: extra,
-	}
-	switch req.TextFormat {
-	case "", tts.TextPlain, tts.TextInlineTag:
-		body.Text = req.Text
-	case tts.TextSSML:
-		body.SSML = req.Text
-	default:
-		return nil, invalid("unknown text format")
-	}
-	data, err := json.Marshal(body)
+	format, data, err := c.prepareRequest(req)
 	if err != nil {
 		return nil, err
 	}

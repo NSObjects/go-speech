@@ -158,11 +158,8 @@ func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Str
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, encoding, err := validateRequest(req)
+	req, encoding, err := c.prepareRequest(req)
 	if err != nil {
-		return nil, err
-	}
-	if err := validateVoiceOptions(req, c.cfg.Model); err != nil {
 		return nil, err
 	}
 	taskID, err := taskID()
@@ -208,14 +205,8 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if cfg.TextFormat == tts.TextSSML {
-		return nil, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "aliyun", Operation: "tts", Err: tts.ErrUnsupportedTextFormat}
-	}
-	req, encoding, err := validateRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options})
+	req, encoding, err := c.prepareDuplex(cfg)
 	if err != nil {
-		return nil, err
-	}
-	if err := validateVoiceOptions(req, c.cfg.Model); err != nil {
 		return nil, err
 	}
 	taskID, err := taskID()
@@ -256,12 +247,8 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 // Synthesize collects the same streaming synthesis into a complete buffer.
 // The 64 MiB cap prevents accidental unbounded memory usage by batch callers.
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
-	params, err := voiceParameters(req.Options)
-	if err != nil {
+	if err := c.validateBatchOptions(req); err != nil {
 		return audio.Buffer{}, err
-	}
-	if enabled, _ := params["word_timestamp_enabled"].(bool); enabled {
-		return audio.Buffer{}, invalid("Synthesize returns audio only; use SynthesizeStream with RecvEvent for timestamps")
 	}
 	s, err := c.SynthesizeStream(ctx, req)
 	if err != nil {
