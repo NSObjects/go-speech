@@ -9,6 +9,11 @@ import (
 	"github.com/NSObjects/go-speech/asr"
 )
 
+const (
+	minNoiseThreshold = -1
+	maxNoiseThreshold = 1
+)
+
 // Options overrides constructor settings for one recognition task. Nil
 // pointers and nil Vocabulary preserve the constructor defaults. An empty
 // non-nil Vocabulary clears the constructor's weighted vocabulary.
@@ -89,7 +94,7 @@ func (c Config) withOverrides(n Options, o asr.Options) Config {
 }
 
 func applyAdvanced(f modelFamily, model string, silence int, n Options, o asr.Options, language string, params map[string]any) error {
-	qwen := f == familyQwenStreaming || f == familyQwenMessage
+	qwen := f.supportsQwenControls()
 	para := f == familyParaformer
 	for _, field := range []struct {
 		key string
@@ -99,11 +104,11 @@ func applyAdvanced(f modelFamily, model string, silence int, n Options, o asr.Op
 		{"heartbeat", n.Heartbeat, true},
 		{"intermediate_result_enabled", n.IntermediateResults, f == familyQwenMessage},
 		{"keep_dialect", n.KeepDialect, qwen},
-		{"disfluency_removal_enabled", o.DisfluencyRemoval, f == familyQwenMessage || para},
+		{"disfluency_removal_enabled", o.DisfluencyRemoval, f.supportsDisfluency()},
 		{"punctuation_prediction_enabled", o.Punctuation, para},
 		{"inverse_text_normalization_enabled", o.TextNormalization, para},
 		{"semantic_punctuation_enabled", n.SemanticPunctuation, para},
-		{"multi_threshold_mode_enabled", n.MultiThresholdMode, f != familyQwenMessage},
+		{"multi_threshold_mode_enabled", n.MultiThresholdMode, f.supportsMultiThreshold()},
 	} {
 		if field.val != nil {
 			if !field.ok {
@@ -124,7 +129,7 @@ func applyAdvanced(f modelFamily, model string, silence int, n Options, o asr.Op
 		if para {
 			return unsupported("speech_noise_threshold is not documented for Paraformer")
 		}
-		if math.IsNaN(*v) || *v < -1 || *v > 1 {
+		if math.IsNaN(*v) || *v < minNoiseThreshold || *v > maxNoiseThreshold {
 			return badArgument("SpeechNoiseThreshold must be within [-1, 1]")
 		}
 		params["speech_noise_threshold"] = *v
@@ -144,7 +149,7 @@ func applyAdvanced(f modelFamily, model string, silence int, n Options, o asr.Op
 		params["language_hints"] = n.LanguageHints
 	}
 	if v := n.SensitiveWords; v != nil {
-		if f != familyQwenStreaming && f != familyFun {
+		if !f.supportsSensitiveWords() {
 			return unsupported("special_word_filter is not documented for this model")
 		}
 		if len(v.FilterWithSigned)+len(v.FilterWithEmpty) > 32 {
@@ -194,7 +199,7 @@ func (c Config) contextInput(messages []ContextMessage) (map[string]any, error) 
 	if err != nil {
 		return nil, err
 	}
-	if f == familyParaformer {
+	if !f.supportsContext() {
 		return nil, unsupported("context is not supported by Paraformer")
 	}
 	var wire []map[string]any
@@ -230,4 +235,24 @@ func (c Config) contextInput(messages []ContextMessage) (map[string]any, error) 
 	}
 	input["context"] = wire
 	return input, nil
+}
+
+func (f modelFamily) supportsQwenControls() bool {
+	return f == familyQwenStreaming || f == familyQwenMessage
+}
+
+func (f modelFamily) supportsDisfluency() bool {
+	return f == familyQwenMessage || f == familyParaformer
+}
+
+func (f modelFamily) supportsMultiThreshold() bool {
+	return f != familyQwenMessage
+}
+
+func (f modelFamily) supportsSensitiveWords() bool {
+	return f == familyQwenStreaming || f == familyFun
+}
+
+func (f modelFamily) supportsContext() bool {
+	return f != familyParaformer
 }

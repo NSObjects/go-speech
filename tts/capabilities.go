@@ -1,6 +1,9 @@
 package tts
 
-import "github.com/NSObjects/go-speech/audio"
+import (
+	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/capability"
+)
 
 // Capabilities describes the SDK's implemented protocol paths. It does not
 // confirm account entitlements or voice-level support. Audio is a coarse
@@ -22,6 +25,9 @@ type Capabilities struct {
 	// formats, not whether every model/voice interprets the markup.
 	CompleteTextFormats []TextFormat
 	DuplexTextFormats   []TextFormat
+
+	// Features describes selected advanced controls; absent entries are unknown.
+	Features capability.Features
 }
 
 // CapabilityProvider is optional on TTS clients.
@@ -37,3 +43,27 @@ type RequestValidator interface {
 	ValidateSynthesize(Request) error
 	ValidateDuplex(DuplexRequest) error
 }
+
+// Feature keys shared across provider capability snapshots.
+const (
+	FeatureSpeed             = "speed"
+	FeatureVolume            = "volume"
+	FeaturePitch             = "pitch"
+	FeatureEmotion           = "emotion"
+	FeatureInstruction       = "instruction"
+	FeatureAlignment         = "alignment"
+	FeaturePronunciation     = "pronunciation"
+	FeatureMarkdownFilter    = "markdown_filter"
+	FeatureTextNormalization = "text_normalization"
+	FeatureBitRate           = "bit_rate"
+	FeatureContext           = "context"
+	FeatureSeed              = "seed"
+	FeatureWatermark         = "watermark"
+	FeatureSilence           = "silence"
+	FeatureVoiceClone        = "voice_clone"
+	FeatureLatex             = "latex"
+	FeatureSegmentRate       = "segment_rate"
+	FeatureSimilarityBoost   = "similarity_boost"
+	FeatureDialectBoost      = "dialect_boost"
+	FeatureLanguage          = "language"
+)

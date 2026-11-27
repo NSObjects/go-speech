@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/NSObjects/go-speech/asr"
+	"github.com/NSObjects/go-speech/capability"
 	"github.com/NSObjects/go-speech/speecherr"
 )
 
@@ -20,7 +21,7 @@ func (c *Client) Capabilities() asr.Capabilities {
 	if c.cfg.InputSampleRate != 0 {
 		capability.SampleRates = []int{c.cfg.InputSampleRate}
 	}
-	return asr.Capabilities{Provider: "tencent", Model: c.cfg.EngineModel, Protocol: "asr/v2", Audio: capability, Batch: true, Streaming: true}
+	return asr.Capabilities{Provider: "tencent", Model: c.cfg.EngineModel, Protocol: "asr/v2", Audio: capability, Batch: true, Streaming: true, Features: c.features()}
 }
 
 func (c *Client) ValidateConfig(cfg asr.Config) error {
@@ -59,4 +60,38 @@ func (c *Client) prepare(req asr.Config) (Client, Options, url.Values, string, e
 		return Client{}, Options{}, nil, "", unsupportedError("language is selected by EngineModel; per-request Language is not supported")
 	}
 	return effective, native, extra, hotwords, nil
+}
+
+func (c *Client) features() capability.Features {
+	engine := c.cfg.EngineModel
+	wordModes := wordInfoModes(engine)
+	emotion := capability.Unsupported
+	if supportsEmotion(engine) {
+		emotion = capability.Unknown
+	}
+	return capability.Features{
+		asr.FeatureEmotion: {Status: emotion, Parameters: []capability.Parameter{{Field: "Options.Provider.EmotionRecognition", Kind: capability.Integer, IntValues: []int{0, 1, 2}}}, Notes: "Billable; requires NeedVAD. Response schema is undocumented; raw result preserved."},
+		asr.FeatureSpeechRate: {Status: capability.Unsupported},
+		asr.FeatureVolume: {Status: capability.Unsupported},
+		asr.FeatureLanguageDetection: {Status: capability.Unsupported},
+		asr.FeatureGenderDetection: {Status: capability.Unsupported},
+		asr.FeatureSpeakerDiarization: {Status: capability.FromBool(isSpeakerEngine(engine)), Notes: "Speaker ID returned by dedicated 2.0 engine."},
+		asr.FeatureSpeakerContext: {Status: capability.FromBool(isSpeakerEngine(engine)), Parameters: []capability.Parameter{{Field: "Options.Provider.EnableSpeakerContext", Kind: capability.Bool}, {Field: "Options.Provider.SpeakerContextID", Kind: capability.String}}},
+		asr.FeatureWordTimestamps: {Status: capability.FromBool(len(wordModes) != 0), Parameters: []capability.Parameter{{Field: "Options.Provider.WordInfo", Kind: capability.Integer, IntValues: wordModes}}},
+		asr.FeatureSegmentTimestamps: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.UtteranceDetails", Kind: capability.Bool}}},
+		asr.FeatureContext: {Status: capability.Unsupported},
+		asr.FeatureImageContext: {Status: capability.Unsupported},
+		asr.FeatureHotwords: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.HotwordID", Kind: capability.String}, {Field: "Options.Provider.Hotwords", Kind: capability.List}}, Notes: "HotwordID and temporary hotwords are mutually exclusive."},
+		asr.FeaturePunctuation: {Status: capability.Unsupported, Notes: "Use the narrower native filter_punctuation feature."},
+		"filter_punctuation": {Status: capability.FromBool(!isV2Engine(engine) && isMandarinEngine(engine)), Parameters: []capability.Parameter{{Field: "Options.Provider.FilterPunctuation", Kind: capability.Bool}}, Notes: "Sentence-final full stop only."},
+		asr.FeatureTextNormalization: {Status: capability.Unsupported, Notes: "Use the narrower native convert_numbers feature."},
+		"convert_numbers": {Status: capability.FromBool(isMandarinEngine(engine)), Parameters: []capability.Parameter{{Field: "Options.Provider.ConvertNumMode", Kind: capability.Integer, IntValues: []int{0, 1, 3}}}},
+		asr.FeatureDisfluencyRemoval: {Status: capability.FromBool(isMandarinEngine(engine)), Parameters: []capability.Parameter{{Field: "Options.DisfluencyRemoval", Kind: capability.Bool}, {Field: "Options.Provider.FilterModal", Kind: capability.Integer, IntValues: []int{0, 1, 2}}}, Notes: "Do not combine the two controls."},
+		asr.FeatureSemanticSegmentation: {Status: capability.Unsupported},
+		asr.FeatureSecondPass: {Status: capability.Unsupported},
+		asr.FeatureNoiseThreshold: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.NoiseThreshold", Kind: capability.Number, Unit: "native", Range: &capability.NumericRange{Min: minNoiseThreshold, Max: maxNoiseThreshold}}}},
+		asr.FeatureSensitiveWords: {Status: capability.FromBool(isMandarinEngine(engine)), Parameters: []capability.Parameter{{Field: "Options.Provider.FilterDirty", Kind: capability.Integer, IntValues: []int{0, 1, 2}}}},
+		asr.FeatureDialect: {Status: capability.Unsupported},
+		asr.FeatureAccelerate: {Status: capability.Unsupported},
+	}
 }

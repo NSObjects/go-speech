@@ -3,11 +3,17 @@ package tencent
 import (
 	"math"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/NSObjects/go-speech/asr"
+)
+
+const (
+	minNoiseThreshold = -2
+	maxNoiseThreshold = 2
 )
 
 // Options provides native request-local controls. Nil pointers preserve defaults.
@@ -81,9 +87,9 @@ func enabledEmotion(n Options) bool {
 func (c Config) requestOptions(req asr.Config, n Options) (url.Values, string, error) {
 	q := make(url.Values)
 	engine := c.EngineModel
-	v2 := engine == "16k_zh_en_2.0" || engine == "16k_zh_en_speaker_2.0"
-	speaker := engine == "16k_zh_en_speaker_2.0"
-	mandarin := v2 || engine == "8k_zh" || engine == "8k_zh_large" || engine == "8k_zh_finance" || engine == "16k_zh" || engine == "16k_zh_en"
+	v2 := isV2Engine(engine)
+	speaker := isSpeakerEngine(engine)
+	mandarin := isMandarinEngine(engine)
 	if req.Options.Punctuation != nil || req.Options.TextNormalization != nil {
 		return nil, "", unsupportedError("use FilterPunctuation and ConvertNumMode for Tencent's narrower native controls")
 	}
@@ -171,7 +177,7 @@ func (c Config) requestOptions(req asr.Config, n Options) (url.Values, string, e
 		}
 	}
 	if n.NoiseThreshold != nil {
-		if math.IsNaN(*n.NoiseThreshold) || *n.NoiseThreshold < -2 || *n.NoiseThreshold > 2 {
+		if math.IsNaN(*n.NoiseThreshold) || *n.NoiseThreshold < minNoiseThreshold || *n.NoiseThreshold > maxNoiseThreshold {
 			return nil, "", requestError("NoiseThreshold must be within [-2, 2]")
 		}
 		q.Set("noise_threshold", strconv.FormatFloat(*n.NoiseThreshold, 'f', -1, 64))
@@ -181,12 +187,11 @@ func (c Config) requestOptions(req asr.Config, n Options) (url.Values, string, e
 		if mode != 0 && mode != 1 && mode != 2 && mode != 100 {
 			return nil, "", requestError("WordInfo must be 0, 1, 2 or 100")
 		}
-		switch engine {
-		case "8k_en", "8k_zh", "8k_zh_finance", "16k_zh_en", "16k_zh", "16k_en", "16k_ca", "16k_zh-TW", "16k_ja", "8k_zh_large":
-		default:
+		modes := wordInfoModes(engine)
+		if len(modes) == 0 {
 			return nil, "", unsupportedError("WordInfo is not documented for this engine")
 		}
-		if mode == 100 && engine != "16k_zh_en" {
+		if !slices.Contains(modes, mode) {
 			return nil, "", unsupportedError("WordInfo=100 requires 16k_zh_en")
 		}
 		q.Set("word_info", strconv.Itoa(mode))
@@ -195,9 +200,7 @@ func (c Config) requestOptions(req asr.Config, n Options) (url.Values, string, e
 		if *n.EmotionRecognition < 0 || *n.EmotionRecognition > 2 {
 			return nil, "", requestError("EmotionRecognition must be 0, 1 or 2")
 		}
-		switch engine {
-		case "16k_zh", "16k_zh_en", "8k_zh", "8k_zh_large":
-		default:
+		if !supportsEmotion(engine) {
 			return nil, "", unsupportedError("EmotionRecognition is not documented for this engine")
 		}
 		if enabledEmotion(n) && !c.NeedVAD {
@@ -262,4 +265,36 @@ func weightedHints(engine string, hints []string, native []Hotword) (string, err
 		out = append(out, h.Word+"|"+strconv.Itoa(h.Weight))
 	}
 	return strings.Join(out, ","), nil
+}
+
+func isSpeakerEngine(engine string) bool {
+	return engine == "16k_zh_en_speaker_2.0"
+}
+
+func isV2Engine(engine string) bool {
+	return engine == "16k_zh_en_2.0" || isSpeakerEngine(engine)
+}
+
+func isMandarinEngine(engine string) bool {
+	return isV2Engine(engine) || engine == "8k_zh" || engine == "8k_zh_large" || engine == "8k_zh_finance" || engine == "16k_zh" || engine == "16k_zh_en"
+}
+
+func wordInfoModes(engine string) []int {
+	switch engine {
+	case "16k_zh_en":
+		return []int{0, 1, 2, 100}
+	case "8k_en", "8k_zh", "8k_zh_finance", "16k_zh", "16k_en", "16k_ca", "16k_zh-TW", "16k_ja", "8k_zh_large":
+		return []int{0, 1, 2}
+	default:
+		return nil
+	}
+}
+
+func supportsEmotion(engine string) bool {
+	switch engine {
+	case "16k_zh", "16k_zh_en", "8k_zh", "8k_zh_large":
+		return true
+	default:
+		return false
+	}
 }

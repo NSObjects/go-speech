@@ -2,9 +2,21 @@ package aliyun
 
 import (
 	"math"
+	"slices"
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/tts"
+)
+
+const (
+	minMultiplier = 0.5
+	maxMultiplier = 2
+	minVolume = 0
+	maxVolume = 100
+	minSeed = 0
+	maxSeed = 65535
+	minBitRate = 6
+	maxBitRate = 510
 )
 
 // Options uses native CosyVoice units: volume 0–100, pitch 0.5–2,
@@ -46,20 +58,20 @@ func voiceParameters(o tts.Options) (map[string]any, error) {
 	params := make(map[string]any)
 	for key, v := range map[string]*float64{"rate": o.Speed, "pitch": native.Pitch} {
 		if v != nil {
-			if math.IsNaN(*v) || *v < 0.5 || *v > 2 {
+			if math.IsNaN(*v) || *v < minMultiplier || *v > maxMultiplier {
 				return nil, invalid("rate and pitch must be within [0.5, 2]")
 			}
 			params[key] = *v
 		}
 	}
 	if native.Volume != nil {
-		if *native.Volume < 0 || *native.Volume > 100 {
+		if *native.Volume < minVolume || *native.Volume > maxVolume {
 			return nil, invalid("volume must be within [0, 100]")
 		}
 		params["volume"] = *native.Volume
 	}
 	if native.Seed != nil {
-		if *native.Seed < 0 || *native.Seed > 65535 {
+		if *native.Seed < minSeed || *native.Seed > maxSeed {
 			return nil, invalid("seed must be within [0, 65535]")
 		}
 		params["seed"] = *native.Seed
@@ -71,15 +83,13 @@ func voiceParameters(o tts.Options) (map[string]any, error) {
 		params["word_timestamp_enabled"] = *native.WordTimestampEnabled
 	}
 	if native.BitRateKbps != 0 {
-		if native.BitRateKbps < 6 || native.BitRateKbps > 510 {
+		if native.BitRateKbps < minBitRate || native.BitRateKbps > maxBitRate {
 			return nil, invalid("bit rate must be within [6, 510] kbps")
 		}
 		params["bit_rate"] = native.BitRateKbps
 	}
 	if native.LanguageHint != "" {
-		switch native.LanguageHint {
-		case "zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar":
-		default:
+		if !slices.Contains(languageHints(), native.LanguageHint) {
 			return nil, invalid("unsupported language hint")
 		}
 		params["language_hints"] = []string{native.LanguageHint}
@@ -112,18 +122,33 @@ func validateVoiceOptions(req tts.Request, model string) error {
 	if _, ok := params["bit_rate"]; ok && req.Format.Encoding != audio.EncodingMP3 && req.Format.Encoding != audio.EncodingOpus {
 		return invalid("bit rate requires MP3 or Ogg Opus")
 	}
-	if enabled, _ := params["enable_markdown_filter"].(bool); enabled && model == "cosyvoice-v2" {
+	if enabled, _ := params["enable_markdown_filter"].(bool); enabled && !supportsMarkdownFilter(model) {
 		return unsupported("Markdown filtering is not supported by cosyvoice-v2")
 	}
 	if enabled, _ := params["enable_aigc_tag"].(bool); enabled {
 		if req.Format.Encoding == audio.EncodingPCM16LE {
 			return invalid("AIGC tagging requires WAV, MP3 or Ogg Opus")
 		}
-		switch model {
-		case "cosyvoice-v3-flash", "cosyvoice-v3-plus", "cosyvoice-v2":
-		default:
+		if !supportsAIGCTag(model) {
 			return unsupported("AIGC tagging is not documented for the selected model")
 		}
 	}
 	return nil
+}
+
+func supportsAIGCTag(model string) bool {
+	switch model {
+	case "cosyvoice-v3-flash", "cosyvoice-v3-plus", "cosyvoice-v2":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsMarkdownFilter(model string) bool {
+	return model != "cosyvoice-v2"
+}
+
+func languageHints() []string {
+	return []string{"zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar"}
 }

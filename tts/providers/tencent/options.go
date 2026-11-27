@@ -10,6 +10,17 @@ import (
 	"github.com/NSObjects/go-speech/tts"
 )
 
+const (
+	minSpeed = -2
+	maxSpeed = 6
+	minVolume = -10
+	maxVolume = 10
+	minEmotionIntensity = 50
+	maxEmotionIntensity = 200
+	minSegmentRate = 0
+	maxSegmentRate = 2
+)
+
 // Options uses native Tencent WSv2 units. Speed is the vendor scale
 // [-2, 6], not a multiplier. Volume is on the vendor scale [-10, 10].
 type Options struct {
@@ -47,13 +58,13 @@ func voiceQuery(o tts.Options) (url.Values, error) {
 	}
 	q := make(url.Values)
 	if v := native.Speed; v != nil {
-		if math.IsNaN(*v) || *v < -2 || *v > 6 {
+		if math.IsNaN(*v) || *v < minSpeed || *v > maxSpeed {
 			return nil, invalid("native speed must be within [-2, 6]")
 		}
 		q.Set("Speed", strconv.FormatFloat(*v, 'f', -1, 64))
 	}
 	if v := native.Volume; v != nil {
-		if math.IsNaN(*v) || *v < -10 || *v > 10 {
+		if math.IsNaN(*v) || *v < minVolume || *v > maxVolume {
 			return nil, invalid("volume must be within [-10, 10]")
 		}
 		q.Set("Volume", strconv.FormatFloat(*v, 'f', -1, 64))
@@ -62,13 +73,13 @@ func voiceQuery(o tts.Options) (url.Values, error) {
 		q.Set("EmotionCategory", native.EmotionCategory)
 	}
 	if v := native.EmotionIntensity; v != nil {
-		if native.EmotionCategory == "" || *v < 50 || *v > 200 {
+		if native.EmotionCategory == "" || *v < minEmotionIntensity || *v > maxEmotionIntensity {
 			return nil, invalid("emotion intensity requires a category and must be within [50, 200]")
 		}
 		q.Set("EmotionIntensity", strconv.Itoa(*v))
 	}
 	if v := native.SegmentRate; v != nil {
-		if *v < 0 || *v > 2 {
+		if *v < minSegmentRate || *v > maxSegmentRate {
 			return nil, invalid("segment rate must be within [0, 2]")
 		}
 		q.Set("SegmentRate", strconv.Itoa(*v))

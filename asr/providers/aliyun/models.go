@@ -62,11 +62,11 @@ func (c Config) parameters(cfg asr.Config, format string) (map[string]any, error
 	if c.MaxSentenceSilenceMs != 0 && (c.MaxSentenceSilenceMs < 200 || c.MaxSentenceSilenceMs > 6000) {
 		return nil, badArgument("MaxSentenceSilenceMs must be between 200 and 6000")
 	}
-	if c.KeepDialect && family != familyQwenStreaming && family != familyQwenMessage {
+	if c.KeepDialect && !family.supportsQwenControls() {
 		return nil, unsupported("KeepDialect only supports Qwen-Audio 3.1")
 	}
 	if c.VADModel != "" {
-		if family != familyQwenStreaming && family != familyQwenMessage {
+		if !family.supportsQwenControls() {
 			return nil, unsupported("VADModel only supports Qwen-Audio 3.1")
 		}
 		if c.VADModel != "near_meeting_16k" && c.VADModel != "far_field_meeting_16k" {
@@ -76,13 +76,13 @@ func (c Config) parameters(cfg asr.Config, format string) (map[string]any, error
 	if c.IntermediateResults && family != familyQwenMessage {
 		return nil, unsupported("IntermediateResults only supports Qwen-Audio 3.1 Message")
 	}
-	if c.DisfluencyRemoval && family != familyQwenMessage && family != familyParaformer {
+	if c.DisfluencyRemoval && !family.supportsDisfluency() {
 		return nil, unsupported("DisfluencyRemoval is not supported by this model")
 	}
-	if len(c.Vocabulary) > 0 && family != familyQwenStreaming && family != familyQwenMessage {
+	if len(c.Vocabulary) > 0 && !family.supportsQwenControls() {
 		return nil, unsupported("instant Vocabulary only supports Qwen-Audio 3.1")
 	}
-	if len(cfg.Hints) > 0 && family != familyQwenStreaming && family != familyQwenMessage {
+	if len(cfg.Hints) > 0 && !family.supportsQwenControls() {
 		return nil, unsupported("ASR Hints require Qwen-Audio 3.1; use VocabularyID for other models")
 	}
 	params := map[string]any{"format": format, "sample_rate": sampleRate}
@@ -114,7 +114,7 @@ func (c Config) parameters(cfg asr.Config, format string) (map[string]any, error
 	if c.DisfluencyRemoval {
 		params["disfluency_removal_enabled"] = true
 	}
-	if family == familyQwenStreaming || family == familyQwenMessage {
+	if family.supportsQwenControls() {
 		vocabulary := make(map[string]int, len(cfg.Hints)+len(c.Vocabulary))
 		for _, hint := range cfg.Hints {
 			if strings.TrimSpace(hint) == "" {
