@@ -201,3 +201,23 @@ func TestRecognizeStreamErrors(t *testing.T) {
 		}
 	})
 }
+
+func TestRecognizePreservesEmptyFinalMetadata(t *testing.T) {
+	s := newFakeStream()
+	s.events <- Event{Type: EventFinal, Text: "你好", Language: "zh", Utterance: &Utterance{ID: "a", Text: "你好"}}
+	s.events <- Event{Type: EventFinal, Language: "en", Utterance: &Utterance{ID: "b", Definite: true}}
+	s.events <- Event{Type: EventUtteranceUpdate, Utterance: &Utterance{ID: "b", Definite: true, Emotion: "neutral"}}
+	s.events <- Event{Type: EventFinal}
+	s.events <- Event{Type: EventFinal, Text: "再见", Utterance: &Utterance{Text: "再见"}}
+	got, err := RecognizeStream(context.Background(), &fakeShortRecognizer{stream: s}, validBuffer(2), Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Text != "你好再见" || got.Language != "zh" || len(got.Utterances) != 3 {
+		t.Fatalf("unexpected result: %+v", got)
+	}
+	empty := got.Utterances[1]
+	if empty.ID != "b" || empty.Text != "" || !empty.Definite || empty.Emotion != "neutral" {
+		t.Fatalf("empty final metadata lost: %+v", empty)
+	}
+}

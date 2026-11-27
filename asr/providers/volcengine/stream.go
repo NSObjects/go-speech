@@ -276,11 +276,6 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				}
 				continue
 			}
-			// A definite utterance supersedes a provisional hypothesis
-			// seen earlier in this response, even when the provider lists
-			// the provisional entry before the confirmed entry.
-			partial = ""
-			partialDetails = nil
 			// A finalized utterance is identified by its time interval, not by
 			// transcript text. Full snapshots may revise punctuation or
 			// spelling for an already emitted interval; EventFinal is
@@ -297,6 +292,11 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				}
 				continue
 			}
+			// Only a new final supersedes the provisional hypothesis.
+			// A replay of an older final (including a metadata update)
+			// must not discard a newer partial in this response.
+			partial = ""
+			partialDetails = nil
 			s.finalSeen[key] = struct{}{}
 			e := asr.Event{Type: asr.EventFinal, Text: u.Text}
 			if s.details {
@@ -326,7 +326,7 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 	if partial != "" && partial != s.pendingText {
 		// Never emit a provisional event after the terminal response.
 		if !last {
-			s.queue = append(s.queue, detailedEvent(asr.EventPartial, partial, partialDetails))
+			s.queue = append(s.queue, detailedEvent(asr.EventPartial, partial, cloneUtterance(partialDetails)))
 		}
 		s.pendingText = partial
 		s.pendingDetails = partialDetails
