@@ -3,12 +3,14 @@ package tencent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 )
 
@@ -70,5 +72,55 @@ func TestHTTPRejectInvalidResponse(t *testing.T) {
 		if _, err := decodeHTTPResult([]byte(raw), 200, "session", f); err == nil {
 			t.Fatal("malformed response accepted")
 		}
+	}
+}
+
+func TestHTTPNativeErrorClassification(t *testing.T) {
+	for _, tc := range []struct {
+		remote string
+		want   speecherr.Code
+	}{
+		{"AuthFailure.InvalidAuthorization", speecherr.CodeUnauthorized},
+		{"InvalidParameterValue.AppIdNotRegistered", speecherr.CodeUnauthorized},
+		{"InvalidParameterValue.SSMLInvalid", speecherr.CodeInvalidArgument},
+		{"UnsupportedOperation.TextTooLong", speecherr.CodeInvalidArgument},
+		{"UnsupportedOperation.PkgExhausted", speecherr.CodeRateLimited},
+		{"UnsupportedOperation.NoFreeAccount", speecherr.CodeRateLimited},
+		{"UnsupportedOperation.AccountArrears", speecherr.CodeRateLimited},
+		{"LimitExceeded.AccessLimit", speecherr.CodeRateLimited},
+		{"InternalError.ExceedMaxLimit", speecherr.CodeRateLimited},
+		{"InternalError.NoResource", speecherr.CodeUnavailable},
+		{"UnsupportedOperation", speecherr.CodeUnsupported},
+	} {
+		t.Run(tc.remote, func(t *testing.T) {
+			raw, err := json.Marshal(map[string]any{"Response": map[string]any{
+				"RequestId": "trace", "Error": map[string]string{"Code": tc.remote, "Message": "test"},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = decodeHTTPResult(raw, http.StatusOK, "session", audio.Format{})
+			var e *speecherr.Error
+			if !speecherr.IsCode(err, tc.want) || !errors.As(err, &e) || e.RemoteCode != tc.remote || e.Retryable {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestHTTPTextLimitsAndFormats(t *testing.T) {
+	req := tts.Request{Voice: "101001", Text: strings.Repeat("a", 501)}
+	if _, _, err := prepareHTTP(req, false); !speecherr.IsCode(err, speecherr.CodeInvalidArgument) {
+		t.Fatalf("ASCII limit = %v", err)
+	}
+	// Mixed-language counting belongs to the service; never infer it from
+	// the number of non-ASCII runes (accented English is not Chinese).
+	req.Text = strings.Repeat("é", 151)
+	if _, _, err := prepareHTTP(req, false); err != nil {
+		t.Fatalf("mixed text rejected locally: %v", err)
+	}
+	req.TextFormat = tts.TextInlineTag
+	if _, _, err := prepareHTTP(req, false); !errors.Is(err, tts.ErrUnsupportedTextFormat) {
+		t.Fatalf("inline tag = %v", err)
 	}
 }

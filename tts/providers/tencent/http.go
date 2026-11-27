@@ -55,7 +55,7 @@ type HTTPClient struct {
 }
 
 var (
-	_ tts.Synthesizer       = (*HTTPClient)(nil)
+	_ tts.Synthesizer        = (*HTTPClient)(nil)
 	_ tts.CapabilityProvider = (*HTTPClient)(nil)
 )
 
@@ -136,23 +136,12 @@ func prepareHTTP(req tts.Request, detailed bool) (httpRequest, audio.Format, err
 	default:
 		return p, f, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "tencent", Operation: "TextToVoice", Err: tts.ErrUnsupportedTextFormat}
 	}
-	// The service defines separate Chinese/English limits, but not mixed
-	// text or SSML counting rules. Enforce unambiguous plain-text bounds,
-	// and let the service validate its native markup and mixed-text limits.
-	if req.TextFormat != tts.TextSSML {
-		n := utf8.RuneCountInString(req.Text)
-		if n > 500 {
-			return p, f, invalid("plain text exceeds 500 characters")
-		}
-		nonASCII := 0
-		for _, ch := range req.Text {
-			if ch > 127 {
-				nonASCII++
-			}
-		}
-		if nonASCII > 150 {
-			return p, f, invalid("plain text exceeds 150 non-ASCII characters")
-		}
+	// The provider documents different Chinese and English limits but no
+	// mixed-text or SSML counting algorithm. Do not guess from UTF-8 bytes.
+	// For plain ASCII the English limit is unambiguous; otherwise delegate
+	// language-specific counting to the provider.
+	if req.TextFormat != tts.TextSSML && len(req.Text) == utf8.RuneCountInString(req.Text) && len(req.Text) > 500 {
+		return p, f, invalid("plain ASCII text exceeds 500 characters")
 	}
 	if len(req.Text) > 64<<10 {
 		return p, f, invalid("Text exceeds SDK request limit")
@@ -301,6 +290,9 @@ func (c *HTTPClient) synthesize(ctx context.Context, req tts.Request, detailed b
 	if len(raw) > maxHTTPResponse {
 		return HTTPResult{}, protocol("HTTP synthesis response exceeds limit")
 	}
+	if err := ctx.Err(); err != nil {
+		return HTTPResult{}, err
+	}
 	return decodeHTTPResult(raw, resp.StatusCode, p.SessionID, f)
 }
 
@@ -336,12 +328,23 @@ func decodeHTTPResult(raw []byte, status int, session string, f audio.Format) (H
 			}
 		}
 		switch {
-		case strings.HasPrefix(remote, "AuthFailure"), strings.HasPrefix(remote, "UnauthorizedOperation"):
+		case strings.HasPrefix(remote, "AuthFailure"), strings.HasPrefix(remote, "UnauthorizedOperation"),
+			remote == "UnsupportedOperation.AuthorizationExpired", remote == "UnsupportedOperation.AuthorizationFailed",
+			remote == "UnsupportedOperation.ForbiddenUse", remote == "UnsupportedOperation.ServerNotOpen",
+			remote == "InvalidParameterValue.AppIdNotRegistered":
 			code = speecherr.CodeUnauthorized
-		case strings.HasPrefix(remote, "RequestLimitExceeded"):
+		case strings.HasPrefix(remote, "RequestLimitExceeded"), strings.HasPrefix(remote, "LimitExceeded"),
+			remote == "InternalError.ExceedMaxLimit", remote == "UnsupportedOperation.AccountArrears",
+			remote == "UnsupportedOperation.NoFreeAccount", remote == "UnsupportedOperation.PkgExhausted":
 			code = speecherr.CodeRateLimited
-		case strings.HasPrefix(remote, "InvalidParameter"), strings.HasPrefix(remote, "MissingParameter"):
+		case strings.HasPrefix(remote, "InvalidParameter"), strings.HasPrefix(remote, "MissingParameter"),
+			remote == "UnsupportedOperation.TextTooLong":
 			code = speecherr.CodeInvalidArgument
+		case remote == "InternalError.NoResource", remote == "InternalError.ErrorGetRoute",
+			remote == "UnsupportedOperation.ServerStopped", remote == "UnsupportedOperation.ServerDestoryed":
+			code = speecherr.CodeUnavailable
+		case remote == "UnsupportedOperation":
+			code = speecherr.CodeUnsupported
 		case status == http.StatusOK:
 			code = speecherr.CodeInternal
 		}

@@ -77,7 +77,7 @@ Use `NewHTTP(HTTPConfig{SecretID: id, SecretKey: key})` for the Cloud API
 or duplex; register it as `tts.Provider.Batch` independently of WSv2.
 The default is mono 16 kHz WAV. PCM and MP3 are also native options.
 Use `tts.TextSSML` to pass supported markup unchanged; voice-specific
-restrictions and text-length limits apply. No fallback or local text splitting.
+restrictions and text-length limits apply (150 Chinese characters or 500 English letters per official protocol; the service decides mixed text and SSML limits). No fallback or local text splitting. Cloud error codes are retained, including entitlement, resource-pack exhaustion and request limits.
 
 ```go
 c, err := tencent.NewHTTP(tencent.HTTPConfig{
