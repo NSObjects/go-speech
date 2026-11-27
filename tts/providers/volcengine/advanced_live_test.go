@@ -72,10 +72,12 @@ func TestVolcengineLiveAdvanced(t *testing.T) {
 	t.Run("inline_tag_and_flush", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
 		defer cancel()
+		start := time.Now()
 		s, err := c.OpenDuplex(ctx, tts.DuplexRequest{Voice: voice, Format: format, TextFormat: tts.TextInlineTag})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("OpenDuplex elapsed=%s: %v", time.Since(start), err)
 		}
+		t.Logf("WebSocket connected and ready in %s", time.Since(start))
 		defer s.Close()
 		reader := s.(tts.EventReceiver)
 		if err := s.SendText(ctx, "[happy]我们终于成功了！"); err != nil {

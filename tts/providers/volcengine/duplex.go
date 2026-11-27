@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -69,13 +71,16 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
 		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if startCtx.Err() != nil {
-			return nil, startCtx.Err()
+			return nil, startFailure(ctx, startCtx, "connect", err)
 		}
 		if response != nil {
 			return nil, httpFailure(response.StatusCode)
 		}
-		return nil, failure(speecherr.CodeUnavailable, "connect", err)
+		return nil, startFailure(ctx, startCtx, "connect", err)
 	}
 	conn.SetReadLimit(maxEventBytes)
 	next := func() (event, error) {
@@ -91,25 +96,46 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 	d := &duplex{conn: conn}
 	d.stream = newStream(ctx, format, next, func() { _ = conn.Close() })
 	init.SessionID = id
-	if err := d.initialize(startCtx, init); err != nil {
+	if err := d.initialize(ctx, startCtx, init); err != nil {
 		_ = d.Close()
 		return nil, err
 	}
 	return d, nil
 }
 
-func (d *duplex) initialize(ctx context.Context, init clientEvent) error {
+// startFailure distinguishes a caller cancellation from the SDK's startup
+// budget and identifies the failing protocol phase without exposing payloads.
+// It never retries an attempted connection or initialization.
+func startFailure(parent, startup context.Context, phase string, err error) error {
+	if cause := parent.Err(); cause != nil {
+		return cause
+	}
+	if cause := startup.Err(); cause != nil {
+		if errors.Is(cause, context.DeadlineExceeded) {
+			return failure(speecherr.CodeTimeout, phase, cause)
+		}
+		return cause
+	}
+	var ne net.Error
+	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &ne) && ne.Timeout() {
+		return failure(speecherr.CodeTimeout, phase, err)
+	}
+	return failure(speecherr.CodeUnavailable, phase, err)
+}
+
+func (d *duplex) initialize(parent, ctx context.Context, init clientEvent) error {
 	stop := context.AfterFunc(ctx, func() { _ = d.terminate(ctx.Err()) })
 	defer stop()
 	if err := d.send(ctx, init); err != nil {
-		return err
+		return startFailure(parent, ctx, "init_send", err)
 	}
 	e, err := d.next()
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if err != nil {
-		return err
+	if ctx.Err() != nil || err != nil {
+		var classified *speecherr.Error
+		if ctx.Err() == nil && errors.As(err, &classified) && classified.Code == speecherr.CodeProtocol {
+			return err
+		}
+		return startFailure(parent, ctx, "await_ready", err)
 	}
 	if e.Event == "error" {
 		return e.failure()
