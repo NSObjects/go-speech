@@ -12,6 +12,8 @@ var ErrSynthesisCanceled = errors.New("tts: synthesis canceled")
 // Flusher submits buffered input without closing the text input. A nil
 // error means the command was sent, not that synthesis has completed.
 // The provider may report completion through EventBatchCompleted.
+// Encoded output may have an independent header per batch. See the provider
+// contract; use RecvEvent to preserve batch boundaries when needed.
 type Flusher interface {
 	Flush(ctx context.Context) error
 }

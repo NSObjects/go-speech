@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
 )
@@ -74,6 +76,31 @@ func TestDuplexIncrementalText(t *testing.T) {
 	if err := stream.SendText(ctx, "世界"); err != nil {
 		t.Fatal(err)
 	}
+	// Two 2-rune fragments were already sent. Fill the remaining session
+	// budget in valid increments; an overflowing fragment must not be sent
+	// or consume budget, and the caller may continue with a smaller one.
+	left := maxTextRunes - 4
+	for left > maxTextRunes {
+		if err := stream.SendText(ctx, strings.Repeat("界", maxTextRunes)); err != nil {
+			t.Fatal(err)
+		}
+		left -= maxTextRunes
+	}
+	if err := stream.SendText(ctx, strings.Repeat("界", left-1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.SendText(ctx, "多余"); !speecherr.IsCode(err, speecherr.CodeInvalidArgument) {
+		t.Fatalf("overflow accepted: %v", err)
+	}
+	if err := stream.SendText(ctx, "终"); err != nil {
+		t.Fatalf("rejected fragment consumed budget: %v", err)
+	}
+	if err := stream.(tts.Resetter).Reset(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.SendText(ctx, "多"); !speecherr.IsCode(err, speecherr.CodeInvalidArgument) {
+		t.Fatalf("session budget exceeded: %v", err)
+	}
 	if err := stream.CloseSend(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +111,17 @@ func TestDuplexIncrementalText(t *testing.T) {
 		t.Fatalf("expected EOF, got %v", err)
 	}
 	got := <-received
-	if len(got) != 2 || got[0] != "你好" || got[1] != "世界" {
-		t.Fatalf("fragments: %q", got)
+	if len(got) < 4 || got[0] != "你好" || got[1] != "世界" || got[len(got)-1] != "终" {
+		t.Fatal("unexpected transmitted fragment sequence")
+	}
+	count := 0
+	for _, part := range got {
+		count += utf8.RuneCountInString(part)
+		if strings.Contains(part, "多") {
+			t.Fatal("rejected fragment reached the server")
+		}
+	}
+	if count != maxTextRunes {
+		t.Fatalf("transmitted characters = %d, want %d", count, maxTextRunes)
 	}
 }

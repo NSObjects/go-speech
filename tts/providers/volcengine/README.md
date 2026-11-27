@@ -30,4 +30,4 @@ Set `volcengine.Options.EnableSubtitle` to true on a streaming or duplex request
 
 ## Native flow control
 
-Duplex streams implement `tts.Flusher`. Flush submits a batch without closing input; `EventBatchCompleted` is observable in event mode. The documented interrupt command is not exposed yet because the protocol does not define the subsequent session lifecycle. Use Close for local termination; the SDK does not emulate interruption or reopen sessions.
+Duplex streams implement `tts.Flusher`. Flush submits a batch without closing input; `EventBatchCompleted` is observable in event mode. For MP3, each flushed batch has its own file header. Use `RecvEvent` and separate the audio bytes at `EventBatchCompleted`; do not treat the concatenated batches as one encoded file. Alignment events can arrive after the batch's audio boundary. The documented interrupt command is not exposed yet because the protocol does not define the subsequent session lifecycle. Use Close for local termination; the SDK does not emulate interruption or reopen sessions.

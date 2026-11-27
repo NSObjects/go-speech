@@ -21,8 +21,11 @@ CosyVoice WebSocket task protocol.
   `audio.EncodingOpus` means Ogg-encapsulated Opus, not raw Opus packets.
   The actual codec, framing and decoding for the 24 kHz Ogg Opus path
   are checked in the paid live cloud CI. No transcoding is performed.
-- A fresh WebSocket is created per synthesis. Multi-turn persistent
-  connection reuse and incremental text input are **not** implemented.
+- `OpenDuplex` accepts incremental text using successive `SendText` calls.
+  Each message is limited to 20,000 characters and the task to 200,000
+  characters in total. The documented idle interval between sends is
+  at most 23 seconds. Each task currently owns a fresh WebSocket; reuse
+  across independent tasks is not implemented.
 - Audio does not go to the user's speaker and is not tied to devices or agents.
 
 ```go
