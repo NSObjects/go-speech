@@ -36,6 +36,7 @@ type Stream struct {
 
 	finished       bool                // readMu
 	terminalErr    error               // terminalMu
+	terminalSuccess bool // terminalMu: provider completion cannot be overwritten
 	queue          []asr.Event         // readMu
 	resultType     string              // immutable
 	pendingDetails *asr.Utterance      // readMu
@@ -57,6 +58,7 @@ func newStream(conn *websocket.Conn, parent context.Context, resultType string) 
 	go func() {
 		select {
 		case <-parent.Done():
+			_ = s.fail(parent.Err())
 			_ = s.Close()
 		case <-s.done:
 		}
@@ -68,6 +70,7 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
+	_ = s.recordFailure(s.closedError(context.Background()))
 	// Unblock the receiver before acquiring its lock. Recv itself uses
 	// closeTransport to avoid reentering readMu.
 	s.closeTransport()
@@ -117,7 +120,7 @@ func (s *Stream) writeFrame(ctx context.Context, frame []byte) error {
 	if s.closed() {
 		return asr.ErrStreamClosed
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(defaultWriteTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -233,7 +236,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		if s.finished {
 			return asr.Event{}, io.EOF
 		}
-		stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+		stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 		var deadline time.Time
 		if d, ok := ctx.Deadline(); ok {
 			deadline = d
@@ -244,6 +247,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		typ, data, readErr := s.conn.ReadMessage()
 		stop()
+		if cause := s.terminalFailure(); cause != nil {
+			return asr.Event{}, cause
+		}
 		if readErr != nil {
 			result := s.transportError(ctx, "recv", readErr)
 			return asr.Event{}, s.fail(result)
@@ -268,8 +274,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			s.addEvents(results, last)
 		}
 		if last {
-			s.finished = true
-			s.closeTransport()
+			if err := s.complete(); err != nil {
+				return asr.Event{}, err
+			}
 		}
 	}
 }
@@ -388,14 +395,41 @@ func (s *Stream) terminalFailure() error {
 // fail saves the first terminal failure before closing the connection. It
 // cannot acquire readMu or writeMu, since Recv may be blocked on ReadMessage.
 func (s *Stream) fail(err error) error {
+	first := s.recordFailure(err)
+	s.closeTransport()
+	return first
+}
+
+// recordFailure arbitrates failures with successful provider completion.
+// A late sender error is still returned to that sender, but must not
+// replace the already committed receive-side EOF or final backlog.
+func (s *Stream) recordFailure(err error) error {
 	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if s.terminalSuccess {
+		return err
+	}
 	if s.terminalErr == nil {
 		s.terminalErr = err
 	}
-	first := s.terminalErr
+	return s.terminalErr
+}
+
+// complete is called under readMu after validating the terminal frame.
+// Publish success before closing the transport, so late cancellation or
+// write errors cannot turn a completed recognition into a failure.
+func (s *Stream) complete() error {
+	s.terminalMu.Lock()
+	if s.terminalErr != nil {
+		err := s.terminalErr
+		s.terminalMu.Unlock()
+		return err
+	}
+	s.terminalSuccess = true
 	s.terminalMu.Unlock()
+	s.finished = true
 	s.closeTransport()
-	return first
+	return nil
 }
 
 func (s *Stream) closedError(ctx context.Context) error {

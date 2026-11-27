@@ -64,6 +64,14 @@ func TestCloseReleasesRecognitionHistory(t *testing.T) {
 			t.Fatal("closed session retained dedup history")
 		}
 		if final {
+			late := errors.New("late write failure")
+			if err := s.failWrite(late); err != late {
+				t.Fatalf("sender error = %v", err)
+			}
+			cancel()
+			if err := s.terminalFailure(); err != nil {
+				t.Fatalf("completed stream overwritten: %v", err)
+			}
 			if e, err := s.Recv(ctx); err != nil || e.Text != "second" {
 				cancel()
 				t.Fatalf("final backlog lost: %+v, %v", e, err)
