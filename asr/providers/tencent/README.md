@@ -511,3 +511,26 @@ Use `asr.Config.Options.Provider = tencent.Options{...}` to override VAD and dic
 On 2026-11-27 the real WSv2 endpoint rejected `EmotionRecognition=1` with `NeedVAD=true` on all four documented engines (`16k_zh`, `16k_zh_en`, `8k_zh`, `8k_zh_large`), returning error 4001 (`EmotionRecognition Not support`). See [16k probe](https://github.com/NSObjects/go-speech/actions/runs/45962278572), [16k bilingual probe](https://github.com/NSObjects/go-speech/actions/runs/45962932341), and [8k probes](https://github.com/NSObjects/go-speech/actions/runs/45964170905). The result is specific to the tested account and service configuration, not proof of global unavailability. Emotion remains an unverified, billable provider option; consult Tencent before enabling it.
 
 The regular ASR workflow does not repeatedly request this unavailable option. To recheck after service availability changes, explicitly dispatch the Tencent ASR workflow with `emotion_engine` set to one of the documented engines (default `disabled`). The diagnostic makes one request with a matching PCM sample rate, fails on provider rejection, requires final text and preserved native result JSON on success, and logs only field names/types. Request acceptance does not validate emotion label semantics or accuracy. No automatic fallback or retry is performed.
+
+## Native short-audio HTTP recognition
+
+`NewHTTP(HTTPConfig{SecretID: id, SecretKey: key, EngineModel: "16k_zh"})`
+uses SentenceRecognition (API 3.0, 2019-06-14), independent of the
+WebSocket client. It implements `asr.Recognizer`, not streaming.
+No AppID is required. Use `Recognize` for common audio buffers,
+`RecognizeBytes` for explicit provider formats (including SILK, M4A and
+native Speex), or `RecognizeURL` to let Tencent download the audio.
+The SDK never fetches the supplied audio URL itself.
+
+The service limits audio to 60 seconds and inline base64 to 3 MB.
+PCM length and common PCM/WAV metadata are checked locally; other
+encoded durations and URL content are validated by the provider.
+`HTTPOptions` uses the native HTTP controls, including WordInfo 0/1/2,
+FilterPunc 0/1/2, ConvertNumMode 0/1 and InputSampleRate=8000 for 8 kHz
+PCM with a 16 kHz engine. Temporary weighted hotwords take precedence
+over HotwordID. WS-specific options are not interchangeable.
+`Result.Provider` contains `SentenceDetails` with request ID, audio
+duration and native nullable word metadata. No inferred segment timing,
+emotion labels, local transcoding, fallback or retry.
+
+Official protocol: https://cloud.tencent.com/document/api/1093/35646
