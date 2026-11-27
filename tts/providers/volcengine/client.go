@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/ttscollect"
 	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/transport"
@@ -28,7 +28,6 @@ const (
 	defaultModel    = "doubao-seed-tts-3.0"
 	maxTextRunes    = 10000
 	maxEventBytes   = 8 << 20
-	maxBatchBytes   = 64 << 20
 )
 
 // Config selects the Seed-TTS 3.0 model and API key. Endpoint is the optional
@@ -201,21 +200,7 @@ func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer,
 		return audio.Buffer{}, err
 	}
 	defer func() { _ = stream.Close() }()
-	var result audio.Buffer
-	for {
-		chunk, err := stream.Recv(ctx)
-		if errors.Is(err, io.EOF) {
-			return result, nil
-		}
-		if err != nil {
-			return audio.Buffer{}, err
-		}
-		if len(result.Data)+len(chunk.Data) > maxBatchBytes {
-			return audio.Buffer{}, invalid("synthesized audio exceeds batch limit")
-		}
-		result.Format = chunk.Format
-		result.Data = append(result.Data, chunk.Data...)
-	}
+	return ttscollect.Collect(ctx, stream, "volcengine")
 }
 
 func httpFailure(status int) error {

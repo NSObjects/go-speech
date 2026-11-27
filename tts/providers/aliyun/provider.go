@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/ttscollect"
 	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/transport"
@@ -33,7 +33,6 @@ const (
 	defaultWriteTimeout   = 10 * time.Second
 	maxSessionTextRunes   = 200000
 	maxTextRunes          = 20000
-	maxBatchAudio         = 64 << 20
 )
 
 var (
@@ -244,29 +243,7 @@ func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer,
 		return audio.Buffer{}, err
 	}
 	defer s.Close()
-	var output audio.Buffer
-	for {
-		chunk, err := s.Recv(ctx)
-		if errors.Is(err, io.EOF) {
-			if len(output.Data) == 0 {
-				return audio.Buffer{}, protocol("synthesis completed without audio")
-			}
-			return output, nil
-		}
-		if err != nil {
-			return audio.Buffer{}, err
-		}
-		if len(chunk.Data) > maxBatchAudio-len(output.Data) {
-			return audio.Buffer{}, &speecherr.Error{
-				Code: speecherr.CodeInternal, Provider: "aliyun", Operation: "tts",
-				Err: errors.New("batch audio exceeds 64 MiB; use SynthesizeStream"),
-			}
-		}
-		if output.Format == (audio.Format{}) {
-			output.Format = chunk.Format
-		}
-		output.Data = append(output.Data, chunk.Data...)
-	}
+	return ttscollect.Collect(ctx, s, "aliyun")
 }
 
 func invalid(msg string) error {
