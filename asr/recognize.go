@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
+	"slices"
 	"strings"
 	"time"
 
@@ -69,9 +71,12 @@ func RecognizeStream(ctx context.Context, client StreamRecognizer, input audio.B
 		chunkSize = max(chunkSize/frameBytes, 1) * frameBytes
 	}
 
-	chunks := make([][]byte, 0, (len(input.Data)+chunkSize-1)/chunkSize)
-	for offset := 0; offset < len(input.Data); offset += chunkSize {
-		chunks = append(chunks, input.Data[offset:min(offset+chunkSize, len(input.Data))])
+	chunks := func(yield func([]byte) bool) {
+		for offset := 0; offset < len(input.Data); offset += chunkSize {
+			if !yield(input.Data[offset:min(offset+chunkSize, len(input.Data))]) {
+				return
+			}
+		}
 	}
 	var interval time.Duration
 	if paced {
@@ -102,10 +107,10 @@ func RecognizePacketStream(ctx context.Context, client StreamRecognizer, cfg Con
 		}
 		total += len(packet)
 	}
-	return recognizeChunks(ctx, client, cfg, packets, interval)
+	return recognizeChunks(ctx, client, cfg, slices.Values(packets), interval)
 }
 
-func recognizeChunks(ctx context.Context, client StreamRecognizer, cfg Config, chunks [][]byte, interval time.Duration) (Result, error) {
+func recognizeChunks(ctx context.Context, client StreamRecognizer, cfg Config, chunks iter.Seq[[]byte], interval time.Duration) (Result, error) {
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream, err := client.OpenStream(sessionCtx, cfg)
@@ -122,7 +127,7 @@ func recognizeChunks(ctx context.Context, client StreamRecognizer, cfg Config, c
 			ticker = time.NewTicker(interval)
 			defer ticker.Stop()
 		}
-		for _, chunk := range chunks {
+		for chunk := range chunks {
 			if sendErr = stream.Send(sessionCtx, chunk); sendErr != nil {
 				break
 			}
