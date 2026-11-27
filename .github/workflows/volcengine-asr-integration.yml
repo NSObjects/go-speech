@@ -64,3 +64,6 @@ jobs:
           go test -tags=integration \
             -run '^(TestVolcengineLiveASR|TestVolcengineLiveOggOpus)$' \
             -count=1 -v -timeout 3m ./asr/providers/volcengine
+
+      - name: Experimental Volcengine post-final physical socket reuse
+        run: go test -tags=integration -run '^TestVolcengineLiveReuseProbe$' -count=1 -v -timeout 100s ./asr/providers/volcengine
