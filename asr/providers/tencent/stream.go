@@ -202,7 +202,7 @@ func (s *Stream) write(ctx context.Context, typ int, data []byte) error {
 	return s.conn.WriteMessage(typ, data)
 }
 
-// Send sends complete PCM16LE samples, continuous WAV/MP3 fragments, or one
+// Send sends complete PCM16LE samples, continuous WAV/MP3/AAC fragments, or one
 // complete native Opus frame.
 // Tencent's real-time service expects
 // approximately real-time pacing; the SDK does not artificially sleep or
@@ -228,7 +228,7 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 		return argumentError("audio chunk must not be empty")
 	}
 	switch s.encoding {
-	case audio.EncodingWAV, audio.EncodingMP3:
+	case audio.EncodingWAV, audio.EncodingMP3, audio.EncodingAAC:
 	case EncodingOpusFrames:
 		if _, err := nativeOpusPacket(data); err != nil {
 			return err

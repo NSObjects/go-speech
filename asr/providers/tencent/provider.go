@@ -115,7 +115,7 @@ func New(cfg Config) (*Client, error) {
 }
 
 // SupportedAudio reports locally implemented formats for the selected engine.
-// Native framed Opus and MP3 are currently restricted to the 16k_zh model.
+// Native framed Opus, MP3 and AAC are currently restricted to the 16k_zh model.
 func SupportedAudio(engine string) audio.Capability {
 	rate := 16000
 	if strings.HasPrefix(engine, "8k_") {
@@ -123,7 +123,7 @@ func SupportedAudio(engine string) audio.Capability {
 	}
 	encodings := []audio.Encoding{audio.EncodingPCM16LE, audio.EncodingWAV}
 	if engine == "16k_zh" {
-		encodings = append(encodings, EncodingOpusFrames, audio.EncodingMP3)
+		encodings = append(encodings, EncodingOpusFrames, audio.EncodingMP3, audio.EncodingAAC)
 	}
 	if engine == "Hy-ASR-3.0-preview" {
 		encodings = []audio.Encoding{audio.EncodingPCM16LE}

@@ -54,6 +54,14 @@ and sends one complete 576-sample frame every 36ms. Free-format bitrates,
 other metadata formats, and inputs over 60 seconds are rejected. No decoding
 or transcoding is performed.
 
+`audio.EncodingAAC` selects `voice_format=16` on `16k_zh`. The supported
+short-audio subset is 16 kHz mono MPEG-4 AAC-LC with ADTS headers and one
+1024-sample raw data block per frame. `Recognize` preserves original frames
+and sends them every 64ms, up to 60 seconds. `OpenStream` accepts continuous
+ADTS bytes in playback order; callers pace their audio. LATM/LOAS, raw AAC
+access units without ADTS, HE-AAC configurations and M4A containers are not
+part of this contract.
+
 ## Optional Tencent-side sentence segmentation
 
 On supported legacy real-time engines, configure `VADSilenceTime` and
