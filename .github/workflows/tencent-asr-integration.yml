@@ -164,6 +164,34 @@ jobs:
           TENCENT_TEST_AAC_FILE: ${{ runner.temp }}/tencent-native.aac
         run: go test -tags=integration -run '^TestTencentLiveNativeAAC$' -count=1 -v -timeout 2m ./asr/providers/tencent
 
+      - name: Prepare complete independent M4A audio segments
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          raw = Path(os.environ["TENCENT_TEST_16K_PCM_FILE"]).read_bytes()
+          if not raw or len(raw) % 2:
+              raise SystemExit("invalid PCM fixture")
+          out = Path(os.environ["RUNNER_TEMP"], "tencent-m4a")
+          out.mkdir(exist_ok=True)
+          for index, offset in enumerate(range(0, len(raw), 32000)):
+              pcm = raw[offset:offset+32000]
+              pcm += bytes(32000-len(pcm))
+              dest = out / f"{index:04d}.m4a"
+              subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                  "-f", "s16le", "-ar", "16000", "-ac", "1", "-i", "pipe:0",
+                  "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "32k",
+                  "-movflags", "+faststart", str(dest)], input=pcm, check=True)
+              if not dest.stat().st_size:
+                  raise SystemExit("empty M4A fixture")
+          PY
+      - name: Probe real Tencent ASR complete M4A fragments
+        env:
+          TENCENT_TEST_M4A_DIR: ${{ runner.temp }}/tencent-m4a
+        run: go test -tags=integration -run '^TestTencentLiveM4ASegmentsProbe$' -count=1 -v -timeout 2m ./asr/providers/tencent
+
       - name: Real Tencent Cloud per-request hotword hints
         run: go test -tags=integration -run TestTencentLiveRequestHints -count=1 -v -timeout 2m ./asr/providers/tencent
       - name: Real Tencent Cloud concurrent streaming sessions
