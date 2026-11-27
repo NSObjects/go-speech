@@ -45,7 +45,7 @@ func TestFullTranscriptDoesNotRepeatFinalUtterances(t *testing.T) {
 		}
 		s.queue = nil
 	}
-	if s.pendingText != "" || s.confirmedText != "今天天气真好。明天也不错。" {
+	if s.pendingText != "" || s.confirmedText.String() != "今天天气真好。明天也不错。" {
 		t.Fatalf("unexpected final state: pending=%q confirmed=%q", s.pendingText, s.confirmedText)
 	}
 }
@@ -66,8 +66,8 @@ func TestFullTranscriptRevisedFinalSameIntervalDoesNotDuplicate(t *testing.T) {
 	if len(s.queue) != 0 {
 		t.Fatalf("revised full snapshot duplicated final: %#v", s.queue)
 	}
-	if s.confirmedText != "你好" || len(s.finalSeen) != 1 {
-		t.Fatalf("confirmed state changed: text=%q, seen=%d", s.confirmedText, len(s.finalSeen))
+	if s.confirmedText.String() != "你好" || len(s.finalSeen) != 1 {
+		t.Fatalf("confirmed state changed: text=%q, seen=%d", s.confirmedText.String(), len(s.finalSeen))
 	}
 }
 

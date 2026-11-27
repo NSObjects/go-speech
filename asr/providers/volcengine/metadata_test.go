@@ -89,7 +89,11 @@ func TestFinalMetadataUpdates(t *testing.T) {
 			emit(updated)
 			emit(first)
 			emit(`{"utterances":[{"text":"你好。","definite":true,"start_time":0,"end_time":500,"additions":{"speaker_id":"1"}}]}`)
-			if len(s.queue) != 0 || s.confirmedText != "你好" {
+			wantConfirmed := ""
+			if mode == ResultFull {
+				wantConfirmed = "你好"
+			}
+			if len(s.queue) != 0 || s.confirmedText.String() != wantConfirmed {
 				t.Fatalf("replay or text revision emitted: %+v", s.queue)
 			}
 			emit(`{"utterances":[{"text":"你好","definite":true,"start_time":600,"end_time":900,"additions":{"speaker_id":"1"}}]}`)
