@@ -340,15 +340,15 @@ func (c *Client) Warmup(ctx context.Context, _ string, count int) error {
 func (c *Client) dial(ctx context.Context) (*websocket.Conn, error) {
 	dialer := *websocket.DefaultDialer
 	if c.cfg.Dialer != nil {
-	dialer = *c.cfg.Dialer
+		dialer = *c.cfg.Dialer
 	}
 	if dialer.HandshakeTimeout == 0 {
-	dialer.HandshakeTimeout = c.cfg.StartTimeout
+		dialer.HandshakeTimeout = c.cfg.StartTimeout
 	}
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+c.cfg.APIKey)
 	if c.cfg.WorkspaceID != "" {
-	headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
+		headers.Set("X-DashScope-WorkSpace", c.cfg.WorkspaceID)
 	}
 	conn, response, err := dialer.DialContext(ctx, c.cfg.Endpoint, headers)
 	if err != nil {

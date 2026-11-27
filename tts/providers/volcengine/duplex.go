@@ -261,7 +261,7 @@ func (c *Client) Warmup(ctx context.Context, voice string, count int) error {
 	start, cancel := context.WithTimeout(ctx, c.cfg.StartTimeout)
 	defer cancel()
 	endpoint := c.endpoint(voice, "streaming-input", true)
-	return c.pool.WarmupKey(start, endpoint, func(dialCtx context.Context) (*websocket.Conn, error) {
+	return c.pool.WarmupKey(start, endpoint, count, func(dialCtx context.Context) (*websocket.Conn, error) {
 		return c.dial(ctx, dialCtx, endpoint)
 	})
 }

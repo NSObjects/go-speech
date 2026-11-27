@@ -20,6 +20,14 @@ Migration: the previous ResourceID configuration field is removed; use optional 
 
 Set `Pool: &speech.PoolConfig{MaxOpen: 4}` in `speech.VolcengineTTS` to enable WebSocket reuse for `OpenDuplex` only. HTTP synthesis is unchanged. Connections are keyed by the voice-specific URL; the limits apply across all voices in the client. Only a completed input followed by a valid CLOSED final and audio can return a socket. Local close, context cancellation, provider errors and INTERRUPTED discard the connection. No automatic retry, reconnect, or idle prefill. Close the client via its `io.Closer` implementation to release idle sockets. The idle timeout defaults to 10 seconds and must not exceed 15 seconds. Live probes succeeded after 15 seconds but failed after 30 seconds; this policy leaves headroom rather than assuming a documented server timeout. An idle socket may still be closed earlier by the provider.
 
+For explicit prewarming, assert `tts.Prewarmer` on the pooled client and call
+`Warmup(ctx, voiceID, 1)`. It opens only the WebSocket, not a synthesis
+session. Count is a target for that voice, bounded by global MaxIdle and
+MaxOpen. It is synchronous and best effort; existing idle connections
+are counted, capacity is never evicted, and no failed dial is retried.
+A successful call does not guarantee a later request will find an idle
+socket. Call close on the client when finished.
+
 ## Text formats
 
 Set `tts.Request.TextFormat` to `tts.TextSSML` for complete SSML input via HTTP, or `tts.TextInlineTag` for native inline tags. The latter is also accepted by `tts.DuplexRequest` on WebSocket. SSML is rejected in duplex mode. The SDK passes inline tags unchanged; use only tags documented for the selected mode and keep each tag in one fragment until split-tag behavior is verified. Actual expression and SSML tag support depend on the model and voice.

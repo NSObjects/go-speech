@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,13 +23,32 @@ func TestVolcengineLivePool(t *testing.T) {
 	if key == "" || voice == "" {
 		t.Fatal("Seed-TTS credentials and voice required")
 	}
-	c, err := New(Config{APIKey: key, ModelID: os.Getenv("VOLCENGINE_TTS_MODEL_ID"), LanguageCode: "zh", Pool: &transport.PoolConfig{MaxOpen: 1}})
+	var dials atomic.Int32
+	dialer := *websocket.DefaultDialer
+	dialer.NetDialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dials.Add(1)
+		return (&net.Dialer{}).DialContext(ctx, network, addr)
+	}
+	c, err := New(Config{APIKey: key, ModelID: os.Getenv("VOLCENGINE_TTS_MODEL_ID"), LanguageCode: "zh", Pool: &transport.PoolConfig{MaxOpen: 1}, Dialer: &dialer})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	warm, stop := context.WithTimeout(ctx, 10*time.Second)
+	if err := c.Warmup(warm, voice, 1); err != nil {
+		stop()
+		t.Fatal("warmup:", err)
+	}
+	stop()
+	if err := c.Warmup(ctx, voice, 1); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Second)
+	if dials.Load() != 1 {
+		t.Fatal("warmup did not open exactly one socket")
+	}
 	var conn *websocket.Conn
 	for i, f := range []audio.Format{
 		{Encoding: audio.EncodingPCM16LE, SampleRate: 24000, Channels: 1},
@@ -44,6 +65,9 @@ func TestVolcengineLivePool(t *testing.T) {
 			t.Fatal("different physical WebSocket")
 		}
 		conn = current
+		if dials.Load() != 1 {
+			t.Fatal("synthesis did not use prewarmed socket")
+		}
 		t.Logf("session %d ready including acquisition: %s", i+1, time.Since(start))
 		if err := s.SendText(ctx, "你好，这是连接复用测试。"); err != nil {
 			t.Fatal(err)
