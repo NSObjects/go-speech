@@ -6,10 +6,12 @@ package voice
 type State string
 
 const (
-	Unknown  State = "unknown"
-	NotFound State = "not_found"
-	Ready    State = "ready"
-	Active   State = "active"
+	Unknown    State = "unknown"
+	NotFound   State = "not_found"
+	Ready      State = "ready"
+	Active     State = "active"
+	Processing State = "processing"
+	Rejected   State = "rejected"
 )
 
 // Usable reports whether the provider reports a synthesis-ready state.
