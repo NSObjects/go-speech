@@ -121,7 +121,7 @@ jobs:
   # It proves speech and speaker-ID transport, not diarization accuracy.
   speaker-live:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     env:
       TENCENT_APP_ID: ${{ vars.TENCENT_APP_ID }}
       TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
@@ -146,3 +146,6 @@ jobs:
       - name: Real Tencent Cloud V2 speaker model and speaker ID (strict)
         run: |
           go test -tags=integration -run TestTencentLiveV2SpeakerEngine -count=1 -v -timeout 2m ./asr/providers/tencent
+
+      - name: Real Tencent speaker context issuance and reuse
+        run: go test -tags=integration -run '^TestTencentLiveV2SpeakerContext$' -count=1 -v -timeout 3m ./asr/providers/tencent

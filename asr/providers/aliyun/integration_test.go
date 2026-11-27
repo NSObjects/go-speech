@@ -77,7 +77,17 @@ func TestAliyunLiveASR(t *testing.T) {
 	}()
 
 	chunkBytes := sampleRate * 2 / 10 // 100ms of 16-bit mono audio
+	updated := false
 	for offset := 0; offset < len(raw); offset += chunkBytes {
+		if model == ModelQwenAudio31Message && !updated && offset >= len(raw)/2 {
+			if err := session.(ContextUpdater).UpdateContext(ctx, []ContextMessage{
+				{Role: "user", Text: "We are testing speech recognition."},
+				{Role: "assistant", Text: "Please continue reading the test sentence."},
+			}); err != nil {
+				t.Fatalf("dynamic context: %v", err)
+			}
+			updated = true
+		}
 		end := offset + chunkBytes
 		if end > len(raw) {
 			end = len(raw)
@@ -101,6 +111,13 @@ func TestAliyunLiveASR(t *testing.T) {
 		}
 		if strings.TrimSpace(received.text) == "" {
 			t.Fatalf("ASR returned no final text for %s (the fixture must contain intelligible speech)", model)
+		}
+		if model == ModelQwenAudio31Message {
+			if !updated {
+				t.Fatal("dynamic context was never sent")
+			}
+			verifyFinalTokenUsage(t, session.(asr.SessionMetadataReceiver).SessionMetadata())
+			t.Log("dynamic context command accepted; subsequent audio completed")
 		}
 		t.Logf("ASR model %s recognized: %q", model, received.text)
 	case <-ctx.Done():

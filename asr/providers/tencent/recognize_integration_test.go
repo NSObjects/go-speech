@@ -36,12 +36,27 @@ func TestTencentLiveShortRecognize(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	result, err := client.Recognize(ctx, audio.Buffer{Data: raw, Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: rate, Channels: 1}}, asr.Config{})
+	options := asr.Options{UtteranceDetails: true}
+	model = client.cfg.EngineModel
+	native := Options{}
+	if len(wordInfoModes(model)) > 0 {
+		mode := 2
+		native.WordInfo = &mode
+	}
+	if isMandarinEngine(model) {
+		mode, noise := 1, 0.0
+		native.FilterModal = &mode
+		native.NoiseThreshold = &noise
+		native.Hotwords = []Hotword{{Word: "语音识别", Weight: 5}}
+	}
+	options.Provider = native
+	result, err := client.Recognize(ctx, audio.Buffer{Data: raw, Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: rate, Channels: 1}}, asr.Config{Options: options})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(result.Text) == "" {
 		t.Fatal("Tencent Recognize returned no final text")
 	}
+	verifyTimedUtterances(t, result.Utterances, native.WordInfo != nil)
 	t.Logf("Tencent short Recognize model=%s chars=%d", model, len([]rune(result.Text)))
 }

@@ -32,14 +32,33 @@ func TestVolcengineLiveShortRecognize(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	on := true
 	result, err := client.Recognize(ctx, audio.Buffer{
 		Data: raw, Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
-	}, asr.Config{})
+	}, asr.Config{Options: asr.Options{UtteranceDetails: true, Provider: Options{
+		EnableNonStream: &on, ShowSpeechRate: &on, ShowVolume: &on, EnableEmotionDetection: &on,
+	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(result.Text) == "" {
 		t.Fatal("Volcengine Recognize returned no final text")
 	}
-	t.Logf("Volcengine short Recognize chars=%d", len([]rune(result.Text)))
+	verifyTimedUtterances(t, result.Utterances, true)
+	rate, volume, emotion := 0, 0, 0
+	for _, u := range result.Utterances {
+		if u.SpeechRate != nil && *u.SpeechRate > 0 {
+			rate++
+		}
+		if u.VolumeDB != nil {
+			volume++
+		}
+		if u.Emotion != "" {
+			emotion++
+		}
+	}
+	if rate == 0 || volume == 0 || emotion == 0 {
+		t.Fatalf("requested perception metadata missing: speech_rate=%d volume=%d emotion=%d", rate, volume, emotion)
+	}
+	t.Logf("Volcengine short Recognize chars=%d speech_rate=%d volume=%d emotion=%d", len([]rune(result.Text)), rate, volume, emotion)
 }
