@@ -46,6 +46,11 @@ func (c Config) parameters(cfg asr.Config, format string) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
+	native, err := nativeOptions(cfg.Options)
+	if err != nil {
+		return nil, err
+	}
+	c = c.withOverrides(native, cfg.Options)
 	capability, err := SupportedAudio(c.Model)
 	if err != nil {
 		return nil, err
@@ -126,6 +131,9 @@ func (c Config) parameters(cfg asr.Config, format string) (map[string]any, error
 		if len(vocabulary) > 0 {
 			params["vocabulary"] = vocabulary
 		}
+	}
+	if err := applyAdvanced(family, c.Model, c.MaxSentenceSilenceMs, native, cfg.Options, cfg.Language, params); err != nil {
+		return nil, err
 	}
 	return params, nil
 }

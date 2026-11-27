@@ -46,3 +46,9 @@ The default endpoint is the China DashScope service. Set `Endpoint` to the corre
 Use `DASHSCOPE_API_KEY` from the environment; never commit credentials.
 
 See [official realtime ASR guide](https://help.aliyun.com/zh/model-studio/real-time-speech-recognition-user-guide).
+
+## Advanced request options
+
+Set `asr.Config.Options.Provider` to `aliyun.Options` for request-local overrides of constructor settings, multiple language hints, supported VAD controls, and initial dialogue context. Model-specific validation rejects unsupported explicit flags. Qwen Streaming and Fun-ASR support sensitive-word filters; Paraformer supports semantic segmentation, punctuation and ITN. Qwen Message and Paraformer support disfluency removal. Qwen Message supports intermediate results; context updates during a running task are not yet exposed. Initial context is limited to five messages per role and 400 characters per turn; no SDK truncation or automatic context management.
+
+Set `asr.Config.Options.UtteranceDetails` to obtain sentence/word timing via `Event.Utterance` or `Result.Utterances`. Native sentence IDs, word punctuation and stability flags are preserved. Paraformer 8k v2 may return emotion and confidence in final sentences with semantic segmentation disabled; no synthetic labels are generated. Usage counters and live API validation remain follow-ups.
