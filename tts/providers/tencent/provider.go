@@ -5,14 +5,12 @@ package tencent
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -23,6 +21,7 @@ import (
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/internal/errclass"
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -66,7 +65,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
-		u.Path != "/stream_wsv2" || (u.Scheme != "wss" && !(u.Scheme == "ws" && isLoopback(u.Hostname()))) {
+		u.Path != "/stream_wsv2" || (u.Scheme != "wss" && !(u.Scheme == "ws" && wireutil.IsLoopback(u.Hostname()))) {
 		return nil, invalid("Endpoint must be a secure /stream_wsv2 WebSocket URL")
 	}
 	if cfg.StartTimeout < 0 {
@@ -80,14 +79,6 @@ func New(cfg Config) (*Client, error) {
 		cfg.Dialer = &copy
 	}
 	return &Client{cfg: cfg}, nil
-}
-
-func isLoopback(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // SupportedAudio returns the protocol-wide PCM/MP3 output options. Specific
@@ -128,16 +119,6 @@ func validateRequest(req tts.Request) (tts.Request, string, error) {
 		return req, "pcm", nil
 	}
 	return req, "mp3", nil
-}
-
-func newID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	b[6] = b[6]&15 | 0x40
-	b[8] = b[8]&63 | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
 }
 
 // signedEndpoint signs the canonical, sorted, unescaped query values. Only
@@ -223,7 +204,7 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 
 // openSession owns the common connection and handshake for both modes.
 func (c *Client) openSession(ctx context.Context, req tts.Request, codec string, voice url.Values) (*Stream, error) {
-	sessionID, err := newID()
+	sessionID, err := wireutil.UUIDv4()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "id", Err: err}
 	}

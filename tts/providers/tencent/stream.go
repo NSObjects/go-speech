@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
@@ -141,7 +142,7 @@ func (s *Stream) sendCommand(ctx context.Context, action, data string) error {
 	if s.closed() {
 		return s.closeError(ctx)
 	}
-	id, err := newID()
+	id, err := wireutil.UUIDv4()
 	if err != nil {
 		return err
 	}

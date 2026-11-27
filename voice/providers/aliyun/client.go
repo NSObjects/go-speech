@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NSObjects/go-speech/internal/wireutil"
 	"github.com/NSObjects/go-speech/speecherr"
 )
 
@@ -45,7 +46,7 @@ func New(cfg Config) (*Client, error) {
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
 		(u.Path != "" && u.Path != "/") ||
-		(u.Scheme != "https" && !(u.Scheme == "http" && loopback(u.Hostname()))) {
+		(u.Scheme != "https" && !(u.Scheme == "http" && wireutil.IsLoopback(u.Hostname()))) {
 		return nil, invalid("Endpoint must be an HTTPS origin")
 	}
 	if cfg.Timeout < 0 {
@@ -58,11 +59,6 @@ func New(cfg Config) (*Client, error) {
 		Timeout: cfg.Timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
-}
-
-func loopback(host string) bool {
-	ip := net.ParseIP(host)
-	return strings.EqualFold(host, "localhost") || ip != nil && ip.IsLoopback()
 }
 
 func failure(op string, code speecherr.Code, err error) error {
