@@ -31,6 +31,8 @@ type Stream struct {
 	inputClosed bool
 	textSent    bool
 	finished    bool
+	audioSeen   bool
+	terminalMu  sync.Mutex
 	terminalErr error
 	receiveMode uint8
 }
@@ -51,7 +53,7 @@ func newStream(conn *websocket.Conn, ctx context.Context, id string, format audi
 	go func() {
 		select {
 		case <-ctx.Done():
-			_ = s.Close()
+			_ = s.fail(ctx.Err())
 		case <-s.done:
 		}
 	}()
@@ -82,12 +84,30 @@ func (s *Stream) closeError(ctx context.Context) error {
 	return tts.ErrStreamClosed
 }
 func (s *Stream) fail(err error) error {
+	s.terminalMu.Lock()
 	if s.terminalErr == nil {
 		s.terminalErr = err
 	}
+	first := s.terminalErr
+	s.terminalMu.Unlock()
 	_ = s.Close()
+	return first
+}
+
+func (s *Stream) terminalFailure() error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
 	return s.terminalErr
 }
+
+// A sender never reports EOF as a successful write.
+func (s *Stream) failWrite(err error) error {
+	if first := s.fail(err); !errors.Is(first, io.EOF) {
+		return first
+	}
+	return err
+}
+
 func (s *Stream) transportError(ctx context.Context, op string, err error) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -134,7 +154,7 @@ func (s *Stream) sendCommand(ctx context.Context, action, data string) error {
 	if err != nil {
 		return err
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	deadline := time.Now().Add(10 * time.Second)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -150,7 +170,7 @@ func (s *Stream) sendCommand(ctx context.Context, action, data string) error {
 }
 
 func (s *Stream) readFrame(ctx context.Context, deadline time.Time) (int, []byte, error) {
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = s.fail(ctx.Err()) })
 	defer stop()
 	if err := s.conn.SetReadDeadline(deadline); err != nil {
 		return 0, nil, s.transportError(ctx, "recv", err)
@@ -171,6 +191,9 @@ func (s *Stream) startReady(ctx context.Context, timeout time.Duration) error {
 	}
 	for {
 		typ, data, err := s.readFrame(ctx, deadline)
+		if cause := s.terminalFailure(); cause != nil {
+			return tts.Event{}, cause
+		}
 		if err != nil {
 			return err
 		}
@@ -219,8 +242,7 @@ func (s *Stream) SendText(ctx context.Context, text string) error {
 		return invalid("text fragment must contain 1–10000 valid UTF-8 characters")
 	}
 	if err := s.sendCommand(ctx, "ACTION_SYNTHESIS", text); err != nil {
-		_ = s.Close()
-		return err
+		return s.failWrite(err)
 	}
 	s.textSent = true
 	return nil
@@ -243,8 +265,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return invalid("at least one text fragment is required")
 	}
 	if err := s.sendCommand(ctx, "ACTION_COMPLETE", ""); err != nil {
-		_ = s.Close()
-		return err
+		return s.failWrite(err)
 	}
 	s.inputClosed = true
 	return nil
@@ -268,8 +289,7 @@ func (s *Stream) Reset(ctx context.Context) error {
 		return tts.ErrInputClosed
 	}
 	if err := s.sendCommand(ctx, "ACTION_RESET", ""); err != nil {
-		_ = s.Close()
-		return err
+		return s.failWrite(err)
 	}
 	// Do not clear textSent: some previously submitted text may already
 	// be synthesizing, and CloseSend must still be able to finish it.
@@ -315,8 +335,8 @@ func (s *Stream) RecvEvent(ctx context.Context) (tts.Event, error) {
 
 // recvEvent is the sole protocol reader; readMu must be held.
 func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
-	if s.terminalErr != nil {
-		return tts.Event{}, s.terminalErr
+	if err := s.terminalFailure(); err != nil {
+		return tts.Event{}, err
 	}
 	if s.finished {
 		return tts.Event{}, io.EOF
@@ -342,6 +362,7 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 		switch typ {
 		case websocket.BinaryMessage:
 			if len(data) != 0 {
+				s.audioSeen = true
 				return tts.Event{Type: tts.EventAudio, Audio: &audio.Chunk{Data: data, Format: s.format}}, nil
 			}
 		case websocket.TextMessage:
@@ -357,8 +378,13 @@ func (s *Stream) recvEvent(ctx context.Context) (tts.Event, error) {
 				}
 			}
 			if ev.Final == 1 {
+				if !s.audioSeen {
+					return tts.Event{}, s.fail(protocol("synthesis completed without audio"))
+				}
+				if err := s.fail(io.EOF); !errors.Is(err, io.EOF) {
+					return tts.Event{}, err
+				}
 				s.finished = true
-				_ = s.Close()
 			}
 			if alignment != nil {
 				return tts.Event{Type: tts.EventAlignment, Alignment: alignment}, nil
