@@ -166,6 +166,9 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if req.Options != (asr.Options{}) {
+		return nil, unsupportedError("advanced ASR options are not yet supported")
+	}
 	if err := req.Format.Validate(); err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "tencent", Operation: "start", Err: err}
 	}

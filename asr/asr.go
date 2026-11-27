@@ -8,18 +8,20 @@ import (
 	"github.com/NSObjects/go-speech/audio"
 )
 
-// Config specifies common recognition parameters. Provider-specific options
-// belong to the concrete provider's constructor or configuration.
+// Config specifies recognition parameters for a single request.
 type Config struct {
 	Format   audio.Format
 	Language string // Optional BCP 47 language tag; empty lets the provider decide.
 	Hints    []string
+	Options  Options
 }
 
 // Result contains the final text from a non-streaming recognition request.
 type Result struct {
 	Text     string
 	Language string
+	// Utterances contains available final-segment metadata in receive order.
+	Utterances []Utterance
 }
 
 // Recognizer provides one-shot recognition of an entire audio buffer.
@@ -62,6 +64,8 @@ type Event struct {
 	// 0 and positive values are valid speaker labels, not durable identities.
 	// Tencent's speaker-enabled V2 engine emits values -1 or 0..9.
 	SpeakerID *int
+	// Utterance is optional detailed metadata for this transcript segment.
+	Utterance *Utterance
 }
 
 // Stream is a bidirectional recognition session. A caller may Send and Recv

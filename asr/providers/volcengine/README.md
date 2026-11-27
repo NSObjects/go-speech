@@ -10,7 +10,7 @@ optimized bidirectional WebSocket interface (`bigmodel_async`).
 - Auth: `X-Api-Key`, `X-Api-Resource-Id`, random request/connection IDs.
 - Wire format: Volcengine V3 binary WebSocket frames, gzip JSON config and gzip audio frames.
 - Supported input: 16 kHz PCM16LE, PCM16 WAV, MP3, **Ogg Opus**; no automatic conversion.
-- This package implements `asr.StreamRecognizer`, not batch ASR or TTS.
+- This package implements `asr.Client`; `Recognize` collects short-audio recognition via the same streaming endpoint.
 
 ## Usage
 
@@ -300,3 +300,7 @@ FFmpeg-encoded Mandarin fixture, remuxing them with the project's Go muxer,
 and sending the newly generated Ogg pages to real Seed-ASR 2.0 while
 recognition continues. This does **not** prove that any physical device's
 encoder, RTP transport or microphone has been validated.
+
+## Per-request recognition controls
+
+Use `asr.Config.Options` to configure punctuation, ITN and disfluency removal. Native `volcengine.Options` supports per-request overrides for second-pass recognition, result type and end window, plus emotion, speech rate, volume, language/gender labels, speaker clustering, first-character acceleration and Chinese script variant. Speaker clustering requires second-pass recognition. Detection options can enable provider-side VAD segmentation. Set `UtteranceDetails` to receive optional word and segment timings; enabled detection options also enable detailed results. `Event.Utterance` exposes available metadata; `Recognize` collects final utterances into `Result.Utterances`. Native additions are preserved in `UtteranceDetails`. Missing numeric values are nil. Repeated finalized snapshots are still deduplicated; metadata updates after an already emitted final are not yet exposed. Live verification is pending.

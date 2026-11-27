@@ -34,14 +34,16 @@ type Stream struct {
 	sentAudio  bool
 	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
 
-	finished      bool                // readMu
-	terminalErr   error               // terminalMu
-	queue         []asr.Event         // readMu
-	resultType    string              // immutable
-	pendingText   string              // readMu: latest unconfirmed utterance
-	confirmedText string              // readMu: concatenated confirmed segments
-	lastFinalText string              // readMu: most recent confirmed utterance
-	finalSeen     map[string]struct{} // readMu
+	finished       bool                // readMu
+	terminalErr    error               // terminalMu
+	queue          []asr.Event         // readMu
+	resultType     string              // immutable
+	pendingDetails *asr.Utterance      // readMu
+	details        bool                // immutable
+	pendingText    string              // readMu: latest unconfirmed utterance
+	confirmedText  string              // readMu: concatenated confirmed segments
+	lastFinalText  string              // readMu: most recent confirmed utterance
+	finalSeen      map[string]struct{} // readMu
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -232,6 +234,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 			// An explicit provider no-speech result must not upgrade an
 			// earlier provisional hypothesis to a final utterance.
 			s.pendingText = ""
+			s.pendingDetails = nil
 		} else {
 			s.addEvents(results, last)
 		}
@@ -250,6 +253,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 // text more than once in a multi-sentence conversation.
 func (s *Stream) addEvents(results []recognition, last bool) {
 	var partial string
+	var partialDetails *asr.Utterance
 	var fallback string
 	hasUtterances := false
 	for _, r := range results {
@@ -264,12 +268,16 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 			}
 			if !u.Definite {
 				partial = u.Text
+				if s.details {
+					partialDetails = u.metadata()
+				}
 				continue
 			}
 			// A definite utterance supersedes a provisional hypothesis
 			// seen earlier in this response, even when the provider lists
 			// the provisional entry before the confirmed entry.
 			partial = ""
+			partialDetails = nil
 			// A finalized utterance is identified by its time interval, not by
 			// transcript text. Full snapshots may revise punctuation or
 			// spelling for an already emitted interval; EventFinal is
@@ -284,10 +292,15 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				continue
 			}
 			s.finalSeen[key] = struct{}{}
-			s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: u.Text})
+			e := asr.Event{Type: asr.EventFinal, Text: u.Text}
+			if s.details {
+				e.Utterance = u.metadata()
+			}
+			s.queue = append(s.queue, e)
 			s.confirmedText += u.Text
 			s.lastFinalText = u.Text
 			s.pendingText = ""
+			s.pendingDetails = nil
 		}
 	}
 
@@ -305,15 +318,19 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 	if partial != "" && partial != s.pendingText {
 		// Never emit a provisional event after the terminal response.
 		if !last {
-			s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: partial})
+			s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: partial, Utterance: partialDetails})
 		}
 		s.pendingText = partial
+		s.pendingDetails = partialDetails
+	} else if partial != "" && partialDetails != nil {
+		s.pendingDetails = partialDetails
 	}
 	if last && s.pendingText != "" {
 		// The provider may omit utterance metadata in its last response.
 		// Preserve the final unconfirmed segment instead of losing speech.
-		s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: s.pendingText})
+		s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: s.pendingText, Utterance: s.pendingDetails})
 		s.pendingText = ""
+		s.pendingDetails = nil
 	}
 }
 

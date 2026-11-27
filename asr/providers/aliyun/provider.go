@@ -110,6 +110,9 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if cfg.Options != (asr.Options{}) {
+		return nil, &speecherr.Error{Code: speecherr.CodeUnsupported, Provider: "aliyun", Operation: "start", Err: errors.New("advanced ASR options are not yet supported")}
+	}
 	format, err := mapAudioFormat(cfg.Format)
 	if err != nil {
 		return nil, err
