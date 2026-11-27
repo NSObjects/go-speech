@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +29,7 @@ func TestVolcengineLiveReuseProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
 	defer cancel()
 	_, init, err := c.prepareDuplex(tts.DuplexRequest{Voice: voice, Format: audio.Format{
 		Encoding: audio.EncodingPCM16LE, SampleRate: 24000, Channels: 1,
@@ -53,111 +52,45 @@ func TestVolcengineLiveReuseProbe(t *testing.T) {
 		t.Cleanup(func() { _ = conn.Close() })
 		return conn
 	}
-	t.Run("closed_then_new_init", func(t *testing.T) {
-		conn := open(t)
-		if err := probeInit(t, conn, init); err != nil {
-			t.Fatal("baseline init:", err)
-		}
-		if err := probeSend(conn, clientEvent{Event: "text", Content: "你好，欢迎使用语音合成。"}); err != nil {
-			t.Fatal(err)
-		}
-		if err := probeSend(conn, clientEvent{Event: "close"}); err != nil {
-			t.Fatal(err)
-		}
-		data, reason, err := probeDrain(conn)
-		if err != nil || reason != closedReason {
-			t.Fatalf("baseline CLOSED: %s, %v", reason, err)
-		}
-		verifyAdvancedPCM(t, data)
-		t.Logf("baseline CLOSED, bytes=%d; attempting second init on same socket", len(data))
-		if err := probeInit(t, conn, init); err != nil {
-			t.Logf("REUSE_NOT_ESTABLISHED phase=second_init error=%v", err)
-			return
-		}
-		if err := probeSend(conn, clientEvent{Event: "text", Content: "这是第二个独立的语音任务。"}); err != nil {
-			t.Logf("REUSE_NOT_ESTABLISHED phase=second_text error=%v", err)
-			return
-		}
-		if err := probeSend(conn, clientEvent{Event: "close"}); err != nil {
-			t.Logf("REUSE_NOT_ESTABLISHED phase=second_close error=%v", err)
-			return
-		}
-		data, reason, err = probeDrain(conn)
-		if err != nil || reason != closedReason {
-			t.Logf("REUSE_NOT_ESTABLISHED phase=second_final reason=%q error=%v", reason, err)
-			return
-		}
-		verifyAdvancedPCM(t, data)
-		t.Logf("REUSE_OBSERVED two distinct ready sessions and CLOSED finals on one socket; second bytes=%d", len(data))
-	})
-
-	t.Run("interrupt", func(t *testing.T) {
-		conn := open(t)
-		if err := probeInit(t, conn, init); err != nil {
-			t.Fatal("baseline init:", err)
-		}
-		if err := probeSend(conn, clientEvent{Event: "text", Content: strings.Repeat("这是一段用于验证语音打断行为的测试文本。", 12)}); err != nil {
-			t.Fatal(err)
-		}
-		if err := probeSend(conn, clientEvent{Event: "flush"}); err != nil {
-			t.Fatal(err)
-		}
-		if err := conn.SetReadDeadline(time.Now().Add(20 * time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		for {
-			e, err := probeRead(conn)
-			if err != nil {
-				t.Fatal("baseline audio:", err)
+	// Fresh sockets for each idle duration; no heartbeat or keepalive
+	// frames are sent. A successful baseline is required before measuring.
+	for _, idle := range []time.Duration{15 * time.Second, 30 * time.Second} {
+		t.Run(idle.String(), func(t *testing.T) {
+			conn := open(t)
+			if err := probeInit(t, conn, init); err != nil {
+				t.Fatal("baseline init:", err)
 			}
-			if e.Event == "audio" && len(e.Audio) != 0 {
-				break
+			for round := range 2 {
+				if err := probeSend(conn, clientEvent{Event: "text", Content: "你好，这是空闲连接复用测试。"}); err != nil {
+					t.Fatal("send:", err)
+				}
+				if err := probeSend(conn, clientEvent{Event: "close"}); err != nil {
+					t.Fatal("close:", err)
+				}
+				data, reason, err := probeDrain(conn)
+				if err != nil || reason != closedReason {
+					t.Fatalf("round=%d CLOSED: %s, %v", round+1, reason, err)
+				}
+				verifyAdvancedPCM(t, data)
+				if round == 1 {
+					t.Logf("IDLE_REUSE_OBSERVED idle=%s audio_bytes=%d", idle, len(data))
+					break
+				}
+				start := time.Now()
+				timer := time.NewTimer(idle)
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					timer.Stop()
+					t.Fatal(ctx.Err())
+				}
+				if err := probeInit(t, conn, init); err != nil {
+					t.Logf("IDLE_REUSE_NOT_ESTABLISHED idle=%s elapsed=%s error=%v", idle, time.Since(start), err)
+					return
+				}
 			}
-			if e.Event == "final" {
-				t.Fatal("baseline ended before audio")
-			}
-		}
-		start := time.Now()
-		if err := probeSend(conn, clientEvent{Event: "interrupt"}); err != nil {
-			t.Logf("INTERRUPT_NOT_ESTABLISHED phase=send error=%v", err)
-			return
-		}
-		data, reason, err := probeDrain(conn)
-		t.Logf("INTERRUPT_OBSERVED elapsed=%s post_interrupt_audio_bytes=%d final_reason=%q error=%v", time.Since(start), len(data), reason, err)
-		// A distinct INTERRUPTED final was observed in the first real
-		// experiment. Do not confuse an ordinary FLUSHED with cancellation.
-		if err != nil || reason != "TTS_STREAM_FINAL_REASON_INTERRUPTED" {
-			t.Log("INTERRUPT_REUSE_NOT_ESTABLISHED: no explicit interrupt final")
-			return
-		}
-		// Switch PCM to Ogg Opus, so stale PCM after re-init cannot silently
-		// pass a full encoded-stream validation. Reuse the exact socket.
-		_, nextInit, err := c.prepareDuplex(tts.DuplexRequest{Voice: voice, Format: audio.Format{
-			Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1,
-		}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := probeInit(t, conn, nextInit); err != nil {
-			t.Logf("INTERRUPT_REUSE_NOT_ESTABLISHED phase=reinit error=%v", err)
-			return
-		}
-		if err := probeSend(conn, clientEvent{Event: "text", Content: "打断已经结束，这是一个新的语音任务。"}); err != nil {
-			t.Logf("INTERRUPT_REUSE_NOT_ESTABLISHED phase=text error=%v", err)
-			return
-		}
-		if err := probeSend(conn, clientEvent{Event: "close"}); err != nil {
-			t.Logf("INTERRUPT_REUSE_NOT_ESTABLISHED phase=close error=%v", err)
-			return
-		}
-		data, reason, err = probeDrain(conn)
-		if err != nil || reason != closedReason {
-			t.Logf("INTERRUPT_REUSE_NOT_ESTABLISHED phase=final reason=%q error=%v", reason, err)
-			return
-		}
-		verifyLiveOpus(t, data)
-		t.Logf("INTERRUPT_REUSE_OBSERVED new session returned decodable Ogg Opus and CLOSED on same socket; bytes=%d", len(data))
-	})
+		})
+	}
 }
 
 func probeInit(t *testing.T, conn *websocket.Conn, init clientEvent) error {
