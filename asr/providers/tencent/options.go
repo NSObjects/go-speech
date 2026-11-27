@@ -13,23 +13,23 @@ import (
 // Options provides native request-local controls. Nil pointers preserve defaults.
 // Numeric modes use Tencent's documented units and enums.
 type Options struct {
-	NeedVAD            *bool
-	VADSilenceTime     *time.Duration
-	MaxSpeakTime       *time.Duration
-	HotwordID          *string
-	Hotwords           []Hotword
-	CustomizationID    string
-	ReplaceTextID      string
-	FilterDirty        *int
-	FilterModal        *int
-	FilterPunctuation  *bool // sentence-final full stop only
-	ReturnEmptyResults *bool
-	ConvertNumMode     *int
-	WordInfo           *int
-	NoiseThreshold     *float64
-	EmotionRecognition *int // 0 off, 1 metadata, 2 labels in text; billable
-	Domain             *int
-	SentenceStrategy   *int
+	NeedVAD              *bool
+	VADSilenceTime       *time.Duration
+	MaxSpeakTime         *time.Duration
+	HotwordID            *string
+	Hotwords             []Hotword
+	CustomizationID      string
+	ReplaceTextID        string
+	FilterDirty          *int
+	FilterModal          *int
+	FilterPunctuation    *bool // sentence-final full stop only
+	ReturnEmptyResults   *bool
+	ConvertNumMode       *int
+	WordInfo             *int
+	NoiseThreshold       *float64
+	EmotionRecognition   *int // 0 off, 1 metadata, 2 labels in text; billable
+	Domain               *int
+	SentenceStrategy     *int
 	EnableSpeakerContext *bool
 	SpeakerContextID     string
 }

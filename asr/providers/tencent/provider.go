@@ -198,7 +198,7 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	}
 	conn.SetReadLimit(1 << 20)
 	s := newStream(conn, ctx, voiceID)
-	s.details = req.Options.UtteranceDetails || enabledEmotion(native)
+	s.details = req.Options.UtteranceDetails || enabledEmotion(native) || (native.WordInfo != nil && *native.WordInfo != 0)
 	s.returnEmpty = native.ReturnEmptyResults != nil && *native.ReturnEmptyResults
 	s.readIdleTimeout = c.cfg.ReadIdleTimeout
 	if err := s.awaitHandshake(ctx, c.cfg.StartTimeout); err != nil {
