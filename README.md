@@ -4,17 +4,17 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/NSObjects/go-speech.svg)](https://pkg.go.dev/github.com/NSObjects/go-speech)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-**go-speech** 是支持阿里云、火山引擎和腾讯云的 Go 语音识别（ASR）与语音合成（TTS）SDK，提供统一接口和流式处理。
+**go-speech** 是支持阿里云、火山引擎和腾讯云的 Go 语音识别（ASR）、语音合成（TTS）与音色管理 SDK。
 
 ## 功能
 
-| 厂商 | ASR | TTS |
-| --- | --- | --- |
-| 阿里云 | 短音频识别、流式识别 | 一次性合成、流式合成（CosyVoice） |
-| 火山引擎 | 短音频识别、流式识别 | 一次性合成、流式合成（Seed-TTS 3.0） |
-| 腾讯云 | 短音频识别、流式识别 | 一次性合成、流式合成（WebSocket v2） |
+| 厂商 | ASR | TTS | 音色管理 |
+| --- | --- | --- | --- |
+| 阿里云 | 短音频、实时流式 | CosyVoice：一次性、流式输出、双向流式 | 复刻、设计、查询、更新、删除 |
+| 火山引擎 | 短音频、实时流式 | Seed-TTS 3.0：一次性、流式输出、双向流式 | 复刻、设计、查询 |
+| 腾讯云 | 短音频、实时流式 | WebSocket v2：一次性、流式输出、双向流式 | 训练文本、录音检测、复刻任务、查询 |
 
-
+具体音频格式、模型、音色及高级参数支持情况见各厂商文档。
 ## 安装
 
 需要 Go 1.27.4 或更新版本：
@@ -45,7 +45,7 @@ export TTS_VOICE="your-seed3-voice-id"
 go run ./examples/tts-switch "你好，欢迎使用 go-speech。" output.mp3
 ```
 
-默认使用流式合成。一次性合成：
+示例默认一次提交完整文本、流式读取音频；也可一次性收集完整音频：
 
 ```bash
 TTS_MODE=batch go run ./examples/tts-switch "你好。" output.mp3
@@ -77,7 +77,37 @@ if err != nil {
 _ = result.Data // 完整音频字节
 ```
 
-`SynthesizeStream` 返回 `tts.Stream`，通过 `Recv(ctx)` 逐块读取音频，读取结束返回 `io.EOF`。使用后调用 `Close()`。
+三种合成方式：
+
+| 方法 | 文本输入 | 音频输出 |
+| --- | --- | --- |
+| `Synthesize` | 完整文本 | 完整 `audio.Buffer`（最多 64 MiB） |
+| `SynthesizeStream` | 完整文本 | `tts.Stream` |
+| `OpenDuplex` | 逐段文本 | `tts.DuplexStream` |
+
+双向流式可直接通过 `speech.NewDuplexTTS` 创建客户端：
+
+```go
+client, err := speech.NewDuplexTTS(speech.VolcengineTTS{
+    APIKey: apiKey,
+})
+if err != nil {
+    return err
+}
+
+stream, err := client.OpenDuplex(ctx, tts.DuplexRequest{
+    Voice: voiceID,
+    Format: audio.Format{
+        Encoding: audio.EncodingOpus, SampleRate: 48000, Channels: 1,
+    },
+})
+if err != nil {
+    return err
+}
+defer stream.Close()
+```
+
+一个 goroutine 依次调用 `SendText(ctx, text)`、`CloseSend(ctx)`，另一个 goroutine 同时调用 `Recv(ctx)` 读取音频，直至 `io.EOF`。发送或接收失败时结束本次会话。所有流都需要调用 `Close()`。
 
 需要完整音频及字词时间戳时，使用 `tts.SynthesizeDetailed(ctx, client, req)`。例如，火山引擎（`volcengine` 为 `tts/providers/volcengine` 包）：
 
@@ -164,7 +194,7 @@ if err != nil {
 defer stream.Close()
 ```
 
-使用 `Send(ctx, data)` 发送音频，使用 `Recv(ctx)` 接收 `asr.EventPartial` 和 `asr.EventFinal`。发送完毕后调用 `CloseSend(ctx)`，继续接收直到 `io.EOF`。
+一个 goroutine 使用 `Send(ctx, data)` 发送音频，另一个 goroutine 同时使用 `Recv(ctx)` 接收识别事件。发送完毕后调用 `CloseSend(ctx)`，继续接收直到 `io.EOF`。`EventFinal` 是已确认的文本片段，不一定表示整段对话结束。启用 `asr.Options.UtteranceDetails` 后可读取厂商提供的分段、字词时间戳等元数据；`EventUtteranceUpdate` 用于更新已确认片段的元数据，不应重复追加文本。
 
 ## 选择厂商
 
@@ -199,22 +229,46 @@ go vet ./...
 - [集成测试](docs/INTEGRATION.md)
 - [Go API Reference](https://pkg.go.dev/github.com/NSObjects/go-speech)
 
-## License
+## 高级选项与能力检查
 
-[Apache-2.0](LICENSE)
+通过 `asr.Config.Options`、`tts.Request.Options` 或 `tts.DuplexRequest.Options` 设置请求级参数。通用选项与厂商原生 `Options` 可组合使用；原生参数详见对应厂商文档。
 
-## Offline capability queries and request validation
+内置客户端实现可选接口 `asr.CapabilityProvider`、`tts.CapabilityProvider`、`asr.ConfigValidator` 和 `tts.RequestValidator`。能力查询与参数校验均在本地执行，不发送网络请求。TTS 分别通过 `ValidateRequest`、`ValidateSynthesize`、`ValidateDuplex` 检查不同合成方式的参数组合。
 
-Built-in clients implement optional `asr.CapabilityProvider` / `tts.CapabilityProvider` and `asr.ConfigValidator` / `tts.RequestValidator`. For example, `client.(asr.ConfigValidator).ValidateConfig(cfg)` validates a streaming configuration without a network request. For TTS, `ValidateRequest(req)` checks complete-text streaming/detailed requests, `ValidateSynthesize(req)` additionally checks audio-only batch restrictions, and `ValidateDuplex(req)` checks incremental-text configuration. The actual request paths reuse the same preparation logic. `Capabilities()` exposes local protocol paths, model/resource selection, coarse audio support, accepted text formats and native TTS controls. A successful local check is not a guarantee of account authorization, service availability or voice-specific support. No remote probing or automatic fallback occurs.
-
-Advanced feature queries use `client.(asr.CapabilityProvider).Capabilities().Features.Get(asr.FeatureEmotion)` or `client.(tts.CapabilityProvider).Capabilities().Features.Get(tts.FeatureSpeed)`. Each feature has a local SDK/model status, optional parameter descriptors (Go field paths, native units, inclusive numeric ranges and enums), and notes. `unknown` means unconfirmed or dependent on voice/model/service behavior, not unsupported. An absent feature also returns unknown. The descriptor set covers common advanced controls, not every native subfield; use the typed options and offline validator for complete request combinations. No external requests are made. Returned snapshots are independent.
+`Capabilities().Features.Get(...)` 返回具体能力及参数描述。unknown 表示尚未确认或依赖具体模型、音色或服务权限。通过本地校验不代表云端已授权。
 
 ## 音色管理
 
-火山 Seed-TTS 3.0 音色注册、查询与设计使用独立的 [`voice/providers/volcengine`](voice/providers/volcengine) Client；返回的 SpeakerID 可传入 TTS 的 Voice 字段。详见该包的使用说明。
+- [阿里云](voice/providers/aliyun)：CosyVoice / Qwen Audio 音色复刻、设计及管理。
+- [火山引擎](voice/providers/volcengine)：Seed-TTS 3.0 音色复刻、设计与查询。
+- [腾讯云](voice/providers/tencent)：VRS 训练文本、录音检测、复刻任务与音色查询。
 
-阿里 CosyVoice / Qwen Audio 音色复刻、设计、查询、更新及删除使用 [`voice/providers/aliyun`](voice/providers/aliyun)，音色绑定创建时指定的目标模型。
+音色管理使用独立客户端。合成时传入厂商返回的音色 ID，并选择对应模型。
 
-腾讯 VRS 使用 [`voice/providers/tencent`](voice/providers/tencent) 获取训练文本、检测录音、提交训练任务及查询任务和音色。使用返回的 VoiceType / FastVoiceType 合成语音。
+## 连接池
 
-Aliyun ASR and TTS support [optional WebSocket connection pooling](docs/aliyun-connection-pool.md). Volcengine Seed-TTS 3.0 also supports [optional duplex connection pooling](tts/providers/volcengine/README.md#optional-duplex-connection-reuse), with a separate idle timeout policy.
+阿里 ASR、TTS 和火山 Seed-TTS 3.0 双向流式支持可选的 WebSocket 连接复用。默认关闭连接池，按需设置 `Pool`：
+
+```go
+client, err := speech.NewTTS(speech.AliyunTTS{
+    APIKey: apiKey,
+    Pool: &speech.PoolConfig{
+        MaxOpen: 16,
+        MaxIdle: 4,
+    },
+})
+if err != nil {
+    return err
+}
+defer client.(io.Closer).Close()
+```
+
+在多次调用间复用客户端。连接池按需建立连接，不自动预热、补充空闲连接或重试任务。详见 [阿里连接池](docs/aliyun-connection-pool.md) 和 [火山双向流式连接池](tts/providers/volcengine/README.md#optional-duplex-connection-reuse)。
+
+## 错误处理
+
+`speecherr.Error` 提供统一的错误分类、厂商原始错误码和重试提示；`speecherr.IsCode` 可判断错误类别，`errors.Is` 和 `errors.As` 可检查原始错误。SDK 不自动重试或切换厂商。
+
+## License
+
+[Apache-2.0](LICENSE)
