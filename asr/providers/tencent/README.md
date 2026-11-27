@@ -1,6 +1,6 @@
 # Tencent Cloud real-time ASR (WebSocket V2)
 
-This provider implements `asr.StreamRecognizer` and `asr.Stream` with
+This provider implements `asr.Client` and `asr.Stream` with
 Tencent Cloud Speech Recognition V2 (`/asr/v2/<appid>`). It is **not**
 Tencent RTC's separate `/asr/v3` product or Tencent's TTS service.
 
@@ -142,8 +142,8 @@ not a VAD silence threshold and not an automatic reconnect mechanism.
 
 Per-request `Language` is unsupported rather than silently ignored:
 choose the engine in `Config`. Per-request `Hints` use Tencent temporary
-hotwords, as documented above. The SDK does not implement non-streaming batch
-recognition via this adapter.
+hotwords, as documented above. Use Recognize for a complete short audio buffer; it uses the same realtime
+streaming protocol internally.
 
 ## Reconnection and duplicate-result safety
 
@@ -503,3 +503,7 @@ Official protocol: https://cloud.tencent.com/document/product/1093/48982
 ## Request-local advanced options
 
 Use `asr.Config.Options.Provider = tencent.Options{...}` to override VAD and dictionary defaults, select native filters and numeric conversion, weighted temporary hotwords, noise threshold, domain, word timing, sentence strategy and speaker context. Explicit common Punctuation and TextNormalization are rejected rather than approximated by Tencent's narrower controls; use FilterPunctuation and ConvertNumMode. DisfluencyRemoval maps to filter_modal=0/1. Legacy WordInfo and EmotionRecognition are engine-restricted; emotion is opt-in, billable, and requires NeedVAD. Its separate realtime response schema is not documented, so the SDK preserves native result JSON in UtteranceDetails.RawResult and does not infer emotion or strip inline labels. Set UtteranceDetails for timing; explicit emotion also enables detailed results. Empty legacy final slices can be requested with ReturnEmptyResults. Speaker 2.0 supports EnableSpeakerContext and SpeakerContextID; read the service-issued ID through asr.SessionMetadataReceiver or Result.Provider (tencent.SessionDetails). Reuse only for the same conversation with caller-managed lifetime. No automatic reconnect, local diarization or audio replay occurs. See https://cloud.tencent.com/document/product/1093/48982 and https://cloud.tencent.com/document/product/1093/131127 . Real service validation remains pending.
+
+## Live emotion metadata probe
+
+The automatic paid ASR workflow tests `EmotionRecognition=1` with `NeedVAD=true` on `16k_zh` using the pinned public PCM fixture. It requires final text and preserved native result JSON, logs field names and JSON types only, and explicitly marks emotional label interpretation as unverified. The SDK does not invent emotion labels or claim accuracy. The account must enable the paid emotion recognition feature; a provider error fails the probe.
