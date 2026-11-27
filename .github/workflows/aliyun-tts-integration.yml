@@ -8,6 +8,8 @@ on:
       - "tts/**"
       - "audio/**"
       - "speecherr/**"
+      - "transport/**"
+      - "internal/connpool/**"
       - "speech.go"
       - "go.mod"
       - "go.sum"
@@ -49,4 +51,5 @@ jobs:
             }
           fi
       - name: Real CosyVoice PCM MP3 WAV Ogg Opus streaming and batch checks
-        run: go test -tags=integration -run '^TestAliyunLive(CosyVoice(EncodedFormats|Opus)?|Duplex|Advanced)$' -count=1 -v -timeout 6m ./tts/providers/aliyun
+        run: go test -tags=integration -run '^TestAliyunLive(CosyVoice(EncodedFormats|Opus)?|Duplex|Advanced|Pool) -count=1 -v -timeout 6m ./tts/providers/aliyun
+ -count=1 -v -timeout 6m ./tts/providers/aliyun

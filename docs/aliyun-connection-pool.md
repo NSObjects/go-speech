@@ -24,7 +24,7 @@ one connection per task. Each task has a new task ID and stream, and exclusively
 owns its socket until a matching task-finished event has been consumed.
 Early Close, context cancellation, network failure and task-failed discard
 the connection. Native TTS cancellation may reuse a connection after the
-terminal acknowledgement.
+terminal acknowledgement. Do not use a stream after Close.
 
 Zero configuration values use 16 open connections, up to four idle, a 30-second
 idle timeout and ten-minute maximum lifetime. The idle timeout must be at most

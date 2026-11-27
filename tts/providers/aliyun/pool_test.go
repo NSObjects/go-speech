@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/NSObjects/go-speech/transport"
+	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
 )
 
@@ -54,6 +55,7 @@ func TestPooledTTSReusesCompletedTasks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	firstCtx, firstCancel := context.WithCancel(ctx)
+	defer firstCancel()
 	first, err := client.SynthesizeStream(firstCtx, testRequest())
 	if err != nil {
 		firstCancel()
@@ -84,8 +86,26 @@ func TestPooledTTSReusesCompletedTasks(t *testing.T) {
 	if err != nil || len(third.Data) != 2 {
 		t.Fatalf("third: %v, %v", third.Data, err)
 	}
+	request := testRequest()
+	duplex, err := client.OpenDuplex(ctx, tts.DuplexRequest{Voice: request.Voice, Format: request.Format})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := duplex.SendText(ctx, request.Text); err != nil {
+		t.Fatal(err)
+	}
+	if err := duplex.(tts.Canceler).Cancel(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := duplex.Recv(ctx); !errors.Is(err, tts.ErrSynthesisCanceled) {
+		t.Fatalf("native cancellation: %v", err)
+	}
+	_ = duplex.Close()
+	if _, err := client.Synthesize(ctx, request); err != nil {
+		t.Fatalf("reuse after native cancellation: %v", err)
+	}
 	seen := make(map[string]bool)
-	for range 3 {
+	for range 5 {
 		select {
 		case id := <-ids:
 			if seen[id] {
