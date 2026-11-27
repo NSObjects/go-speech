@@ -43,7 +43,7 @@ for {
 The SDK signs a new WebSocket URL/session per synthesis with HMAC-SHA1,
 waits for Tencent's `ready=1`, sends `ACTION_SYNTHESIS` and
 `ACTION_COMPLETE`, and drains audio until `final=1`.
-The signed URL binds the session ID and synthesis settings. FINAL terminates that session and the protocol requires closing the WebSocket. This provider does not implement connection pooling or `tts.Prewarmer`. To overlap setup with other work, open the duplex session with the actual request options before text is ready; keep its context valid through synthesis and close it if unused.
+The signed URL binds the session ID and synthesis settings. FINAL terminates that session and the protocol requires closing the WebSocket. This provider does not implement connection pooling or `tts.Prewarmer`. To overlap setup with other work, open the duplex session with the actual request options before text is ready; keep its context valid through synthesis and close it if unused. A real-cloud test successfully synthesized after waiting five seconds following READY; this is not a guaranteed idle timeout.
 
 Only `pcm` and `mp3` at 8/16/24 kHz mono are accepted; individual
 voices may support fewer sample rates.
