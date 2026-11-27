@@ -143,6 +143,7 @@ func (c *Client) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, er
 	}
 	s := newStream(conn, ctx, taskID)
 	s.details = cfg.Options.UtteranceDetails
+	s.model = c.cfg.Model
 	if cfg.Format.Encoding == audio.EncodingPCM16LE {
 		s.pcmFrameBytes = cfg.Format.Channels * 2 // signed 16-bit samples per channel
 	}

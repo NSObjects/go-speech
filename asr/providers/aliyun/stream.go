@@ -39,6 +39,9 @@ type Stream struct {
 	terminalErr error // terminalMu: first terminal failure remains observable
 	pcmFrameBytes int // 0 for encoded formats; immutable after OpenStream
 	details       bool // immutable after OpenStream
+	model         string // immutable after OpenStream
+	usageMu       sync.Mutex
+	usage         *Usage
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -208,6 +211,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		switch ev.Header.Event {
 		case "result-generated":
+			s.recordUsage(ev.Payload.Usage, false)
 			sentence := ev.Payload.Output.Sentence
 			if sentence.Heartbeat {
 				continue
@@ -225,6 +229,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 				return s.sentenceEvent(asr.EventSpeechStart, sentence), nil
 			}
 		case "task-finished":
+			s.recordUsage(ev.Payload.Usage, true)
 			s.finished = true
 			_ = s.Close()
 			// A writer can fail while ReadMessage decodes task-finished.
@@ -334,6 +339,7 @@ type responsePayload struct {
 	Output struct {
 		Sentence responseSentence `json:"sentence"`
 	} `json:"output"`
+	Usage json.RawMessage `json:"usage"`
 }
 type responseEvent struct {
 	Header  responseHeader  `json:"header"`
