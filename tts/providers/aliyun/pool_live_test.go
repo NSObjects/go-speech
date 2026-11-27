@@ -52,7 +52,10 @@ func TestAliyunLivePool(t *testing.T) {
 	if err := client.Warmup(ctx, "", 1); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(2 * time.Second)
+	// Validate a fresh (not previously used) connection near the default
+	// idle budget, without adding an extra synthesis request.
+	t.Logf("waiting 25s after fresh warmup")
+	time.Sleep(25 * time.Second)
 	if dials.Load() != 1 {
 		t.Fatal("warmup did not open exactly one socket")
 	}
