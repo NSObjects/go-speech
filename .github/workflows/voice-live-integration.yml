@@ -1,0 +1,52 @@
+name: Voice management integration (read-only)
+
+on:
+  push:
+    paths:
+      - "voice/**"
+      - "speecherr/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/voice-live-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  query:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [aliyun, tencent, volcengine]
+    env:
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      DASHSCOPE_VOICE_ENDPOINT: ${{ vars.DASHSCOPE_VOICE_ENDPOINT }}
+      DASHSCOPE_VOICE_ID: ${{ secrets.DASHSCOPE_VOICE_ID }}
+      TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+      TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+      TENCENT_VOICE_REGION: ${{ vars.TENCENT_VOICE_REGION }}
+      VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
+      VOLCENGINE_VOICE_ENDPOINT: ${{ vars.VOLCENGINE_VOICE_ENDPOINT }}
+      VOLCENGINE_VOICE_SPEAKER_ID: ${{ secrets.VOLCENGINE_VOICE_SPEAKER_ID }}
+      VOLCENGINE_VOICE_CUSTOM_SPEAKER_ID: ${{ secrets.VOLCENGINE_VOICE_CUSTOM_SPEAKER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Query existing voice resources only
+        shell: bash
+        env:
+          PROVIDER: ${{ matrix.provider }}
+        run: |
+          set -euo pipefail
+          go test -tags=integration -run 'LiveVoiceQuer(y|ies)$' -count=1 -v -timeout 2m "./voice/providers/$PROVIDER" | tee "$RUNNER_TEMP/voice-query.log"
+          if grep -q 'NOT VALIDATED:' "$RUNNER_TEMP/voice-query.log"; then
+            echo "### Voice management ($PROVIDER): INCOMPLETE — see skipped cases" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Voice management ($PROVIDER): read-only protocol checks passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
