@@ -145,7 +145,7 @@ func (c *Client) features() capability.Features {
 		tts.FeaturePronunciation: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.PronunciationTone", Kind: capability.List}}},
 		tts.FeatureMarkdownFilter: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.EnableMarkdownFilter", Kind: capability.Bool}}},
 		tts.FeatureTextNormalization: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.TextNormalization", Kind: capability.Bool}}},
-		tts.FeatureBitRate: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.BitRate", Kind: capability.Integer, Unit: "bps", IntValues: []int{64000, 160000}}}, Notes: "MP3/Ogg Opus only; 8k MP3 requires 64000."},
+		tts.FeatureBitRate: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.BitRate", Kind: capability.Integer, Unit: "bps", IntValues: []int{standardBitRate, highBitRate}}}, Notes: "MP3/Ogg Opus only; 8k MP3 requires 64000."},
 		tts.FeatureContext: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.SessionID", Kind: capability.String}}, Notes: "Serial synthesis context, not a persistent SDK session."},
 		tts.FeatureSeed: {Status: capability.Unsupported},
 		tts.FeatureWatermark: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.Watermark", Kind: capability.Object}}},

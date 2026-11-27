@@ -187,8 +187,12 @@ func (c Config) requestOptions(req asr.Config, n Options) (url.Values, string, e
 		if mode != 0 && mode != 1 && mode != 2 && mode != 100 {
 			return nil, "", requestError("WordInfo must be 0, 1, 2 or 100")
 		}
-		if !slices.Contains(wordInfoModes(engine), mode) {
-			return nil, "", unsupportedError("WordInfo mode is not documented for this engine")
+		modes := wordInfoModes(engine)
+		if len(modes) == 0 {
+			return nil, "", unsupportedError("WordInfo is not documented for this engine")
+		}
+		if !slices.Contains(modes, mode) {
+			return nil, "", unsupportedError("WordInfo=100 requires 16k_zh_en")
 		}
 		q.Set("word_info", strconv.Itoa(mode))
 	}

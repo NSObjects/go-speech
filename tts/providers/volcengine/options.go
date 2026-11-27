@@ -147,10 +147,10 @@ func advanced(native Options, output *outputFormat, duplex bool) (advancedReques
 		if output.Format == "pcm" {
 			return req, invalid("bit rate is not supported for PCM")
 		}
-		if native.BitRate != 64000 && native.BitRate != 160000 {
+		if native.BitRate != standardBitRate && native.BitRate != highBitRate {
 			return req, invalid("bit rate must be 64000 or 160000 bps")
 		}
-		if output.Format == "mp3" && output.SampleRate == 8000 && native.BitRate != 64000 {
+		if output.Format == "mp3" && output.SampleRate == 8000 && native.BitRate != standardBitRate {
 			return req, invalid("8000 Hz MP3 requires 64000 bps")
 		}
 		output.BitRate = native.BitRate
@@ -178,3 +178,8 @@ func advanced(native Options, output *outputFormat, duplex bool) (advancedReques
 	req.EnableSubtitle = native.EnableSubtitle
 	return req, nil
 }
+
+const (
+	standardBitRate = 64000
+	highBitRate = 160000
+)

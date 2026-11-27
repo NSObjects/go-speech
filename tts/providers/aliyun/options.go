@@ -2,6 +2,7 @@ package aliyun
 
 import (
 	"math"
+	"slices"
 
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/tts"
@@ -88,9 +89,7 @@ func voiceParameters(o tts.Options) (map[string]any, error) {
 		params["bit_rate"] = native.BitRateKbps
 	}
 	if native.LanguageHint != "" {
-		switch native.LanguageHint {
-		case "zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar":
-		default:
+		if !slices.Contains(languageHints(), native.LanguageHint) {
 			return nil, invalid("unsupported language hint")
 		}
 		params["language_hints"] = []string{native.LanguageHint}
@@ -148,4 +147,8 @@ func supportsAIGCTag(model string) bool {
 
 func supportsMarkdownFilter(model string) bool {
 	return model != "cosyvoice-v2"
+}
+
+func languageHints() []string {
+	return []string{"zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar"}
 }

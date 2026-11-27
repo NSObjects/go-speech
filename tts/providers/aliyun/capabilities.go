@@ -98,6 +98,6 @@ func (c *Client) features() capability.Features {
 		tts.FeatureSegmentRate: {Status: capability.Unsupported},
 		tts.FeatureSimilarityBoost: {Status: capability.Unsupported},
 		tts.FeatureDialectBoost: {Status: capability.Unsupported},
-		tts.FeatureLanguage: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.LanguageHint", Kind: capability.String}}},
+		tts.FeatureLanguage: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.LanguageHint", Kind: capability.String, StringValues: languageHints()}}},
 	}
 }
