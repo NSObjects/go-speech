@@ -53,6 +53,12 @@ passing them to the provider; the provider never transforms input implicitly.
 
 ## Streaming semantics
 
+The optimized streaming endpoint may omit `start_time` on its first
+utterance even when a positive `end_time` and word timestamps are present.
+The adapter preserves omitted timestamps as nil; it does not infer a
+zero start time or derive a segment boundary from word timing.
+An explicit zero timestamp is preserved as zero.
+
 For real-time dialogue, choose the provider's `ResultType` in `Config`:
 
 - `ResultFull` (default): cumulative transcript snapshots, with repeated

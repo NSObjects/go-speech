@@ -4,8 +4,6 @@ package volcengine
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -35,7 +33,7 @@ func TestVolcengineLiveShortRecognize(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	on := true
-	result, err := asr.RecognizeStream(ctx, &timingTraceClient{Client: client, t: t}, audio.Buffer{
+	result, err := client.Recognize(ctx, audio.Buffer{
 		Data: raw, Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
 	}, asr.Config{Options: asr.Options{UtteranceDetails: true, Provider: Options{
 		EnableNonStream: &on, ShowSpeechRate: &on, ShowVolume: &on, EnableEmotionDetection: &on,
@@ -46,11 +44,11 @@ func TestVolcengineLiveShortRecognize(t *testing.T) {
 	if strings.TrimSpace(result.Text) == "" {
 		t.Fatal("Volcengine Recognize returned no final text")
 	}
-	for i, u := range result.Utterances {
-		t.Logf("aggregate segment=%d id=%q text=%q definite=%t start=%s end=%s words=%d rate=%t volume=%t emotion=%q",
-			i, u.ID, u.Text, u.Definite, traceTime(u.StartTime), traceTime(u.EndTime), len(u.Words), u.SpeechRate != nil, u.VolumeDB != nil, u.Emotion)
+	if singleFinalWithoutStart(result.Utterances) {
+		t.Logf("provider omitted first segment start_time; positive segment end and %d valid word intervals retained", len(result.Utterances[0].Words))
+	} else {
+		verifyTimedUtterances(t, result.Utterances, true)
 	}
-	verifyTimedUtterances(t, result.Utterances, true)
 	rate, volume, emotion := 0, 0, 0
 	for _, u := range result.Utterances {
 		if u.SpeechRate != nil && *u.SpeechRate > 0 {
@@ -67,60 +65,4 @@ func TestVolcengineLiveShortRecognize(t *testing.T) {
 		t.Fatalf("requested perception metadata missing: speech_rate=%d volume=%d emotion=%d", rate, volume, emotion)
 	}
 	t.Logf("Volcengine short Recognize chars=%d speech_rate=%d volume=%d emotion=%d", len([]rune(result.Text)), rate, volume, emotion)
-}
-
-// The fixture is a pinned public test recording. Trace result bodies only;
-// never log credentials, connection headers, user IDs or audio bytes.
-type timingTraceClient struct {
-	*Client
-	t *testing.T
-}
-
-func (c *timingTraceClient) OpenStream(ctx context.Context, cfg asr.Config) (asr.Stream, error) {
-	stream, err := c.Client.OpenStream(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return &timingTraceStream{Stream: stream.(*Stream), t: c.t}, nil
-}
-
-type timingTraceStream struct {
-	*Stream
-	t        *testing.T
-	frames   int
-	lastBody string
-}
-
-func (s *timingTraceStream) Recv(ctx context.Context) (asr.Event, error) {
-	event, err := s.Stream.recv(ctx, func(m wireMessage) {
-		s.frames++
-		var p serverPayload
-		if json.Unmarshal(m.payload, &p) != nil {
-			return
-		}
-		if len(p.Result) == 0 && len(p.PayloadMsg) != 0 {
-			var nested serverPayload
-			if json.Unmarshal(p.PayloadMsg, &nested) == nil {
-				p.Result = nested.Result
-			}
-		}
-		body := string(p.Result)
-		last := p.IsLastPackage || m.flags&flagLast != 0
-		if body != "" && (body != s.lastBody || last) {
-			s.lastBody = body
-			s.t.Logf("wire frame=%d last=%t result=%s", s.frames, last, body)
-		}
-	})
-	if err == nil && event.Utterance != nil {
-		u := event.Utterance
-		s.t.Logf("event kind=%v id=%q text=%q definite=%t start=%s end=%s words=%d", event.Type, u.ID, u.Text, u.Definite, traceTime(u.StartTime), traceTime(u.EndTime), len(u.Words))
-	}
-	return event, err
-}
-
-func traceTime(v *time.Duration) string {
-	if v == nil {
-		return "missing"
-	}
-	return fmt.Sprintf("%dms", v.Milliseconds())
 }
