@@ -1,0 +1,75 @@
+name: Tencent SILK V3 protocol diagnostic (paid)
+
+on:
+  push:
+    branches:
+      - test/tencent-silk-v3-probe
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    # Third-party reference encoder executes ONLY in this job, without cloud
+    # credentials or checkout/persisted repository credentials.
+    steps:
+      - name: Build pinned SILK reference encoder and generate public fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --connect-timeout 15 --max-time 60 \
+            https://codeload.github.com/kn007/silk-v3-decoder/tar.gz/507be6bca8ce1fb977a061481f1d79e8c610e309 \
+            -o "$RUNNER_TEMP/silk-src.tar.gz"
+          mkdir "$RUNNER_TEMP/silk-src"
+          tar -xzf "$RUNNER_TEMP/silk-src.tar.gz" -C "$RUNNER_TEMP/silk-src" --strip-components=1
+          make -C "$RUNNER_TEMP/silk-src/silk" -j2 CFLAGS='-O2 -fcommon -Iinterface -Isrc -Itest' lib
+          make -C "$RUNNER_TEMP/silk-src/silk" CFLAGS='-O2 -fcommon -Iinterface -Isrc -Itest' encoder
+          curl -fsSL --connect-timeout 15 --max-time 45 \
+            https://raw.githubusercontent.com/TencentCloud/tencentcloud-speech-sdk-go/257f9f56bcd592bff1faea9b4ce0f1ef90cea803/examples/speakerexample/test.pcm \
+            -o "$RUNNER_TEMP/source.pcm"
+          test "$(git hash-object "$RUNNER_TEMP/source.pcm")" = "48e5f31375a9e7bad4ad21cd104cdd5714670d25"
+          : > "$RUNNER_TEMP/input.pcm"
+          for i in 1 2 3; do cat "$RUNNER_TEMP/source.pcm" >> "$RUNNER_TEMP/input.pcm"; done
+          "$RUNNER_TEMP/silk-src/silk/encoder" "$RUNNER_TEMP/input.pcm" "$RUNNER_TEMP/fixture.silk" \
+            -Fs_API 16000 -Fs_maxInternal 16000 -packetlength 20 -rate 20000 -DTX 0 -quiet
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p = Path(os.environ["RUNNER_TEMP"], "fixture.silk")
+          b = p.read_bytes()
+          assert b.startswith(b"#!SILK_V3") and b.endswith(b"\xff\xff")
+          assert 100 < len(b) <= 1024 * 1024
+          print(f"Reference encoder: {len(b)} bytes")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: silk-v3-fixture
+          path: ${{ runner.temp }}/fixture.silk
+          if-no-files-found: error
+          retention-days: 1
+
+  live:
+    needs: fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: silk-v3-fixture
+          path: ${{ runner.temp }}/silk-fixture
+      - name: Probe real native SILK V3 over ASR WebSocket
+        env:
+          TENCENT_APP_ID: ${{ vars.TENCENT_APP_ID }}
+          TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+          TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+          TENCENT_TEST_SILK_FILE: ${{ runner.temp }}/silk-fixture/fixture.silk
+        run: go test -tags=integration -run '^TestTencentLiveSILKV3Probe$' -count=1 -v -timeout 2m ./asr/providers/tencent
