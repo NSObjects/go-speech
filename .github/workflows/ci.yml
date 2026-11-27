@@ -25,6 +25,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes=
       - name: Check formatting
         run: |
           unformatted="$(gofmt -l $(git ls-files '*.go'))"
@@ -46,7 +48,8 @@ jobs:
         run: |
           go test -tags=integration -run TestNonexistentCompileOnly \
             ./asr/providers/volcengine ./asr/providers/tencent ./asr/providers/aliyun \
-            ./tts/providers/aliyun ./tts/providers/volcengine ./tts/providers/tencent
+            ./tts/providers/aliyun ./tts/providers/volcengine ./tts/providers/tencent \
+            ./voice/providers/...
       - name: Verify preinstalled FFmpeg
         run: |
           command -v ffmpeg
