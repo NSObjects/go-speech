@@ -61,6 +61,7 @@ jobs:
       # Paid gates exercise provider tasks and supported Ogg Opus upload.
       # Offline Go CI tests the optional decoder and native libopus pipelines.
       - name: Generate synthetic speech fixtures
+        id: fixtures
         run: |
           espeak-ng -v en -s 130 -w "${RUNNER_TEMP}/speech-test.wav" \
             "Hello. This is a real speech recognition integration test. Can you hear my voice clearly?"
@@ -83,7 +84,11 @@ jobs:
         run: go test -tags=integration -run '^TestAliyunLiveASR$' -count=1 -v -timeout 3m ./asr/providers/aliyun
 
       - name: Short-audio Recognize (complete PCM input and final text)
-        run: go test -tags=integration -run '^TestAliyunLive(ShortRecognize|Pool)$' -count=1 -v -timeout 2m ./asr/providers/aliyun
+        run: go test -tags=integration -run '^TestAliyunLiveShortRecognize$' -count=1 -v -timeout 2m ./asr/providers/aliyun
+
+      - name: Live ASR physical connection reuse
+        if: ${{ !cancelled() && steps.fixtures.outcome == 'success' }}
+        run: go test -tags=integration -run '^TestAliyunLivePool$' -count=1 -v -timeout 2m ./asr/providers/aliyun
 
       - name: Ogg Opus passthrough and raw Opus to Ogg remux (no transcoding)
         if: matrix.model == 'fun-asr-realtime'

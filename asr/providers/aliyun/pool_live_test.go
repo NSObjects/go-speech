@@ -48,14 +48,16 @@ func TestAliyunLivePool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	input := audio.Buffer{Data: raw, Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: rate, Channels: 1}}
-	for range 2 {
+	for round := 1; round <= 2; round++ {
+		start := time.Now()
 		result, err := client.Recognize(ctx, input, asr.Config{})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("round %d model=%s physical_dials=%d elapsed=%s: %v", round, model, dials.Load(), time.Since(start), err)
 		}
 		if strings.TrimSpace(result.Text) == "" {
-			t.Fatal("no final transcript")
+			t.Fatalf("round %d: no final transcript", round)
 		}
+		t.Logf("round %d model=%s physical_dials=%d elapsed=%s", round, model, dials.Load(), time.Since(start))
 	}
 	if got := dials.Load(); got != 1 {
 		t.Fatalf("expected one physical connection, got %d", got)
