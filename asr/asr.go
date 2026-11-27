@@ -50,6 +50,9 @@ const (
 	EventPartial EventType = "partial"
 	// EventFinal is a confirmed transcript segment, not necessarily the end of a turn.
 	EventFinal EventType = "final"
+	// EventUtteranceUpdate carries updated metadata for an already emitted
+	// final segment. It never contributes additional transcript text.
+	EventUtteranceUpdate EventType = "utterance_update"
 	// EventSpeechStart and EventSpeechEnd are optional provider endpoint events.
 	EventSpeechStart EventType = "speech_start"
 	EventSpeechEnd   EventType = "speech_end"

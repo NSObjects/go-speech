@@ -86,7 +86,7 @@ func (s *Stream) sentenceEvent(kind asr.EventType, r sentence) asr.Event {
 	e := asr.Event{Type: kind, Text: r.Text, SpeakerID: r.SpeakerID}
 	if s.details {
 		e.Utterance = &asr.Utterance{
-			Text: r.Text, Definite: kind == asr.EventFinal,
+			Text: r.Text, Definite: kind == asr.EventFinal, SpeakerID: r.SpeakerID,
 			StartTime: milliseconds(r.StartTime), EndTime: milliseconds(r.EndTime),
 			Provider: UtteranceDetails{Index: r.ID, SpeakerID: r.SpeakerID},
 		}

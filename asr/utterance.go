@@ -6,8 +6,13 @@ import "time"
 // Missing metadata is nil, not zero. Definite is the provider's own finality
 // flag, which may differ from EventFinal at the end of an input stream.
 type Utterance struct {
+	// ID is an optional session-local segment key used to correlate updates.
+	// Empty means the adapter cannot safely correlate later snapshots.
+	ID string
 	Text      string
 	Definite  bool
+	// SpeakerID is optional numeric speaker metadata, not durable identity.
+	SpeakerID *int
 	StartTime *time.Duration
 	EndTime   *time.Duration
 	Words     []Word

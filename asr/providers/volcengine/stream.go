@@ -44,6 +44,7 @@ type Stream struct {
 	confirmedText  string              // readMu: concatenated confirmed segments
 	lastFinalText  string              // readMu: most recent confirmed utterance
 	finalSeen      map[string]struct{} // readMu
+	finalMetadata  map[string]finalMetadata // readMu; detailed timed finals only
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -270,6 +271,8 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				partial = u.Text
 				if s.details {
 					partialDetails = u.metadata()
+				} else {
+					partialDetails = nil
 				}
 				continue
 			}
@@ -289,12 +292,17 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				key = fmt.Sprintf("time:%d:%d", u.Start, u.End)
 			}
 			if _, alreadyEmitted := s.finalSeen[key]; alreadyEmitted {
+				if s.details {
+					s.updateFinalMetadata(key, u)
+				}
 				continue
 			}
 			s.finalSeen[key] = struct{}{}
 			e := asr.Event{Type: asr.EventFinal, Text: u.Text}
 			if s.details {
 				e.Utterance = u.metadata()
+				e.SpeakerID = e.Utterance.SpeakerID
+				s.rememberFinalMetadata(key, u, e.Utterance)
 			}
 			s.queue = append(s.queue, e)
 			s.confirmedText += u.Text
@@ -318,7 +326,7 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 	if partial != "" && partial != s.pendingText {
 		// Never emit a provisional event after the terminal response.
 		if !last {
-			s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: partial, Utterance: partialDetails})
+			s.queue = append(s.queue, detailedEvent(asr.EventPartial, partial, partialDetails))
 		}
 		s.pendingText = partial
 		s.pendingDetails = partialDetails
@@ -328,7 +336,7 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 	if last && s.pendingText != "" {
 		// The provider may omit utterance metadata in its last response.
 		// Preserve the final unconfirmed segment instead of losing speech.
-		s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: s.pendingText, Utterance: s.pendingDetails})
+		s.queue = append(s.queue, detailedEvent(asr.EventFinal, s.pendingText, s.pendingDetails))
 		s.pendingText = ""
 		s.pendingDetails = nil
 	}
