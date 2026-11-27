@@ -12,6 +12,7 @@ const (
 	Active     State = "active"
 	Processing State = "processing"
 	Rejected   State = "rejected"
+	Failed     State = "failed"
 )
 
 // Usable reports whether the provider reports a synthesis-ready state.

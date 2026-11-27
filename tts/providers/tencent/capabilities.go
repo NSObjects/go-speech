@@ -103,7 +103,7 @@ func (c *Client) features() capability.Features {
 		tts.FeatureSeed: {Status: capability.Unsupported},
 		tts.FeatureWatermark: {Status: capability.Unsupported},
 		tts.FeatureSilence: {Status: capability.Unsupported},
-		tts.FeatureVoiceClone: {Status: capability.Unknown, Parameters: []capability.Parameter{{Field: "Options.Provider.FastVoiceType", Kind: capability.String}}, Notes: "One-sentence cloned voice IDs require Voice 200000000 or 200000400; training API not implemented."},
+		tts.FeatureVoiceClone: {Status: capability.Unknown, Parameters: []capability.Parameter{{Field: "Options.Provider.FastVoiceType", Kind: capability.String}}, Notes: "One-sentence cloned voice IDs require Voice 200000000 or 200000400; enrollment and task queries are available in voice/providers/tencent."},
 		tts.FeatureLatex: {Status: capability.Unknown, Parameters: []capability.Parameter{{Field: "Options.Provider.EnableLatex", Kind: capability.Bool}}, Notes: "Only certain voices."},
 		tts.FeatureSegmentRate: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.SegmentRate", Kind: capability.Integer, Range: &capability.NumericRange{Min: minSegmentRate, Max: maxSegmentRate}}}},
 		tts.FeatureSimilarityBoost: {Status: capability.Unsupported},
