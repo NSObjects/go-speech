@@ -50,7 +50,12 @@ func TestVolcengineLiveASR(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
-			stream, err := c.OpenStream(ctx, asr.Config{Format: format})
+			request := asr.Config{Format: format}
+			if resultType == ResultFull {
+				on := true
+				request.Options.Provider = Options{EnableSpeakerInfo: &on}
+			}
+			stream, err := c.OpenStream(ctx, request)
 			if err != nil {
 				t.Fatalf("connect Volcengine: %v", err)
 			}
@@ -58,16 +63,17 @@ func TestVolcengineLiveASR(t *testing.T) {
 			type result struct {
 				finals   []string
 				partials int
+				speakers int
 				err      error
 			}
 			done := make(chan result, 1)
 			go func() {
 				var finals []string
-				partials := 0
+				partials, speakers := 0, 0
 				for {
 					event, err := stream.Recv(ctx)
 					if errors.Is(err, io.EOF) {
-						done <- result{finals: finals, partials: partials}
+						done <- result{finals: finals, partials: partials, speakers: speakers}
 						return
 					}
 					if err != nil {
@@ -75,8 +81,13 @@ func TestVolcengineLiveASR(t *testing.T) {
 						return
 					}
 					switch event.Type {
-					case asr.EventFinal:
-						finals = append(finals, event.Text)
+					case asr.EventFinal, asr.EventUtteranceUpdate:
+						if event.Type == asr.EventFinal {
+							finals = append(finals, event.Text)
+						}
+						if event.SpeakerID != nil && *event.SpeakerID >= 0 {
+							speakers++
+						}
 					case asr.EventPartial:
 						partials++
 					}
@@ -108,6 +119,9 @@ func TestVolcengineLiveASR(t *testing.T) {
 				t.Logf("Volcengine ASR finals=%q, partial event count=%d", received.finals, received.partials)
 				if strings.TrimSpace(strings.Join(received.finals, " ")) == "" {
 					t.Fatal("PCM stream did not produce a nonempty Final event")
+				}
+				if resultType == ResultFull && received.speakers == 0 {
+					t.Fatal("no assigned speaker ID in full result mode")
 				}
 				for i := 0; i < 2; i++ {
 					if _, err := stream.Recv(context.Background()); !errors.Is(err, io.EOF) {

@@ -45,7 +45,7 @@ jobs:
       - name: Compile live integration tests (without credentials)
         run: |
           go test -tags=integration -run TestNonexistentCompileOnly \
-            ./asr/providers/volcengine ./asr/providers/tencent \
+            ./asr/providers/volcengine ./asr/providers/tencent ./asr/providers/aliyun \
             ./tts/providers/aliyun ./tts/providers/volcengine ./tts/providers/tencent
       - name: Verify preinstalled FFmpeg
         run: |
