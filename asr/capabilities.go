@@ -3,6 +3,7 @@ package asr
 import (
 	"github.com/NSObjects/go-speech/audio"
 	"github.com/NSObjects/go-speech/capability"
+	"github.com/NSObjects/go-speech/transport"
 )
 
 // Capabilities describes the SDK's locally implemented recognition transport,
@@ -16,6 +17,9 @@ type Capabilities struct {
 	Audio      audio.Capability
 	Batch      bool
 	Streaming  bool
+
+	// Pool describes optional WebSocket reuse for this client.
+	Pool transport.PoolCapabilities
 
 	// Features describes selected advanced controls; absent entries are unknown.
 	Features capability.Features

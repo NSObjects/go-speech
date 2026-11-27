@@ -3,6 +3,7 @@ package aliyun
 import (
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/capability"
+	"github.com/NSObjects/go-speech/transport"
 )
 
 var (
@@ -15,7 +16,8 @@ func (c *Client) Capabilities() asr.Capabilities {
 		return asr.Capabilities{}
 	}
 	capability, _ := SupportedAudio(c.cfg.Model)
-	return asr.Capabilities{Provider: "aliyun", Model: c.cfg.Model, Protocol: "dashscope-task", Audio: capability, Batch: true, Streaming: true, Features: c.features()}
+	return asr.Capabilities{Provider: "aliyun", Model: c.cfg.Model, Protocol: "dashscope-task", Audio: capability, Batch: true, Streaming: true, Features: c.features(),
+		Pool: transport.PoolCapabilities{Supported: true, Enabled: c.pool.Enabled(), Batch: true, Streaming: true}}
 }
 
 func (c *Client) ValidateConfig(cfg asr.Config) error {

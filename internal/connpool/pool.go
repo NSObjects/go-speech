@@ -67,6 +67,17 @@ func New(cfg *transport.PoolConfig) (*Pool, error) {
 	return &Pool{cfg: c, born: make(map[*websocket.Conn]time.Time), keys: make(map[*websocket.Conn]string), warming: make(map[string]int), changed: make(chan struct{})}, nil
 }
 
+// Enabled reports whether a pool is configured and still accepts leases.
+// It does not check remote liveness or available capacity.
+func (p *Pool) Enabled() bool {
+	if p == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return !p.closed
+}
+
 func (p *Pool) signal() {
 	close(p.changed)
 	p.changed = make(chan struct{})

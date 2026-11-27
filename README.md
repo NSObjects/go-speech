@@ -274,12 +274,19 @@ defer client.(io.Closer).Close()
 在多次调用间复用客户端。阿里云 TTS 与火山双向流式 TTS 实现可选接口 `tts.Prewarmer`，启用连接池后可显式预热：
 
 ```go
-if warmer, ok := client.(tts.Prewarmer); ok {
-    if err := warmer.Warmup(ctx, "", 1); err != nil {
+caps := client.(tts.CapabilityProvider).Capabilities()
+if caps.Pool.Enabled && caps.Pool.Warmup {
+    voice := ""
+    if caps.Pool.VoiceSpecific {
+        voice = voiceID
+    }
+    if err := client.(tts.Prewarmer).Warmup(ctx, voice, 1); err != nil {
         return err
     }
 }
 ```
+
+ASR 同样可通过 `asr.CapabilityProvider` 查询 `Capabilities().Pool`。`Supported` 表示支持，`Enabled` 表示已配置且未关闭；`Batch`、`Streaming`、`Duplex` 表示复用适用的调用方式，而非当前网络状态。能力查询不发起网络请求。
 
 火山需传实际音色 ID。预热数量是目标空闲连接数，而非每次新增数量；预热仅建立 WebSocket，不启动合成任务，不保证后续一定有空闲连接。腾讯可提前打开实际请求的双向流式会话，使用同一会话发送文本并接收音频。会话绑定传入的 Context，未使用也须关闭。
 

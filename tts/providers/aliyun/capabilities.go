@@ -4,6 +4,7 @@ import (
 	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/NSObjects/go-speech/capability"
+	"github.com/NSObjects/go-speech/transport"
 )
 
 var (
@@ -19,6 +20,7 @@ func (c *Client) Capabilities() tts.Capabilities {
 		Provider: "aliyun", Model: c.cfg.Model, Protocol: "dashscope-task", Audio: SupportedAudio(),
 		Batch: true, Streaming: true, Duplex: true, Events: true, Cancel: true,
 		Features: c.features(),
+		Pool: transport.PoolCapabilities{Supported: true, Enabled: c.pool.Enabled(), Warmup: true, Batch: true, Streaming: true, Duplex: true},
 		CompleteTextFormats: []tts.TextFormat{tts.TextPlain, tts.TextSSML},
 		DuplexTextFormats:   []tts.TextFormat{tts.TextPlain},
 	}
