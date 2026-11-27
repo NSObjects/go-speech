@@ -13,7 +13,7 @@ var _ asr.Client = (*Client)(nil)
 // Recognize returns confirmed text for a complete short audio buffer.
 // The same provider session and audio format restrictions as OpenStream apply.
 func (c *Client) Recognize(ctx context.Context, input audio.Buffer, cfg asr.Config) (asr.Result, error) {
-	if input.Format.Encoding != EncodingOpusFrames && input.Format.Encoding != audio.EncodingMP3 {
+	if input.Format.Encoding != EncodingOpusFrames && input.Format.Encoding != audio.EncodingMP3 && input.Format.Encoding != audio.EncodingAAC {
 		return asr.RecognizeStream(ctx, c, input, cfg)
 	}
 	if err := ctx.Err(); err != nil {
@@ -32,6 +32,13 @@ func (c *Client) Recognize(ctx context.Context, input audio.Buffer, cfg asr.Conf
 			return asr.Result{}, err
 		}
 		return asr.RecognizePacketStream(ctx, c, cfg, frames, 36*time.Millisecond)
+	}
+	if input.Format.Encoding == audio.EncodingAAC {
+		frames, err := aacFrames(input.Data)
+		if err != nil {
+			return asr.Result{}, err
+		}
+		return asr.RecognizePacketStream(ctx, c, cfg, frames, 64*time.Millisecond)
 	}
 	frames, err := nativeOpusFrames(input.Data)
 	if err != nil {
