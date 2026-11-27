@@ -30,6 +30,7 @@ type Stream struct {
 	writeMu     sync.Mutex
 	inputClosed bool
 	textSent    bool
+	textRunes   int
 	finished    bool
 	audioSeen   bool
 	terminalMu  sync.Mutex
@@ -228,13 +229,18 @@ func (s *Stream) SendText(ctx context.Context, text string) error {
 	if s.inputClosed {
 		return tts.ErrInputClosed
 	}
-	if !utf8.ValidString(text) || strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > maxTextRunes {
+	count := utf8.RuneCountInString(text)
+	if !utf8.ValidString(text) || strings.TrimSpace(text) == "" || count > maxTextRunes {
 		return invalid("text fragment must contain 1–10000 valid UTF-8 characters")
+	}
+	if count > maxTextRunes-s.textRunes {
+		return invalid("session text limit of 10000 characters exceeded")
 	}
 	if err := s.sendCommand(ctx, "ACTION_SYNTHESIS", text); err != nil {
 		return s.failWrite(err)
 	}
 	s.textSent = true
+	s.textRunes += count
 	return nil
 }
 
@@ -283,6 +289,8 @@ func (s *Stream) Reset(ctx context.Context) error {
 	}
 	// Do not clear textSent: some previously submitted text may already
 	// be synthesizing, and CloseSend must still be able to finish it.
+	// Do not restore the text budget either: the provider does not
+	// document whether RESET replenishes the session's character limit.
 	return nil
 }
 

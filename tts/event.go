@@ -23,7 +23,9 @@ const (
 // EventReceiver is an optional interface implemented by event-capable streams.
 // Select RecvEvent or Stream.Recv for the entire session, not both. Use one
 // receiver. Events preserve wire order; EOF and terminal errors follow Stream's
-// contract. BatchCompleted does not imply alignment delivery is complete.
+// contract. BatchCompleted marks an audio-batch boundary, not necessarily
+// the end of its alignment delivery. Some providers return independently
+// encoded audio bitstreams for successive batches.
 type EventReceiver interface {
 	RecvEvent(ctx context.Context) (Event, error)
 }

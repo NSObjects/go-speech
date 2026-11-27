@@ -30,6 +30,7 @@ const (
 	defaultStartTimeout   = 15 * time.Second
 	defaultWriteTimeout   = 10 * time.Second
 	maxTextRunes          = 20000
+	maxSessionTextRunes   = 200000
 	maxBatchAudio         = 64 << 20
 )
 

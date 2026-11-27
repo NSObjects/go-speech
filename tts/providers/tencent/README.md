@@ -46,9 +46,11 @@ waits for Tencent's `ready=1`, sends `ACTION_SYNTHESIS` and
 Only `pcm` and `mp3` at 8/16/24 kHz mono are accepted; individual
 voices may support fewer sample rates.
 
-This adapter does **not** implement incremental text ingestion from the
-caller. Tencent's WebSocket v2 offers that separately, but the current
-portable TTS interface accepts one complete `Request.Text`.
+Use `OpenDuplex` for incremental text input. The session accepts at most
+10,000 Unicode characters in total, with text sent via `SendText`. Complete
+input with `CloseSend` and drain audio until EOF. The SDK counts successfully
+submitted text; RESET does not restore the local budget because the service
+does not document how discarded text affects the limit.
 
 Local mock tests verify signing, commands, streaming, cancellation, errors
 and terminal EOF. A genuine Tencent TTS API smoke test requires an
