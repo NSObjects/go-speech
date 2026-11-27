@@ -80,6 +80,8 @@ func validCustomID(s string) bool {
 // SampleFormat names the native enrollment file formats. PCM must already
 // be 24 kHz mono. The caller provides a 10–60 second recording; the SDK
 // checks byte size and format but does not decode or inspect duration.
+// Empty format delegates detection to the service; PCM and M4A must be
+// identified explicitly as required by the native API.
 type SampleFormat string
 
 const (
@@ -109,7 +111,7 @@ type CloneRequest struct {
 
 type sample struct {
 	Data   []byte       `json:"data"`
-	Format SampleFormat `json:"format"`
+	Format SampleFormat `json:"format,omitempty"`
 }
 
 type cloneWire struct {
@@ -128,12 +130,16 @@ func (r CloneRequest) wire() (cloneWire, error) {
 		return cloneWire{}, invalid("audio must be nonempty and at most 10 MB")
 	}
 	switch r.Format {
-	case WAV, MP3, OGG, M4A, AAC, PCM:
+	case "", WAV, MP3, OGG, M4A, AAC, PCM:
 	default:
 		return cloneWire{}, invalid("unsupported sample format")
 	}
-	if r.Language != nil && *r.Language < 0 {
-		return cloneWire{}, invalid("invalid language code")
+	language := 0
+	if r.Language != nil {
+		language = *r.Language
+		if language < 0 {
+			return cloneWire{}, invalid("invalid language code")
+		}
 	}
 	if o := r.Options; o != nil {
 		if !utf8.ValidString(o.PromptText) || (o.DemoText != "" && !validText(o.DemoText, 4, 300)) {
@@ -142,6 +148,9 @@ func (r CloneRequest) wire() (cloneWire, error) {
 		if o.ProsodyBoost != nil && *o.ProsodyBoost && r.Language == nil {
 			return cloneWire{}, invalid("prosody boost requires explicit source language")
 		}
+	}
+	if err := validateCloneLanguage(language, r.Options); err != nil {
+		return cloneWire{}, err
 	}
 	return cloneWire{wireRef: ref, Audio: sample{Data: r.Audio, Format: r.Format}, Language: r.Language, ExtraParams: r.Options}, nil
 }
@@ -247,7 +256,11 @@ func (c *Client) Clone(ctx context.Context, req CloneRequest) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return c.call(ctx, "voice_clone", wire)
+	result, err := c.call(ctx, "voice_clone", wire)
+	if err == nil && wire.CustomSpeakerID == "" {
+		err = verifySlot("voice_clone", wire.SpeakerID, result)
+	}
+	return result, err
 }
 
 func (c *Client) Query(ctx context.Context, ref VoiceRef) (Result, error) {
@@ -255,7 +268,11 @@ func (c *Client) Query(ctx context.Context, ref VoiceRef) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return c.call(ctx, "get_voice", wire)
+	result, err := c.call(ctx, "get_voice", wire)
+	if err == nil && wire.CustomSpeakerID == "" {
+		err = verifySlot("get_voice", wire.SpeakerID, result)
+	}
+	return result, err
 }
 
 func (c *Client) Design(ctx context.Context, req DesignRequest) (Result, error) {
@@ -263,5 +280,22 @@ func (c *Client) Design(ctx context.Context, req DesignRequest) (Result, error) 
 	if err != nil {
 		return Result{}, err
 	}
-	return c.call(ctx, "voice_design", wire)
+	result, err := c.call(ctx, "voice_design", wire)
+	if err == nil {
+		err = verifySlot("voice_design", wire.SpeakerID, result)
+	}
+	return result, err
+}
+
+// Custom names may resolve to a different service-assigned ID. Only an
+// explicitly supplied slot ID can be compared directly. Preserve the actual
+// response on mismatch so callers can reconcile a possibly executed mutation.
+func verifySlot(op, id string, result Result) error {
+	if result.Status != nil && *result.Status == 0 && result.SpeakerID == "" {
+		return nil
+	}
+	if result.SpeakerID != id {
+		return &speecherr.Error{Code: speecherr.CodeProtocol, Provider: "volcengine", Operation: op, Err: errors.New("returned speaker ID does not match requested slot")}
+	}
+	return nil
 }
