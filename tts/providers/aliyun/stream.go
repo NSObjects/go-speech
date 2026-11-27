@@ -176,14 +176,10 @@ func command(action, id string, payload any) any {
 	}
 }
 
-func (s *Stream) startSession(ctx context.Context, model string, req tts.Request, encoding string, timeout time.Duration) error {
+func (s *Stream) startSession(ctx context.Context, model string, req tts.Request, encoding string, voice map[string]any, timeout time.Duration) error {
 	params := map[string]any{
 		"text_type": "PlainText", "voice": req.Voice,
 		"format": encoding, "sample_rate": req.Format.SampleRate,
-	}
-	voice, err := voiceParameters(req.Options)
-	if err != nil {
-		return err
 	}
 	for key, value := range voice {
 		params[key] = value
@@ -231,16 +227,6 @@ func (s *Stream) startSession(ctx context.Context, model string, req tts.Request
 		return s.networkError(ctx, "task-started", err)
 	}
 	return nil
-}
-
-func (s *Stream) start(ctx context.Context, model string, req tts.Request, encoding string, timeout time.Duration) error {
-	if err := s.startSession(ctx, model, req, encoding, timeout); err != nil {
-		return err
-	}
-	if err := s.SendText(ctx, req.Text); err != nil {
-		return err
-	}
-	return s.CloseSend(ctx)
 }
 
 // SendText adds one text fragment to the active synthesis task.

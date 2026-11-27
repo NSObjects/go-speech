@@ -141,7 +141,7 @@ func newID() (string, error) {
 
 // signedEndpoint signs the canonical, sorted, unescaped query values. Only
 // Signature itself is URL-encoded; never log or return this signed URL.
-func signedEndpoint(cfg Config, req tts.Request, codec, sessionID string, now time.Time) (string, error) {
+func signedEndpoint(cfg Config, req tts.Request, codec, sessionID string, voice url.Values, now time.Time) (string, error) {
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil {
 		return "", err
@@ -156,10 +156,6 @@ func signedEndpoint(cfg Config, req tts.Request, codec, sessionID string, now ti
 		"VoiceType":  {req.Voice},
 		"Codec":      {codec},
 		"SampleRate": {strconv.Itoa(req.Format.SampleRate)},
-	}
-	voice, err := requestVoiceQuery(req)
-	if err != nil {
-		return "", err
 	}
 	for key, values := range voice {
 		q[key] = values
@@ -182,67 +178,55 @@ func signedEndpoint(cfg Config, req tts.Request, codec, sessionID string, now ti
 }
 
 func (c *Client) SynthesizeStream(ctx context.Context, req tts.Request) (tts.Stream, error) {
-	if c == nil {
-		return nil, invalid("nil client")
-	}
+	return c.synthesizeStream(ctx, req, false)
+}
+
+func (c *Client) synthesizeStream(ctx context.Context, req tts.Request, batch bool) (tts.Stream, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, codec, err := c.prepareRequest(req)
+	req, codec, voice, err := c.prepareRequest(req, batch)
 	if err != nil {
 		return nil, err
 	}
-	sessionID, err := newID()
-	if err != nil {
-		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "id", Err: err}
-	}
-	endpoint, err := signedEndpoint(c.cfg, req, codec, sessionID, time.Now())
+	s, err := c.openSession(ctx, req, codec, voice)
 	if err != nil {
 		return nil, err
 	}
-	dialer := *websocket.DefaultDialer
-	if c.cfg.Dialer != nil {
-		dialer = *c.cfg.Dialer
+	if err := s.SendText(ctx, req.Text); err != nil {
+		_ = s.Close()
+		return nil, err
 	}
-	if dialer.HandshakeTimeout == 0 {
-		dialer.HandshakeTimeout = c.cfg.StartTimeout
-	}
-	conn, response, err := dialer.DialContext(ctx, endpoint, nil)
-	if err != nil {
-		if response != nil && response.Body != nil {
-			_ = response.Body.Close()
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, dialFailure(err, response)
-	}
-	conn.SetReadLimit(8 << 20)
-	s := newStream(conn, ctx, sessionID, req.Format)
-	if err := s.start(ctx, req.Text, c.cfg.StartTimeout); err != nil {
+	if err := s.CloseSend(ctx); err != nil {
 		_ = s.Close()
 		return nil, err
 	}
 	return s, nil
 }
 
-// OpenDuplex opens a Tencent TTS v2 session for incremental text input.
+// OpenDuplex opens a session for incremental text input.
 func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.DuplexStream, error) {
-	if c == nil {
-		return nil, invalid("nil client")
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, codec, err := c.prepareRequest(tts.Request{Text: "validation", Voice: cfg.Voice, Format: cfg.Format, TextFormat: cfg.TextFormat, Options: cfg.Options})
+	req, codec, voice, err := c.prepareDuplex(cfg)
 	if err != nil {
 		return nil, err
 	}
+	s, err := c.openSession(ctx, req, codec, voice)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// openSession owns the common connection and handshake for both modes.
+func (c *Client) openSession(ctx context.Context, req tts.Request, codec string, voice url.Values) (*Stream, error) {
 	sessionID, err := newID()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "id", Err: err}
 	}
-	endpoint, err := signedEndpoint(c.cfg, req, codec, sessionID, time.Now())
+	endpoint, err := signedEndpoint(c.cfg, req, codec, sessionID, voice, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -273,10 +257,7 @@ func (c *Client) OpenDuplex(ctx context.Context, cfg tts.DuplexRequest) (tts.Dup
 }
 
 func (c *Client) Synthesize(ctx context.Context, req tts.Request) (audio.Buffer, error) {
-	if err := c.validateBatchOptions(req); err != nil {
-		return audio.Buffer{}, err
-	}
-	stream, err := c.SynthesizeStream(ctx, req)
+	stream, err := c.synthesizeStream(ctx, req, true)
 	if err != nil {
 		return audio.Buffer{}, err
 	}
