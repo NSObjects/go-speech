@@ -1,6 +1,9 @@
 package aliyun
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // DesignRequest creates a custom voice from text instead of a recording.
 // Zero SampleRate and empty ResponseFormat use the provider defaults.
@@ -68,7 +71,7 @@ func (c *Client) Design(ctx context.Context, req DesignRequest) (DesignResult, e
 	}
 	var out struct {
 		Voice
-		Preview PreviewAudio `json:"preview_audio"`
+		Preview json.RawMessage `json:"preview_audio"`
 	}
 	meta, err := c.call(ctx, in, params, &out)
 	if err != nil {
@@ -79,13 +82,16 @@ func (c *Client) Design(ctx context.Context, req DesignRequest) (DesignResult, e
 	}
 	// Creation already occurred if the ID is present. Preserve it even
 	// if the service omitted or returned an invalid preview.
-	result := DesignResult{Result: Result{Metadata: meta, Voice: out.Voice}, Preview: out.Preview}
+	result := DesignResult{Result: Result{Metadata: meta, Voice: out.Voice}}
 	if out.TargetModel == "" {
 		result.TargetModel = req.TargetModel
 	} else if out.TargetModel != req.TargetModel {
 		return result, protocol("create_voice", "target model mismatch")
 	}
-	p := out.Preview
+	if err := json.Unmarshal(out.Preview, &result.Preview); err != nil {
+		return result, protocol("create_voice", "invalid preview audio encoding")
+	}
+	p := result.Preview
 	if len(p.Data) == 0 || (p.SampleRate != 16000 && p.SampleRate != 24000 && p.SampleRate != 48000) ||
 		(p.ResponseFormat != "pcm" && p.ResponseFormat != "wav" && p.ResponseFormat != "mp3") {
 		return result, protocol("create_voice", "invalid preview audio")
