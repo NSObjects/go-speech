@@ -16,6 +16,10 @@ Official references: [HTTP streaming](https://docs.volcengine.com/docs/doubao-vo
 
 Migration: the previous ResourceID configuration field is removed; use optional ModelID (defaults to doubao-seed-tts-3.0). Endpoint is now an HTTPS origin. Existing 2.0 voice IDs must be replaced with authorized 3.0 voice IDs.
 
+## Optional duplex connection reuse
+
+Set `Pool: &speech.PoolConfig{MaxOpen: 4}` in `speech.VolcengineTTS` to enable WebSocket reuse for `OpenDuplex` only. HTTP synthesis is unchanged. Connections are keyed by the voice-specific URL; the limits apply across all voices in the client. Only a completed input followed by a valid CLOSED final and audio can return a socket. Local close, context cancellation, provider errors and INTERRUPTED discard the connection. No automatic retry, reconnect, or idle prefill. Close the client via its `io.Closer` implementation to release idle sockets. An idle socket may be closed by the provider before the configured idle timeout.
+
 ## Text formats
 
 Set `tts.Request.TextFormat` to `tts.TextSSML` for complete SSML input via HTTP, or `tts.TextInlineTag` for native inline tags. The latter is also accepted by `tts.DuplexRequest` on WebSocket. SSML is rejected in duplex mode. The SDK passes inline tags unchanged; use only tags documented for the selected mode and keep each tag in one fragment until split-tag behavior is verified. Actual expression and SSML tag support depend on the model and voice.
