@@ -41,7 +41,7 @@ type Stream struct {
 	pendingDetails *asr.Utterance      // readMu
 	details        bool                // immutable
 	pendingText    string              // readMu: latest unconfirmed utterance
-	confirmedText  string              // readMu: concatenated confirmed segments
+	confirmedText  strings.Builder              // readMu: concatenated confirmed segments
 	lastFinalText  string              // readMu: most recent confirmed utterance
 	finalSeen      map[string]struct{} // readMu
 	finalMetadata  map[string]finalMetadata // readMu; detailed timed finals only
@@ -68,11 +68,34 @@ func (s *Stream) Close() error {
 	if s == nil {
 		return nil
 	}
+	// Unblock the receiver before acquiring its lock. Recv itself uses
+	// closeTransport to avoid reentering readMu.
+	s.closeTransport()
+	s.readMu.Lock()
+	s.releaseReadState()
+	s.readMu.Unlock()
+	return nil
+}
+
+func (s *Stream) closeTransport() {
 	s.once.Do(func() {
 		close(s.done)
 		_ = s.conn.Close()
 	})
-	return nil
+}
+
+// releaseReadState requires readMu. A successful final frame may still
+// contain events the caller has not received; preserve that backlog.
+func (s *Stream) releaseReadState() {
+	s.confirmedText.Reset()
+	s.lastFinalText = ""
+	s.pendingText = ""
+	s.pendingDetails = nil
+	s.finalSeen = nil
+	s.finalMetadata = nil
+	if !s.finished || s.terminalFailure() != nil || len(s.queue) == 0 {
+		s.queue = nil
+	}
 }
 
 func (s *Stream) closed() bool {
@@ -120,7 +143,7 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 	}
 	// A canceled upload operation cannot leave a reusable provider session.
 	if err := ctx.Err(); err != nil {
-		return s.fail(err)
+		return s.failWrite(err)
 	}
 	if len(data) == 0 {
 		return argumentError("audio chunk cannot be empty")
@@ -135,7 +158,7 @@ func (s *Stream) Send(ctx context.Context, data []byte) error {
 		return &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "volcengine", Operation: "send", Err: err}
 	}
 	if err := s.writeFrame(ctx, frame); err != nil {
-		return s.fail(s.transportError(ctx, "send", err))
+		return s.failWrite(s.transportError(ctx, "send", err))
 	}
 	s.sentAudio = true
 	return nil
@@ -154,7 +177,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
-		return s.fail(err)
+		return s.failWrite(err)
 	}
 	if !s.sentAudio {
 		return argumentError("cannot finish an empty audio stream")
@@ -166,7 +189,7 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 		return err
 	}
 	if err := s.writeFrame(ctx, frame); err != nil {
-		return s.fail(s.transportError(ctx, "finish", err))
+		return s.failWrite(s.transportError(ctx, "finish", err))
 	}
 	s.sendClosed = true
 	return nil
@@ -177,7 +200,12 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		return asr.Event{}, asr.ErrStreamClosed
 	}
 	s.readMu.Lock()
-	defer s.readMu.Unlock()
+	defer func() {
+		if s.closed() {
+			s.releaseReadState()
+		}
+		s.readMu.Unlock()
+	}()
 	for {
 		if err := s.terminalFailure(); err != nil {
 			return asr.Event{}, err
@@ -241,7 +269,7 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		}
 		if last {
 			s.finished = true
-			_ = s.Close()
+			s.closeTransport()
 		}
 	}
 }
@@ -305,7 +333,9 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 				s.rememberFinalMetadata(key, u, e.Utterance)
 			}
 			s.queue = append(s.queue, e)
-			s.confirmedText += u.Text
+			if s.resultType == ResultFull {
+				s.confirmedText.WriteString(u.Text)
+			}
 			s.lastFinalText = u.Text
 			s.pendingText = ""
 			s.pendingDetails = nil
@@ -317,7 +347,12 @@ func (s *Stream) addEvents(results []recognition, last bool) {
 	// before exposing a new tentative segment.
 	if !hasUtterances && fallback != "" {
 		if s.resultType == ResultFull {
-			fallback = strings.TrimPrefix(fallback, s.confirmedText)
+			// A small suffix must not retain the backing storage of a large
+			// cumulative provider response.
+			suffix := strings.TrimPrefix(fallback, s.confirmedText.String())
+			if len(suffix) != len(fallback) {
+				fallback = strings.Clone(suffix)
+			}
 		}
 		if fallback != s.lastFinalText {
 			partial = fallback
@@ -359,7 +394,7 @@ func (s *Stream) fail(err error) error {
 	}
 	first := s.terminalErr
 	s.terminalMu.Unlock()
-	_ = s.Close()
+	s.closeTransport()
 	return first
 }
 
@@ -401,4 +436,12 @@ func (s *Stream) transportError(ctx context.Context, op string, err error) error
 		Code: code, Provider: "volcengine", Operation: op, Err: err,
 		Retryable: true,
 	}
+}
+
+// failWrite runs outside readMu. Release receive state even if the caller
+// has no active receiver, after saving the first terminal error.
+func (s *Stream) failWrite(err error) error {
+	first := s.fail(err)
+	_ = s.Close()
+	return first
 }
