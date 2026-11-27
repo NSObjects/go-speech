@@ -199,6 +199,11 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 }
 
 func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
+	return s.recv(ctx, nil)
+}
+
+// recv optionally observes decoded frames for integration diagnostics.
+func (s *Stream) recv(ctx context.Context, observe func(wireMessage)) (asr.Event, error) {
 	if s == nil {
 		return asr.Event{}, asr.ErrStreamClosed
 	}
@@ -260,6 +265,9 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		message, err := parseFrame(data)
 		if err != nil {
 			return asr.Event{}, s.fail(err)
+		}
+		if observe != nil {
+			observe(message)
 		}
 		results, last, noSpeech, err := message.result()
 		if err != nil {
