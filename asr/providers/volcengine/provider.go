@@ -136,21 +136,8 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 	if err != nil {
 		return nil, err
 	}
-	if len(request.Hints) > 0 {
-		hints := make([]map[string]string, 0, len(request.Hints))
-		for _, hint := range request.Hints {
-			hint = strings.TrimSpace(hint)
-			if hint == "" {
-				return nil, argumentError("ASR hint cannot be empty")
-			}
-			hints = append(hints, map[string]string{"word": hint})
-		}
-		// Volcengine expects corpus.context to be JSON encoded as a string.
-		contextBytes, err := json.Marshal(map[string]any{"hotwords": hints})
-		if err != nil {
-			return nil, err
-		}
-		req["request"].(map[string]any)["corpus"] = map[string]any{"context": string(contextBytes)}
+	if err := applyCorpus(request, req["request"].(map[string]any)); err != nil {
+		return nil, err
 	}
 	payload, err := json.Marshal(req)
 	if err != nil {

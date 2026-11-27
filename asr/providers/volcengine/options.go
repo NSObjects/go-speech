@@ -21,11 +21,21 @@ type Options struct {
 	EnableAccelerateText   *bool
 	AccelerateScore        *int
 	OutputZHVariant        string
+
+	// VADSegmentDuration affects semantic segmentation, not finalization.
+	// It cannot be combined with an explicit EndWindowSize.
+	VADSegmentDuration *time.Duration
+	// ForceToSpeechTime protects the initial audio from premature VAD.
+	ForceToSpeechTime *time.Duration
+	EnablePOIFC       *bool
+	EnableMusicFC     *bool
+	Corpus            *Corpus
+	SensitiveWords    *SensitiveWordsFilter
 }
 
 func (Options) ASRProviderOptions() {}
 
-func (c Config) applyOptions(o asr.Options, req map[string]any) (string, bool, error) {
+func nativeOptions(o asr.Options) (Options, error) {
 	var native Options
 	switch p := o.Provider.(type) {
 	case nil:
@@ -33,11 +43,19 @@ func (c Config) applyOptions(o asr.Options, req map[string]any) (string, bool, e
 		native = p
 	case *Options:
 		if p == nil {
-			return "", false, argumentError("nil provider options")
+			return Options{}, argumentError("nil provider options")
 		}
 		native = *p
 	default:
-		return "", false, argumentError("provider options do not belong to volcengine")
+		return Options{}, argumentError("provider options do not belong to volcengine")
+	}
+	return native, nil
+}
+
+func (c Config) applyOptions(o asr.Options, req map[string]any) (string, bool, error) {
+	native, err := nativeOptions(o)
+	if err != nil {
+		return "", false, err
 	}
 	resultType, endWindow, secondPass := c.ResultType, c.EndWindowSize, c.EnableNonStream
 	if native.ResultType != "" {
@@ -92,6 +110,9 @@ func (c Config) applyOptions(o asr.Options, req map[string]any) (string, bool, e
 		default:
 			return "", false, argumentError("invalid OutputZHVariant")
 		}
+	}
+	if err := applyEndpointOptions(native, endWindow, secondPass, req); err != nil {
+		return "", false, err
 	}
 	details := o.UtteranceDetails || enabled(native.EnableEmotionDetection) ||
 		enabled(native.ShowSpeechRate) || enabled(native.ShowVolume) ||
