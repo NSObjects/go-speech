@@ -53,7 +53,7 @@ func (c *Client) prepare(request asr.Config) ([]byte, string, bool, error) {
 	if err != nil {
 		return nil, "", false, err
 	}
-	if err := applyCorpus(request, req["request"].(map[string]any)); err != nil {
+	if err := applyCorpus(request, req["request"].(map[string]any), c.cfg.ResourceID); err != nil {
 		return nil, "", false, err
 	}
 	payload, err := json.Marshal(req)
@@ -64,6 +64,13 @@ func (c *Client) prepare(request asr.Config) ([]byte, string, bool, error) {
 }
 
 func (c *Client) features() capability.Features {
+	imageStatus := capability.Unknown
+	switch {
+	case isSeedResource(c.cfg.ResourceID):
+		imageStatus = capability.Supported
+	case isLegacyResource(c.cfg.ResourceID):
+		imageStatus = capability.Unsupported
+	}
 	return capability.Features{
 		asr.FeatureEmotion: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.EnableEmotionDetection", Kind: capability.Bool}}, Notes: "Native emotion label; can enable server VAD segmentation."},
 		asr.FeatureSpeechRate: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.ShowSpeechRate", Kind: capability.Bool}}, Notes: "Provider tokens per second."},
@@ -75,7 +82,7 @@ func (c *Client) features() capability.Features {
 		asr.FeatureWordTimestamps: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.UtteranceDetails", Kind: capability.Bool}}},
 		asr.FeatureSegmentTimestamps: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.UtteranceDetails", Kind: capability.Bool}}},
 		asr.FeatureContext: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.Corpus", Kind: capability.Object}}},
-		asr.FeatureImageContext: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Provider.Corpus.Context", Kind: capability.List}}, Notes: "One image URL; requires Seed-ASR 2.0 and EnableNonStream."},
+		asr.FeatureImageContext: {Status: imageStatus, Parameters: []capability.Parameter{{Field: "Options.Provider.Corpus.Context", Kind: capability.List}}, Notes: "One image URL; requires Seed-ASR 2.0 and EnableNonStream."},
 		asr.FeatureHotwords: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Hints", Kind: capability.List}, {Field: "Options.Provider.Corpus", Kind: capability.Object}}},
 		asr.FeaturePunctuation: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.Punctuation", Kind: capability.Bool}}},
 		asr.FeatureTextNormalization: {Status: capability.Supported, Parameters: []capability.Parameter{{Field: "Options.TextNormalization", Kind: capability.Bool}}},

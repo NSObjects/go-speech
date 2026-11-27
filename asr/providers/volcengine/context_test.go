@@ -12,6 +12,8 @@ import (
 
 	"github.com/NSObjects/go-speech/asr"
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/capability"
+	"github.com/NSObjects/go-speech/speecherr"
 	"github.com/gorilla/websocket"
 )
 
@@ -174,7 +176,7 @@ func TestCorpusValidation(t *testing.T) {
 			cfg := asr.Config{Options: asr.Options{Provider: tc.o}}
 			_, _, err := c.applyOptions(cfg.Options, req)
 			if err == nil {
-				err = applyCorpus(cfg, req)
+				err = applyCorpus(cfg, req, c.ResourceID)
 			}
 			if err == nil {
 				t.Fatal("invalid option accepted")
@@ -189,14 +191,57 @@ func TestCorpusValidation(t *testing.T) {
 
 func TestCorpusDefaultsAndHints(t *testing.T) {
 	req := make(map[string]any)
-	if err := applyCorpus(asr.Config{}, req); err != nil || len(req) != 0 {
+	if err := applyCorpus(asr.Config{}, req, ResourceSeedASR2); err != nil || len(req) != 0 {
 		t.Fatalf("default corpus = %v, %v", req, err)
 	}
-	if err := applyCorpus(asr.Config{Hints: []string{" Eino "}}, req); err != nil {
+	if err := applyCorpus(asr.Config{Hints: []string{" Eino "}}, req, ResourceSeedASR2); err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]any{"context": `{"hotwords":[{"word":"Eino"}]}`}
 	if !reflect.DeepEqual(req["corpus"], want) {
 		t.Fatalf("hints-only corpus = %v", req["corpus"])
+	}
+}
+
+func TestImageContextResourceGate(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		resource string
+		status   capability.Status
+	}{
+		{"", capability.Supported},
+		{ResourceSeedASR2, capability.Supported},
+		{ResourceSeedASR2Concurrent, capability.Supported},
+		{resourceASR1Duration, capability.Unsupported},
+		{resourceASR1Concurrent, capability.Unsupported},
+		{"future-resource", capability.Unknown},
+	} {
+		c, err := New(Config{APIKey: "key", ResourceID: tc.resource})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := c.Capabilities().Features[asr.FeatureImageContext].Status; got != tc.status {
+			t.Fatalf("resource=%q: image capability=%v", tc.resource, got)
+		}
+		for _, enable := range []*bool{&on, &off} {
+			cfg := asr.Config{
+				Format: audio.Format{Encoding: audio.EncodingPCM16LE, SampleRate: 16000, Channels: 1},
+				Options: asr.Options{Provider: Options{EnableNonStream: enable,
+					Corpus: &Corpus{Context: []ContextItem{{ImageURL: "https://example.com/scene.png"}}},
+				}},
+			}
+			err := c.ValidateConfig(cfg)
+			if tc.status == capability.Unsupported {
+				if !speecherr.IsCode(err, speecherr.CodeUnsupported) {
+					t.Fatalf("legacy image accepted: %v", err)
+				}
+			} else if !*enable {
+				if !speecherr.IsCode(err, speecherr.CodeInvalidArgument) {
+					t.Fatalf("image without second pass: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("resource=%q: unexpected validation error: %v", tc.resource, err)
+			}
+		}
 	}
 }

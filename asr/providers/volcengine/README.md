@@ -68,8 +68,11 @@ emitted twice. When the last packet has no utterance metadata, the adapter
 also preserves any trailing unconfirmed text as a final segment.
 
 `EndWindowSize` optionally configures Volcengine's own `end_window_size` silence
-threshold for returning `definite` sentences (milliseconds on the wire, minimum
-200ms; omit to use the service default of approximately 800ms). For example,
+threshold for returning `definite` sentences (milliseconds on the wire).
+The current optimized-endpoint reference specifies 300–5000 ms for Seed-ASR
+2.0; omit or override with zero to use the service default of approximately
+800 ms. Explicit legacy or unknown resource IDs retain the historical minimum
+of 200 ms pending live verification of their limits. For example,
 `700*time.Millisecond` adjusts provider-side segmentation without changing the
 application's VAD or when it ends a conversation turn. It is not a local
 endpoint detector and does not automatically call `CloseSend`.
@@ -314,3 +317,5 @@ Use native `Options.Corpus` to select hotword, correction and regex correction t
 Reference: https://docs.volcengine.com/docs/doubao-voice/bidirectional-streaming-automatic-speech-recognition-websocket?lang=zh
 
 See [speaker separation](https://docs.volcengine.com/docs/doubao-voice/speaker-separation?lang=zh) and [bidirectional ASR](https://docs.volcengine.com/docs/doubao-voice/bidirectional-streaming-automatic-speech-recognition-websocket?lang=zh). Speaker separation requires second pass and may increase final-response latency. The provider does not guarantee late metadata updates; only received matching snapshots are exposed.
+
+Image context is documented for Seed-ASR 2.0 with second-pass recognition only. Known legacy 1.0 resource IDs reject it locally; unknown resource IDs advertise unknown support and delegate model entitlement to the service. Send at most one image URL (JPEG/JPG/PNG, at most 500 KB); the SDK does not fetch or inspect images.
