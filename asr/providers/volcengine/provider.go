@@ -6,7 +6,6 @@ package volcengine
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -113,35 +112,9 @@ func (c *Client) OpenStream(ctx context.Context, request asr.Config) (asr.Stream
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	format, codec, err := modelAudio(request.Format)
+	payload, resultType, details, err := c.prepare(request)
 	if err != nil {
 		return nil, err
-	}
-	if request.Language != "" {
-		return nil, unsupportedError("Language selection is not supported on bigmodel_async")
-	}
-	req := map[string]any{
-		"user": map[string]any{"uid": c.cfg.UID},
-		"audio": map[string]any{
-			"format": format, "codec": codec, "rate": request.Format.SampleRate,
-			"bits": 16, "channel": request.Format.Channels,
-		},
-		"request": map[string]any{
-			"model_name": "bigmodel", "enable_itn": true, "enable_punc": true,
-			"show_utterances": true, "enable_nonstream": c.cfg.EnableNonStream,
-			"result_type": c.cfg.ResultType,
-		},
-	}
-	resultType, details, err := c.cfg.applyOptions(request.Options, req["request"].(map[string]any))
-	if err != nil {
-		return nil, err
-	}
-	if err := applyCorpus(request, req["request"].(map[string]any)); err != nil {
-		return nil, err
-	}
-	payload, err := json.Marshal(req)
-	if err != nil {
-		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "volcengine", Operation: "encode", Err: err}
 	}
 	frame, err := encodeFrame(messageFullRequest, 0, 1, payload)
 	if err != nil {
