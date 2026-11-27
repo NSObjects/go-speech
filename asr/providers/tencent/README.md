@@ -499,3 +499,7 @@ benchmarks; these tests verify transport, lifecycle, and final-result
 delivery.
 
 Official protocol: https://cloud.tencent.com/document/product/1093/48982
+
+## Request-local advanced options
+
+Use `asr.Config.Options.Provider = tencent.Options{...}` to override VAD and dictionary defaults, select native filters and numeric conversion, weighted temporary hotwords, noise threshold, domain, word timing, sentence strategy and speaker context. Explicit common Punctuation and TextNormalization are rejected rather than approximated by Tencent's narrower controls; use FilterPunctuation and ConvertNumMode. DisfluencyRemoval maps to filter_modal=0/1. Legacy WordInfo and EmotionRecognition are engine-restricted; emotion is opt-in, billable, and requires NeedVAD. Its separate realtime response schema is not documented, so the SDK preserves native result JSON in UtteranceDetails.RawResult and does not infer emotion or strip inline labels. Set UtteranceDetails for timing; explicit emotion also enables detailed results. Empty legacy final slices can be requested with ReturnEmptyResults. Speaker 2.0 supports EnableSpeakerContext and SpeakerContextID; read the service-issued ID through asr.SessionMetadataReceiver or Result.Provider (tencent.SessionDetails). Reuse only for the same conversation with caller-managed lifetime. No automatic reconnect, local diarization or audio replay occurs. See https://cloud.tencent.com/document/product/1093/48982 and https://cloud.tencent.com/document/product/1093/131127 . Real service validation remains pending.

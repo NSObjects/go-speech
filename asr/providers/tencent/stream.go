@@ -35,6 +35,10 @@ type Stream struct {
 
 	terminalMu      sync.Mutex    // terminalErr can be set by Send, CloseSend, or Recv
 	readIdleTimeout time.Duration // immutable after OpenStream handshake
+	details         bool          // immutable
+	returnEmpty     bool          // immutable
+	metadataMu      sync.Mutex
+	speakerContext  string
 }
 
 var _ asr.Stream = (*Stream)(nil)
@@ -204,17 +208,33 @@ func (s *Stream) CloseSend(ctx context.Context) error {
 }
 
 type response struct {
-	Code      int           `json:"code"`
-	Message   string        `json:"message"`
-	VoiceID   string        `json:"voice_id"`
-	Final     int           `json:"final"`
-	Result    *segment      `json:"result"`
-	Sentences *sentenceList `json:"sentences"`
+	Code             int           `json:"code"`
+	Message          string        `json:"message"`
+	VoiceID          string        `json:"voice_id"`
+	Final            int           `json:"final"`
+	Result           *segment      `json:"result"`
+	Sentences        *sentenceList `json:"sentences"`
+	SpeakerContextID string        `json:"speaker_context_id"`
 }
 type segment struct {
-	SliceType int    `json:"slice_type"`
-	Index     int    `json:"index"`
-	Text      string `json:"voice_text_str"`
+	SliceType int            `json:"slice_type"`
+	Index     int            `json:"index"`
+	Text      string         `json:"voice_text_str"`
+	StartTime *int64         `json:"start_time"`
+	EndTime   *int64         `json:"end_time"`
+	Words     []responseWord `json:"word_list"`
+	raw       json.RawMessage
+}
+
+func (s *segment) UnmarshalJSON(data []byte) error {
+	type plain segment
+	var v plain
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*s = segment(v)
+	s.raw = append(json.RawMessage(nil), data...)
+	return nil
 }
 
 // Tencent large-model 2.0 WebSocket V2 returns a sentence_list, while
@@ -227,7 +247,9 @@ type sentence struct {
 	Type int    `json:"sentence_type"`
 	ID   int    `json:"sentence_id"`
 	// Pointer preserves absent speaker_id vs Tencent's -1 (pending) and 0.
-	SpeakerID *int `json:"speaker_id"`
+	SpeakerID *int   `json:"speaker_id"`
+	StartTime *int64 `json:"start_time"`
+	EndTime   *int64 `json:"end_time"`
 }
 
 func decodeResponse(raw []byte, expectedID string) (response, error) {
@@ -317,6 +339,7 @@ func (s *Stream) awaitHandshake(ctx context.Context, timeout time.Duration) erro
 		(result.Sentences != nil && len(result.Sentences.SentenceList) > 0) {
 		return protocolError("unexpected recognition event during handshake")
 	}
+	s.updateSpeakerContext(result.SpeakerContextID)
 	if err := s.conn.SetReadDeadline(time.Time{}); err != nil {
 		return s.transportError(ctx, "handshake", err)
 	}
@@ -394,22 +417,23 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 		if err != nil {
 			return asr.Event{}, s.fail(err)
 		}
+		s.updateSpeakerContext(message.SpeakerContextID)
 		if message.Result != nil && message.Sentences != nil {
 			return asr.Event{}, s.fail(protocolError("conflicting ASR response layouts"))
 		}
 		if r := message.Result; r != nil {
 			switch r.SliceType {
 			case 0:
-				s.queue = append(s.queue, asr.Event{Type: asr.EventSpeechStart})
+				s.queue = append(s.queue, s.segmentEvent(asr.EventSpeechStart, r))
 			case 1:
 				if _, finalized := s.finalSeen[r.Index]; !finalized && r.Text != "" {
-					s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: r.Text})
+					s.queue = append(s.queue, s.segmentEvent(asr.EventPartial, r))
 				}
 			case 2:
 				if _, already := s.finalSeen[r.Index]; !already {
 					s.finalSeen[r.Index] = struct{}{}
-					if r.Text != "" {
-						s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: r.Text})
+					if r.Text != "" || s.returnEmpty {
+						s.queue = append(s.queue, s.segmentEvent(asr.EventFinal, r))
 					}
 				}
 			default:
@@ -421,13 +445,13 @@ func (s *Stream) Recv(ctx context.Context) (asr.Event, error) {
 				switch sentence.Type {
 				case 0:
 					if _, finalized := s.finalSeen[sentence.ID]; !finalized && sentence.Text != "" {
-						s.queue = append(s.queue, asr.Event{Type: asr.EventPartial, Text: sentence.Text, SpeakerID: sentence.SpeakerID})
+						s.queue = append(s.queue, s.sentenceEvent(asr.EventPartial, sentence))
 					}
 				case 1:
 					if _, already := s.finalSeen[sentence.ID]; !already {
 						s.finalSeen[sentence.ID] = struct{}{}
 						if sentence.Text != "" {
-							s.queue = append(s.queue, asr.Event{Type: asr.EventFinal, Text: sentence.Text, SpeakerID: sentence.SpeakerID})
+							s.queue = append(s.queue, s.sentenceEvent(asr.EventFinal, sentence))
 						}
 					}
 				default:

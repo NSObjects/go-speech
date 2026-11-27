@@ -83,31 +83,8 @@ func New(cfg Config) (*Client, error) {
 	if cfg.HotwordID != "" && (len(cfg.HotwordID) > 128 || strings.ContainsAny(cfg.HotwordID, "&?=/# \t\r\n")) {
 		return nil, argumentError("invalid HotwordID")
 	}
-	if cfg.VADSilenceTime != 0 {
-		if !cfg.NeedVAD {
-			return nil, argumentError("VADSilenceTime requires NeedVAD")
-		}
-		if cfg.VADSilenceTime < 500*time.Millisecond || cfg.VADSilenceTime > 2*time.Second ||
-			cfg.VADSilenceTime%time.Millisecond != 0 {
-			return nil, argumentError("VADSilenceTime must be a whole number of milliseconds between 500 and 2000")
-		}
-		switch cfg.EngineModel {
-		case "8k_zh", "8k_zh_finance", "16k_zh", "16k_zh_en",
-			"8k_zh_large", "16k_en", "16k_en_large":
-		default:
-			return nil, argumentError("VADSilenceTime is unsupported by EngineModel")
-		}
-	}
-	if cfg.MaxSpeakTime != 0 {
-		if cfg.MaxSpeakTime < 5*time.Second || cfg.MaxSpeakTime > 90*time.Second ||
-			cfg.MaxSpeakTime%time.Millisecond != 0 {
-			return nil, argumentError("MaxSpeakTime must be a whole number of milliseconds between 5000 and 90000")
-		}
-		switch cfg.EngineModel {
-		case "8k_zh", "16k_zh", "16k_zh_en", "8k_zh_large":
-		default:
-			return nil, argumentError("MaxSpeakTime is unsupported by EngineModel")
-		}
+	if err := validateSegmentation(cfg); err != nil {
+		return nil, err
 	}
 	if cfg.Endpoint == "" {
 		cfg.Endpoint = DefaultEndpoint
@@ -166,8 +143,18 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if req.Options != (asr.Options{}) {
-		return nil, unsupportedError("advanced ASR options are not yet supported")
+	native, err := nativeOptions(req.Options)
+	if err != nil {
+		return nil, err
+	}
+	effective := *c
+	effective.cfg = c.cfg.withOverrides(native)
+	if err := validateSegmentation(effective.cfg); err != nil {
+		return nil, err
+	}
+	extra, hotwords, err := effective.cfg.requestOptions(req, native)
+	if err != nil {
+		return nil, err
 	}
 	if err := req.Format.Validate(); err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInvalidArgument, Provider: "tencent", Operation: "start", Err: err}
@@ -182,13 +169,6 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	if req.Language != "" {
 		return nil, unsupportedError("language is selected by EngineModel; per-request Language is not supported")
 	}
-	if len(req.Hints) > 0 && c.cfg.HotwordID != "" {
-		return nil, requestError("Hints and HotwordID cannot be used together")
-	}
-	hotwords, err := encodeHints(req.Hints)
-	if err != nil {
-		return nil, err
-	}
 	voiceID, err := requestID()
 	if err != nil {
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "voice_id", Err: err}
@@ -198,7 +178,7 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 		return nil, &speecherr.Error{Code: speecherr.CodeInternal, Provider: "tencent", Operation: "nonce", Err: err}
 	}
 	nonce := 1 + binary.BigEndian.Uint32(entropy[:])%999999999
-	target := c.signedURLWithHints(time.Now(), nonce, voiceID, hotwords)
+	target := effective.signedURLWithOptions(time.Now(), nonce, voiceID, hotwords, extra)
 	dialer := *websocket.DefaultDialer
 	if c.cfg.Dialer != nil {
 		dialer = *c.cfg.Dialer
@@ -218,6 +198,8 @@ func (c *Client) OpenStream(ctx context.Context, req asr.Config) (asr.Stream, er
 	}
 	conn.SetReadLimit(1 << 20)
 	s := newStream(conn, ctx, voiceID)
+	s.details = req.Options.UtteranceDetails || enabledEmotion(native)
+	s.returnEmpty = native.ReturnEmptyResults != nil && *native.ReturnEmptyResults
 	s.readIdleTimeout = c.cfg.ReadIdleTimeout
 	if err := s.awaitHandshake(ctx, c.cfg.StartTimeout); err != nil {
 		_ = s.Close()
@@ -235,6 +217,10 @@ func (c *Client) signedURL(now time.Time, nonce uint32, voiceID string) string {
 }
 
 func (c *Client) signedURLWithHints(now time.Time, nonce uint32, voiceID, hotwords string) string {
+	return c.signedURLWithOptions(now, nonce, voiceID, hotwords, nil)
+}
+
+func (c *Client) signedURLWithOptions(now time.Time, nonce uint32, voiceID, hotwords string, extra url.Values) string {
 	u, _ := url.Parse(c.cfg.Endpoint) // validated by New
 	u.Path = "/asr/v2/" + c.cfg.AppID
 	params := url.Values{}
@@ -272,6 +258,9 @@ func (c *Client) signedURLWithHints(now time.Time, nonce uint32, voiceID, hotwor
 	}
 	if c.cfg.MaxSpeakTime != 0 {
 		params.Set("max_speak_time", strconv.FormatInt(c.cfg.MaxSpeakTime.Milliseconds(), 10))
+	}
+	for key, values := range extra {
+		params[key] = values
 	}
 	// Tencent signs raw parameter values; url.Values.Encode is only for
 	// transmission. Signing the encoded UTF-8 bytes rejects Chinese hotwords.
@@ -346,4 +335,34 @@ func connectError(err error, resp *http.Response) error {
 		Err:       errors.New(message),
 		Retryable: code == speecherr.CodeUnavailable || code == speecherr.CodeTimeout || code == speecherr.CodeRateLimited,
 	}
+}
+
+func validateSegmentation(cfg Config) error {
+	if cfg.VADSilenceTime != 0 {
+		if !cfg.NeedVAD {
+			return argumentError("VADSilenceTime requires NeedVAD")
+		}
+		if cfg.VADSilenceTime < 500*time.Millisecond || cfg.VADSilenceTime > 2*time.Second ||
+			cfg.VADSilenceTime%time.Millisecond != 0 {
+			return argumentError("VADSilenceTime must be a whole number of milliseconds between 500 and 2000")
+		}
+		switch cfg.EngineModel {
+		case "8k_zh", "8k_zh_finance", "16k_zh", "16k_zh_en",
+			"8k_zh_large", "16k_en", "16k_en_large":
+		default:
+			return argumentError("VADSilenceTime is unsupported by EngineModel")
+		}
+	}
+	if cfg.MaxSpeakTime != 0 {
+		if cfg.MaxSpeakTime < 5*time.Second || cfg.MaxSpeakTime > 90*time.Second ||
+			cfg.MaxSpeakTime%time.Millisecond != 0 {
+			return argumentError("MaxSpeakTime must be a whole number of milliseconds between 5000 and 90000")
+		}
+		switch cfg.EngineModel {
+		case "8k_zh", "16k_zh", "16k_zh_en", "8k_zh_large":
+		default:
+			return argumentError("MaxSpeakTime is unsupported by EngineModel")
+		}
+	}
+	return nil
 }
