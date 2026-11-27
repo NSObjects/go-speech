@@ -247,6 +247,9 @@ func (c *HTTPClient) Recognize(ctx context.Context, input audio.Buffer, cfg asr.
 	if err := ctx.Err(); err != nil {
 		return asr.Result{}, err
 	}
+	if len(input.Data) == 0 || len(input.Data) > maxSentenceEncodedBytes || base64.StdEncoding.EncodedLen(len(input.Data)) > maxSentenceEncodedBytes {
+		return asr.Result{}, argumentError("audio must fit the 3 MB base64 limit")
+	}
 	if cfg.Format != (audio.Format{}) && cfg.Format != input.Format {
 		return asr.Result{}, argumentError("input and configured formats disagree")
 	}
@@ -275,7 +278,7 @@ func (c *HTTPClient) Recognize(ctx context.Context, input audio.Buffer, cfg asr.
 		if err != nil || b.Format.SampleRate != input.Format.SampleRate || b.Format.Channels != input.Format.Channels {
 			return asr.Result{}, argumentError("invalid WAV or mismatched metadata")
 		}
-		if len(b.Data) > 120*b.Format.SampleRate {
+		if int64(len(b.Data)) > 120*int64(b.Format.SampleRate) {
 			return asr.Result{}, argumentError("WAV exceeds 60 seconds")
 		}
 	}

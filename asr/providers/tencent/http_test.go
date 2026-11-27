@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,9 +19,9 @@ import (
 )
 
 func TestSentenceHTTPWire(t *testing.T) {
-	n := 0
+	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n++
+		n := calls.Add(1)
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Error(err)
@@ -66,7 +67,7 @@ func TestSentenceHTTPWire(t *testing.T) {
 	if _, err := c.RecognizeURL(context.Background(), "https://example.com/audio.m4a?sig=abc", SentenceM4A, cfg); err != nil {
 		t.Fatal(err)
 	}
-	if n != 2 || c.Capabilities().Streaming {
+	if calls.Load() != 2 || c.Capabilities().Streaming {
 		t.Fatal("unexpected request count or capability")
 	}
 }
