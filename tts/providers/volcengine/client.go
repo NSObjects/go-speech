@@ -15,8 +15,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/NSObjects/go-speech/audio"
+	"github.com/NSObjects/go-speech/internal/connpool"
 	"github.com/NSObjects/go-speech/internal/errclass"
 	"github.com/NSObjects/go-speech/speecherr"
+	"github.com/NSObjects/go-speech/transport"
 	"github.com/NSObjects/go-speech/tts"
 	"github.com/gorilla/websocket"
 )
@@ -38,13 +40,15 @@ type Config struct {
 	Endpoint     string
 	StartTimeout time.Duration
 	Dialer       *websocket.Dialer
+	Pool         *transport.PoolConfig
 }
 
-// Client implements the shared TTS interfaces without a persistent connection.
+// Client implements Seed-TTS HTTP synthesis and optional pooled duplex sockets.
 type Client struct {
 	cfg  Config
 	base *url.URL
 	http *http.Client
+	pool *connpool.Pool
 }
 
 var (
@@ -82,7 +86,12 @@ func New(cfg Config) (*Client, error) {
 		dialer := *cfg.Dialer
 		cfg.Dialer = &dialer
 	}
-	return &Client{cfg: cfg, base: u, http: &http.Client{
+	pool, err := connpool.New(cfg.Pool)
+	if err != nil {
+		return nil, invalid(err.Error())
+	}
+	cfg.Pool = nil
+	return &Client{cfg: cfg, base: u, pool: pool, http: &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
 }
@@ -196,4 +205,13 @@ func httpFailure(status int) error {
 	code, _ := errclass.HTTPStatus(status)
 	// Seed-TTS retains its conservative non-retryable policy.
 	return failure(code, "request", fmt.Errorf("HTTP %d", status))
+}
+
+// Close closes idle duplex sockets and prevents new pooled duplex leases.
+// In-flight sessions may finish. HTTP synthesis is unaffected.
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+	return c.pool.Close()
 }

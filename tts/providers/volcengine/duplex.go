@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -66,19 +67,24 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 		dialer = *c.cfg.Dialer
 	}
 	header := http.Header{"X-Api-Key": []string{c.cfg.APIKey}}
-	conn, response, err := dialer.DialContext(startCtx, c.endpoint(req.Voice, "streaming-input", true), header)
+	endpoint := c.endpoint(req.Voice, "streaming-input", true)
+	conn, err := c.pool.AcquireKey(startCtx, endpoint, func(dialCtx context.Context) (*websocket.Conn, error) {
+		conn, response, err := dialer.DialContext(dialCtx, endpoint, header)
+		if err != nil {
+			if response != nil && response.Body != nil {
+				_ = response.Body.Close()
+			}
+			if response != nil && dialCtx.Err() == nil {
+				return nil, httpFailure(response.StatusCode)
+			}
+			return nil, startFailure(ctx, dialCtx, "connect", err)
+		}
+		return conn, nil
+	})
 	if err != nil {
-		if response != nil && response.Body != nil {
-			_ = response.Body.Close()
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if startCtx.Err() != nil {
-			return nil, startFailure(ctx, startCtx, "connect", err)
-		}
-		if response != nil {
-			return nil, httpFailure(response.StatusCode)
+		var classified *speecherr.Error
+		if errors.As(err, &classified) {
+			return nil, err
 		}
 		return nil, startFailure(ctx, startCtx, "connect", err)
 	}
@@ -94,13 +100,42 @@ func (c *Client) OpenDuplex(ctx context.Context, req tts.DuplexRequest) (tts.Dup
 		return decodeEvent(raw)
 	}
 	d := &duplex{conn: conn}
-	d.stream = newStream(ctx, format, next, func() { _ = conn.Close() })
+	d.stream = newStream(ctx, format, next, func() { c.pool.Release(conn, false) })
+	if c.pool != nil {
+		d.reuseFn = func() { c.pool.Release(conn, true) }
+		d.completeFn = d.complete
+	}
 	init.SessionID = id
 	if err := d.initialize(ctx, startCtx, init); err != nil {
 		_ = d.Close()
 		return nil, err
 	}
 	return d, nil
+}
+
+// complete is called only after a validated CLOSED final and audio. Serialize
+// with writes before releasing the physical socket. Late callbacks from the
+// old session can only invoke its already-resolved release.
+func (d *duplex) complete(ctx context.Context) error {
+	d.writeMu.Lock()
+	defer d.writeMu.Unlock()
+	d.terminalMu.Lock()
+	if d.terminal == nil {
+		d.terminal = io.EOF
+	}
+	first := d.terminal
+	d.terminalMu.Unlock()
+	reusable := first == io.EOF && d.inputClosed && ctx.Err() == nil && d.parent.Err() == nil
+	if reusable {
+		if err := d.conn.SetReadDeadline(time.Time{}); err != nil {
+			reusable = false
+		}
+		if err := d.conn.SetWriteDeadline(time.Time{}); err != nil {
+			reusable = false
+		}
+	}
+	d.release(reusable)
+	return first
 }
 
 // startFailure distinguishes a caller cancellation from the SDK's startup

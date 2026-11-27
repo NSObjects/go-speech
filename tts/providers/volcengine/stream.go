@@ -129,6 +129,8 @@ type stream struct {
 	format     audio.Format
 	next       func() (event, error)
 	closeFn    func()
+	reuseFn    func()
+	completeFn func(context.Context) error
 	done       chan struct{}
 	once       sync.Once
 	mu         sync.Mutex
@@ -152,11 +154,20 @@ func newStream(ctx context.Context, format audio.Format, next func() (event, err
 }
 
 func (s *stream) Close() error {
+	s.release(false)
+	return nil
+}
+
+// release arbitrates physical socket ownership once per logical session.
+func (s *stream) release(reusable bool) {
 	s.once.Do(func() {
 		close(s.done)
-		s.closeFn()
+		if reusable && s.reuseFn != nil {
+			s.reuseFn()
+		} else {
+			s.closeFn()
+		}
 	})
-	return nil
 }
 
 func (s *stream) closed() bool {
@@ -307,6 +318,9 @@ func (s *stream) recvEvent(ctx context.Context) (tts.Event, error) {
 			case closedReason:
 				if !s.audioSeen {
 					return s.fail(protocol("no synthesized audio"))
+				}
+				if s.completeFn != nil {
+					return tts.Event{}, s.completeFn(ctx)
 				}
 				return s.fail(io.EOF)
 			default:
